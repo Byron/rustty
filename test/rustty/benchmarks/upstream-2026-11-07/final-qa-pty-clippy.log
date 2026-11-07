@@ -1,0 +1,12 @@
+    Checking tmuxx-layout v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-layout)
+    Checking rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+    Checking portable-pty v0.9.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/vendor/portable-pty)
+    Checking rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Checking tmuxx-terminal v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-terminal)
+    Checking tmuxx-protocol v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-protocol)
+    Checking tmuxx-unix-ipc v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-unix-ipc)
+    Checking tmuxx-core v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-core)
+    Checking tmuxx-client v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-client)
+    Checking tmuxx-runtime v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-runtime)
+    Checking rustty v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.62s

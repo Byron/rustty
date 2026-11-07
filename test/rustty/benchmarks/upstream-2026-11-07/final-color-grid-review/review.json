@@ -1,0 +1,4901 @@
+{
+  "raw_failures": 49,
+  "categories": {
+    "color-numeric": 40,
+    "semantic-selection-trimming": 6,
+    "empty-vt-point-map": 3
+  },
+  "baseline_replay": {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/runner",
+      "--no-build",
+      "--fixtures",
+      "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/cases.json",
+      "--rust-bin",
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-parity",
+      "--zig-bin",
+      "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/zig",
+      "--artifacts",
+      "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay",
+      "--max-failures",
+      "100000",
+      "--timeout",
+      "60"
+    ],
+    "fixture_sha256": "7d87e7141531a3388c7ea4d878560425a1512fe1f2dc4aca76b896bbf5f4c790",
+    "baseline": {
+      "commit": "3882d7da60158d3042ae33efeb5bca72fcc4b085",
+      "binaries": {
+        "carry-before-stream": "14eff8f38b37c2c6f561228f14ee022b303ab58c06dd7aa691fb87d20c14fb2f",
+        "carry-before-parity": "f6c5f0ba373a67a6b27211d924171438811e9a14acf993acfe0dce67ca205275"
+      }
+    },
+    "request_count": 17,
+    "status": 1,
+    "summary": {
+      "aborted": false,
+      "checked": 49,
+      "coverage_gaps": [],
+      "covered": [],
+      "error": null,
+      "failures": 49,
+      "full_parity": false,
+      "mode": "smoke"
+    }
+  },
+  "all_current_and_baseline_native_replies_exact_equal": true,
+  "all_current_and_baseline_rust_replies_exact_equal": true,
+  "sources": [
+    {
+      "path": "crates/rustty-vt/src/color.rs",
+      "starting_commit": "c06197283",
+      "starting_and_current_blob": "4d5b03908bf9d03f8b8bf922f9b7461cae817ced",
+      "sha256": "63cd858d90a1180d4c7636758611742403ab99b956b29868acbe2467bb59aa89",
+      "whole_file_identical": true
+    },
+    {
+      "path": "crates/rustty-vt/src/selection.rs",
+      "starting_commit": "c06197283",
+      "starting_and_current_blob": "dd3037441f4c15162a48e8454b4a4f4632438371",
+      "sha256": "8938fce612d8d8896a0f6fae476265d064f13528c643efd70ca5112d70322ca9",
+      "whole_file_identical": true
+    },
+    {
+      "path": "crates/rustty-vt/src/formatter.rs",
+      "starting_commit": "c06197283",
+      "section": "        if options.emit == Format::Vt && !options.trim {\n            let count = trailing.0.saturating_sub(1);\n            let (mut page, mut row) = self.pages.locate(end.0 - count);\n            let previous = out\n                .map\n                .as_ref()\n                .and_then(|map| map.get(map.len().saturating_sub(1)));\n            for index in 0..count {\n                out.bytes.extend_from_slice(b\"\\r\\n\");\n                if let Some(map) = &mut out.map {\n                    let position = PagePosition {\n                        page,\n                        x: 0,\n                        y: row as u32,\n                    };\n                    let position = if index == 0 {\n                        previous.unwrap_or(position)\n                    } else {\n                        position\n                    };\n                    map.current_page = position.page;\n                    map.fill(out.bytes.len(), [position.x, position.y]);\n                }\n                row += 1;\n                if row == usize::from(self.pages.pages[page].rows) {\n                    page += 1;\n                    row = 0;\n                }\n            }\n        }\n",
+      "section_sha256": "ec5a2c0fb416806bab3dd1da51b190407a7a226645e6e5460ac2003c8083ab7f",
+      "section_identical": true,
+      "other_current_changes": "Only screen_extra effective margin and its callers changed; this test has empty extra options and identical formatted output."
+    }
+  ],
+  "older_native_commits": [
+    {
+      "commit": "73768913b47820aae4f077ecbddec111042661c3",
+      "summary": "2026-09-26 10:18:46 +0200 terminal: reject digit separators in OSC integers",
+      "ancestor_of_old_base": true
+    },
+    {
+      "commit": "13b5ab2041fe866e9b448697cd8485b115c32ba2",
+      "summary": "2026-10-06 05:07:43 +0200 terminal: stop line selection at prompt boundaries across blank cells",
+      "ancestor_of_old_base": true
+    },
+    {
+      "commit": "bd1c9cc8cb2cad3cd949fcc566872174f306821b",
+      "summary": "2026-10-16 20:19:34 +0800 formatter: keep trailing blank rows in VT output without trimming",
+      "ancestor_of_old_base": true
+    }
+  ],
+  "dispositions": {
+    "color-numeric": "Pre-existing older gap: unsigned removes internal underscores; signed_index accepts + and -0. Native digits-only parsing rejects them. Invalid reset index consequently resets all instead of one palette slot; RGB width still counts underscore bytes in Rust. All40 failures are color parser/PTTY response/current palette consequences. Rust color.rs exactly matches starting source.",
+    "semantic-selection-trimming": "Pre-existing older gap13b5ab204: Rust limits whitespace scan by row only, allows crossing semantic end column into following output, returns start after end. Native end_pin.before(p) stops that scan and returns null. Both full source and current/baseline responses match.",
+    "empty-vt-point-map": "Pre-existing mapping-only difference: empty8-column VT export emits the same CRLF bytes; with no previous map point, native retains rightmost x=7 from br.up(count-i), Rust creates fallback PagePosition x=0. Subsequent newlines use x=0 in both. Untrimmed VT content formatter maps differ; ordinary state/bytes are equal. This trailing-row block existed before the incoming range and is unchanged fromc061."
+  },
+  "failures": [
+    {
+      "id": "protocol/colors/parser/forms/0",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020004",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000001",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "70a47d50a76e876c0a7e8b48c2b747b78f2c191dd8b24a5e180f58fc38eecc72",
+      "native_sha256": "5e2672a6c6e9f27c08b5e41e045c7e7f87dfc74a861e3061b2b9a468dc9511d3",
+      "rust_sha256": "f8ea43495beddd9c8b77ba9b56e4cf56f984f834b48787acc082ed7df7e0037c",
+      "differences": [
+        {
+          "path": "response.parsed_colors[35]",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.parsed_colors[36]",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.parsed_colors[40]",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.parsed_colors[41]",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/35",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020618",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000002",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "7e2f3d322a557515202bdbd7d139a5bb2e1b4106570676d550b2dd2828ffe6f5",
+      "native_sha256": "67ca94ca21d091d5bc87fb0a9df70c636ef3d64f597df45861ce68fc4bc4875d",
+      "rust_sha256": "f0cfac42686bccc37e50f20e3e888dc4fb0e12426e72d1585a5b62f7df00ef29",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a306630662f303030302f38383838071b5d31323b7267623a306630662f303030302f38383838071b5d32313b666f726567726f756e643d7267623a30662f30302f38383b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a306630662f303030302f38383838071b5d343b343b7267623a306630662f303030302f3838383807"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/35/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020619",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000003",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "62c1e2d2a101c151ae86a9c3d0e0f4d4f4f1ef9eb07a27da303d620fa0836be8",
+      "native_sha256": "71a62f0f1e9d596b29ea8863bd3fe98f1c73db46832f35eacbe3b53827df2d6d",
+      "rust_sha256": "ac71bc3808dab3129a5f05549d987b169560cfdc0f34e9d71ff8363f0b79b4cd",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a306630662f303030302f38383838071b5d31323b7267623a306630662f303030302f38383838071b5d32313b666f726567726f756e643d7267623a30662f30302f38383b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a306630662f303030302f38383838071b5d343b343b7267623a306630662f303030302f3838383807"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/35/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020620",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000004",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "0c1292aa789f7c7a63c2e94e5b9b6da5d534ebdb7e3900a9a95c1d6165641b84",
+      "native_sha256": "e5822f108353f7cded48303e04e314b4eefc1c5daaf53a609b28a79aa6a15b4e",
+      "rust_sha256": "e1165f311dac8aceba7745176f4973d1d975760d64b72206b6280d00fc20c33d",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a306630662f303030302f38383838071b5d31323b7267623a306630662f303030302f38383838071b5d32313b666f726567726f756e643d7267623a30662f30302f38383b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a306630662f303030302f38383838071b5d343b343b7267623a306630662f303030302f3838383807"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            136
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/36",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020621",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000005",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "eaebe28d342135e64f69b61e1a0f13d44c57c2013e6b747f7b8885ec60733d87",
+      "native_sha256": "b2d1dc4ae9185c8124a90c0bb1424c5de4d4ba0b8b6e81a783217e6b4173e16a",
+      "rust_sha256": "2c13fd904dca480b4cf6378f07f4aac30b60107a05ae22ff72ac4c8c37fef3a0",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a303030302f303030302f38383838071b5d31323b7267623a303030302f303030302f38383838071b5d32313b666f726567726f756e643d7267623a30302f30302f38383b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a303030302f303030302f38383838071b5d343b343b7267623a303030302f303030302f3838383807"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/36/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020622",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000006",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "cc4207b7d12d9e3931f13de1978e5bf35f378c75d2b6765220cdb34fe8969281",
+      "native_sha256": "7444a6699011319bc93903a92767ad995813ff252b1e0700629bd687b57c9dfc",
+      "rust_sha256": "2f9bd66766ad568a41470d811b2e2ccd6044facdaed6efed309ed67110a5166b",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a303030302f303030302f38383838071b5d31323b7267623a303030302f303030302f38383838071b5d32313b666f726567726f756e643d7267623a30302f30302f38383b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a303030302f303030302f38383838071b5d343b343b7267623a303030302f303030302f3838383807"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/36/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020623",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000007",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "df189d04871f3a4d8ec519a4986f49b0161e99c865a9aebf277c4761171a2752",
+      "native_sha256": "d10031dffc85717c0a2e6bbaa3ad97be2aebe262c648fad28317954f502084e9",
+      "rust_sha256": "e47108513c156472fb33a4ffca8ac140987ada0ac276ae6115a8a45b6e4406e7",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a303030302f303030302f38383838071b5d31323b7267623a303030302f303030302f38383838071b5d32313b666f726567726f756e643d7267623a30302f30302f38383b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a303030302f303030302f38383838071b5d343b343b7267623a303030302f303030302f3838383807"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 136
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            136
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/40",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020633",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000008",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "c1cd28b8c86cd4619dae74001801da33af16feb68377bc652ea4655a028e3e40",
+      "native_sha256": "6c19c1c964d8af061837656ad35414e2e666dd50363418868e75819bf49d61cb",
+      "rust_sha256": "c64aefb09d2fef6c3c948c9182ef9dd8cceda6ab09f79e9b72c186a90dd65744",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a306630662f303030302f30303030071b5d31323b7267623a306630662f303030302f30303030071b5d32313b666f726567726f756e643d7267623a30662f30302f30303b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a306630662f303030302f30303030071b5d343b343b7267623a306630662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/40/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020634",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000009",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "2ec5449371eca36fe01da9f9b87dde35fa96e02499b691fc04b48bece947b619",
+      "native_sha256": "f826d855fdb3ebc54525db9fb2440fb99aecb7940f46c11c7933a32d09229969",
+      "rust_sha256": "dd8d3974b9bb2e80f603e60e89a12fb9137cbdd9c2722857289ffaeedfaa5f82",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a306630662f303030302f30303030071b5d31323b7267623a306630662f303030302f30303030071b5d32313b666f726567726f756e643d7267623a30662f30302f30303b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a306630662f303030302f30303030071b5d343b343b7267623a306630662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/40/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020635",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000010",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "7e9d292782b9617ab8317758909dcc0e517e8262b28981c5ce45b8a9c54ab07a",
+      "native_sha256": "a18c9af5a3b3a43ac4021cccc503593cd7b98674f0f8efa58144f441246a0519",
+      "rust_sha256": "44424e3f72b3268fc234cfae97d4c432fdf7be6ea3ff4034e32432c840e1a51a",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a306630662f303030302f30303030071b5d31323b7267623a306630662f303030302f30303030071b5d32313b666f726567726f756e643d7267623a30662f30302f30303b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a306630662f303030302f30303030071b5d343b343b7267623a306630662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 15
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            15,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/41",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020636",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000011",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "35048a02a5414f06efcf113e9b7778ae4a759332f2b3916cc67464ae2b9aa739",
+      "native_sha256": "8568116ed44b51032bc45e2a81b57f81b3886f845dfc9fd2c7bfa70f46d87f09",
+      "rust_sha256": "c8ae2ac0b9a3aa364c7392f34a81b8bf7bcb7b922b1b7eaebf8661996e9f5db5",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a303030302f303030302f30303030071b5d31323b7267623a303030302f303030302f30303030071b5d32313b666f726567726f756e643d7267623a30302f30302f30303b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a303030302f303030302f30303030071b5d343b343b7267623a303030302f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/41/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020637",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000012",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "df6fd4de6bb14483fcb45e0a4cb17a30d2c4a226d1d91381f48aac6651366710",
+      "native_sha256": "4cfb19b5f35913010fea9fdb68d82f3b193b95cd4c501a745dac8b5deaf438a7",
+      "rust_sha256": "f92002a3bdc2e0730cfac3ad5ad47db8fcbd97977b3b57c2f6dda6815e6fc3f4",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a303030302f303030302f30303030071b5d31323b7267623a303030302f303030302f30303030071b5d32313b666f726567726f756e643d7267623a30302f30302f30303b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a303030302f303030302f30303030071b5d343b343b7267623a303030302f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/osc-form/41/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020638",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000013",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "1032b4ec2c4046aee69ea955b0efb4ef61adf1141b8d0d485908bea2d15bdc03",
+      "native_sha256": "2abaac619e8500f753543082f588104892c0ce3f1ec4541caa44dcd6254c8559",
+      "rust_sha256": "4e8750ae57b6dbeff5a5e8c49b5c40747a2cf170d4228bc1bba1057f16c05509",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a663066302f633663362f37343734071b5d343b343b7267623a383138312f613261322f6265626507",
+          "rust": "1b5d31303b7267623a303030302f303030302f30303030071b5d31323b7267623a303030302f303030302f30303030071b5d32313b666f726567726f756e643d7267623a30302f30302f30303b6261636b67726f756e643d3b637572736f723d071b5d343b333b7267623a303030302f303030302f30303030071b5d343b343b7267623a303030302f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.foreground.current",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.foreground.override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[0]",
+          "native": 240,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[1]",
+          "native": 198,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].current[2]",
+          "native": 116,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[3].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[0]",
+          "native": 129,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[1]",
+          "native": 162,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].current[2]",
+          "native": 190,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[4].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/11",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020822",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000014",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "48713f107ebf2476de00098bc0fc13674d9a77303348832da197aa84b1ab4a6e",
+      "native_sha256": "7c91433361b258606f0fed4adf3f7d4ec3dc9f1bbbf3c57a82a10e7f5c66bcdb",
+      "rust_sha256": "1139eef3f6e6dd10f466ad3b58de6a6364ba0c57a89d02cdcdbc726b2cf48d83",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b313b7267623a666666662f303030302f30303030071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a666666662f303030302f30303030071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107"
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/11/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020823",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000015",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "78e01f349e2258e3add7131108e90767c73573d61b079d397b223e6ef689b106",
+      "native_sha256": "1518f3c1f93ce40077a5e92c1ca479f932bc1d3f9f4b1244e2f7dd74a1e03c72",
+      "rust_sha256": "d5ff4cba103b13f2ac77eee1a9bcdfdbc857245e6acbf6ea7f47b5331bf3ed6c",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b313b7267623a666666662f303030302f30303030071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a666666662f303030302f30303030071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107"
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/11/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020824",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000016",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "06a2b7a1f2887a14913d202b83622285f21f550e7cab38e0311b6ed56eb9c8e5",
+      "native_sha256": "ea4f82b71f181af525cad11f37ccf7a33036b5b1862545b1ab14c668bea85a80",
+      "rust_sha256": "55fcc6f1e6ae819e454eee5795523ed3a319b163c1216386470408afbf044a5e",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b313b7267623a666666662f303030302f30303030071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a666666662f303030302f30303030071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107"
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/12",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020825",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000017",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "83f495a60f6b0867ca820e79c5f37d6d885769658db53b6765d20dccaba82b4f",
+      "native_sha256": "0c732834c00d1097c74f74edbd8b0279ebee83e181c69cfb63e099558a9402d2",
+      "rust_sha256": "3f3987e0e8171e53e82c57d058dfa5eb2297400450d9e752434e4fc538f2410c",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b303b7267623a666666662f303030302f30303030071b5d343b303b7267623a666666662f303030302f30303030071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107"
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/12/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020826",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000018",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "815c67e2c6cebc6bba62fb0a2f8d78911561f4d1caa9ad1dadc74271eb127cb9",
+      "native_sha256": "47efabd2c1b159935364996de9a764f226bad27d25b2f38e6871b4fadee516bd",
+      "rust_sha256": "e5abc9893f6e7fef5c48bf80ee0d736e41ef81392f94a3c6c0b4d67fa32d4728",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b303b7267623a666666662f303030302f30303030071b5d343b303b7267623a666666662f303030302f30303030071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107"
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/12/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020827",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000019",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "db2ab55de79e55cf43347882749150e02073de90cf18f9055ca4388b3bb38f1e",
+      "native_sha256": "e04f83a39d019c7b6093b69cfa8d736be0742588fa86771afa158ebedaafd4e5",
+      "rust_sha256": "0910287aa428f1484c131a57dfd74c831fbdeb37d6f42751f7d7e559da8e4b19",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b303b7267623a666666662f303030302f30303030071b5d343b303b7267623a666666662f303030302f30303030071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107"
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/15",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020834",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000020",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "08504109dafdbfd6ccc6d67b3623567b61faa528589f344c8fa5c3486ab606b7",
+      "native_sha256": "30f5370b1866bee6c8585a7cfc753b13aa9af778e36e74cafa4caff1a98bedd3",
+      "rust_sha256": "11dcc9bb1d744e7defba1fa577ab4d508a594c3fdcc584e23e18a36212972b34",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b31303b7267623a666666662f303030302f30303030071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/15/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020835",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000021",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "f945db6fe57b0be15a4d52aa1d83c03f59fca4ca944d46b73713bb6ce62af48e",
+      "native_sha256": "a6490bf1450270070b9dd507ce618d25f6e87c10acfeaf47bf64725eced3a701",
+      "rust_sha256": "481046eccf4b239ff5927998f17851df736321f2b894884e2f76ad90780a0e9a",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b31303b7267623a666666662f303030302f30303030071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/15/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020836",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000022",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "767a824b03141ee92476bf327cd7bd9f952b438227bab4e111985a5cdca54159",
+      "native_sha256": "42410e5de0494a823497455258a12b91861fe70c34d38d69303c78a62ecaede7",
+      "rust_sha256": "06300d6da5ddb08d68cd67897c05f2566301fc744a49596014ca7d36e1a82585",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b31303b7267623a666666662f303030302f30303030071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/16",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020837",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000023",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "cb526368411a87bc255b443a9413b104f9c2d325638d4131bd1c6aab88cdf650",
+      "native_sha256": "7666b4c6b4b23587ce18cd16c136fa625494a318e0891ddb283383c96a0a9c5a",
+      "rust_sha256": "d8ecd805f68598b5acf277edaccb9ce905e16667a57cbb50627d142547ba9128",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b31303b7267623a666666662f303030302f30303030071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/16/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020838",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000024",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "82412fd254c085faa3c34735e4bd8eb5fe6af2b27f827b78ab7dbc0ec95327bc",
+      "native_sha256": "54899021555cb80e8628d45a143fa9701759b8988e7d7bc5ed930c676d6991f6",
+      "rust_sha256": "96b04b021e6c697566f61324e86c3bf1e2a5acc90df74e22cc959209b7cefa81",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b31303b7267623a666666662f303030302f30303030071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/palette-list/16/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020839",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000025",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "ba9a6f287eb5cf1366765144602f9d84ddfedcaf67d852ba73279e415c6d24e0",
+      "native_sha256": "06990e3ccbbaa0dc3698db60f95a35d5e5d1de5d340aff580bb5673b8a37dffc",
+      "rust_sha256": "46e1b0a5b0a1728fa30a088fa156f86b33f7b2b41f49b0bbfbcb37de535b0147",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d343b31303b7267623a666666662f303030302f30303030071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/reset-list/104/9",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020909",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000026",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "9c171053d7eca29a003af05339a496bf8bb3e80f95830e50c5d0013be971408c",
+      "native_sha256": "5a620179f8b62f10e53edee6c2575108fd4074b0f3f948dd176f80b15107a326",
+      "rust_sha256": "bfa452954c7fe9134df374272cffd3c676cb2209c742ddaea480ca5b9cef4de6",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a666666662f303030302f30303030071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a303030302f666666662f30303030071b5d343b31303b7267623a666666662f666666662f3030303007"
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/reset-list/104/9/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020910",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000027",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "8d6c45a06360d5e36088563d7dcb2aa4fc60c6067f1b44b981322a6959efa7b3",
+      "native_sha256": "9febe89d300b6dcb523b096f4798f1ac8f9b3da6372c515724c0aefe544c0939",
+      "rust_sha256": "44c84f1bec990cd0c3464449b3dbd48e483ded3b5d8e5edc12b5db549ba17cf2",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a666666662f303030302f30303030071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a303030302f666666662f30303030071b5d343b31303b7267623a666666662f666666662f3030303007"
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/reset-list/104/9/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020911",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000028",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "ae5393e11afe31fcdc9c1c2fdf79748f55eec94e15c2e584f6738262c7fed340",
+      "native_sha256": "aa604d57fbd9c19fc446330b0304e379a4bb1a4f94cbefd40460410dcd05ac98",
+      "rust_sha256": "a0f3961f203b44dc9380b7967775be3e3b189789fd07808f9f759ee5b9ec05d6",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a666666662f303030302f30303030071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a303030302f666666662f30303030071b5d343b31303b7267623a666666662f666666662f3030303007"
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/reset-list/104/10",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020912",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000029",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "3045400d62d282bd3e07dcd49e5b5985641933b960489c89d6050248e2f79a30",
+      "native_sha256": "84bcebf9a012060d806a6d100662b4cb40fb3879916871124baac96321192bfc",
+      "rust_sha256": "3e4df4a472a7fe56edc1234e9534682e6fef7a1a5068486e33e771a9a7b5646a",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a303030302f303030302f66666666071b5d343b323b7267623a303030302f666666662f30303030071b5d343b31303b7267623a666666662f666666662f3030303007"
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/reset-list/104/10/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020913",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000030",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "e0aebd2b0a7950ee4717cba2350f49d2ef1cb7f78c982ac3c65cb551d4892c30",
+      "native_sha256": "0cf7c1e59f5e8e4caf3823949489ab36b2e9acec19f84e56445854f6ad51f176",
+      "rust_sha256": "c3e757ed3d95b1ca306292aa83642c7d99829f4e96f0da67d6f6367af9d8d745",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a303030302f303030302f66666666071b5d343b323b7267623a303030302f666666662f30303030071b5d343b31303b7267623a666666662f666666662f3030303007"
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/reset-list/104/10/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020914",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000031",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "e729887324a021649131a5bf97f38e948d13448ceb9b1f0e3250ff983c66d8f9",
+      "native_sha256": "b5310678d91b235ef52d0cc09a328974c1528fcd19029c620362eaa4ef01717b",
+      "rust_sha256": "acbbe4236513db3dc7bd7a46ffc94f1f57c98a65bdc7d1e61fbc27ea7fc8113f",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a303030302f303030302f66666666071b5d343b323b7267623a303030302f666666662f30303030071b5d343b31303b7267623a666666662f666666662f3030303007"
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            255,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/reset-list/104/11",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020915",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000032",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "46961370ec6aa615e385016b2684ff8550453019f3c903ef66d54621628f4e88",
+      "native_sha256": "dc8ed1a01255138456035338806a5bbf5b79113a3dab6327643f63fa12817c01",
+      "rust_sha256": "3b8becee810a54a354aef1bda46fa0b005c82be5f812be88e1eb2338f525b243",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a666666662f303030302f30303030071b5d343b313b7267623a303030302f303030302f66666666071b5d343b323b7267623a303030302f666666662f30303030071b5d343b31303b7267623a623962392f636163612f3461346107"
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/reset-list/104/11/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020916",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000033",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "5730a74a19c2a34dde8c021c44871c81efe60ddc09150f4ffb4e74ea93bec60b",
+      "native_sha256": "6d3a7171c3bbb497fa2cb00d1a06cc3de706ff0dc3e3ddf5184535cede78f1b2",
+      "rust_sha256": "e4f5c14860c27c3eef3e7997b79a01bd3553f1f06751026e4e355caa8a067d5c",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a666666662f303030302f30303030071b5d343b313b7267623a303030302f303030302f66666666071b5d343b323b7267623a303030302f666666662f30303030071b5d343b31303b7267623a623962392f636163612f3461346107"
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/reset-list/104/11/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/020917",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000034",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "c0a2d93e50b2c756a8fd508e48edd3e8382983c7b605ac93dd1dfeebc67da640",
+      "native_sha256": "2bc1dfea248693b7dfc2f28c7bf644109f87e2f01eb3b0340814609decbfa58b",
+      "rust_sha256": "8bdd621dd7af5a5ca6cc57f7827f3810f03f94ebaafba5ca6c2a8ff42752a2e1",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a636363632f363636362f36363636071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d31303b7267623a666666662f303030302f30303030071b5d31313b7267623a303030302f666666662f30303030071b5d31323b7267623a303030302f303030302f66666666071b5d32313b666f726567726f756e643d7267623a66662f30302f30303b6261636b67726f756e643d7267623a30302f66662f30303b637572736f723d7267623a30302f30302f6666071b5d343b303b7267623a666666662f303030302f30303030071b5d343b313b7267623a303030302f303030302f66666666071b5d343b323b7267623a303030302f666666662f30303030071b5d343b31303b7267623a623962392f636163612f3461346107"
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[0]",
+          "native": 29,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[1]",
+          "native": 31,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].current[2]",
+          "native": 33,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[0].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[0]",
+          "native": 204,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[1]",
+          "native": 102,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].current[2]",
+          "native": 102,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[1].override",
+          "native": null,
+          "rust": [
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[0]",
+          "native": 181,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[1]",
+          "native": 189,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].current[2]",
+          "native": 104,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[2].colors.palette[2].override",
+          "native": null,
+          "rust": [
+            0,
+            255,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/kitty-list/17",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/021248",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000035",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "02224a2bcd1edfee8f731f938750400630b7a13ce1cbcbd3aa73f003049b397d",
+      "native_sha256": "30db9cb22917903c80d483d9ef397b91210dffadf491cfb5af41ba57de20f3ea",
+      "rust_sha256": "0b2ad7f170cd10174b9ab14e789cebac6c9a1625c248f02988c9113d4dcca608",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b31303d7267623a62392f63612f3461071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d32313b31303d7267623a66662f30302f3030071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/kitty-list/17/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/021249",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000036",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "b1bb393c7856c1854b403fc41419b087d90c84ebd7081f436181bbf7c15c6453",
+      "native_sha256": "758f14f926724c91904373fe314289b29f7c4df286433800ce16c67e66a05b21",
+      "rust_sha256": "d76775eab364982ed9937951c70dc434ae81f73f8f04baeb7c0d5172fa8bb9b1",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b31303d7267623a62392f63612f3461071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d32313b31303d7267623a66662f30302f3030071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/kitty-list/17/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/021250",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000037",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "430f7ed3e914bcfc3331a989d33acb767622b527dd76d6491a541f42a181e1e0",
+      "native_sha256": "d74a32cdbe7b749f62233fcd78dd36aa41e4423445101c32dd0468062477902b",
+      "rust_sha256": "fae41ed35c1974b8971349da1ef4d1d4df8a9413f74caa64aeb180cecec237bf",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b31303d7267623a62392f63612f3461071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d32313b31303d7267623a66662f30302f3030071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/kitty-list/18",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/021251",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000038",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "3e66779f893d0daa885ae09eff3adf04548f9312293f80b38c65e90e89e23ecd",
+      "native_sha256": "d36d127ba754f4bcdc0df48b8951d6175113fdb9f4dead01a314bb6272dbcce6",
+      "rust_sha256": "0e6d0793f77f21c1b925c7ce9f0dff56cf8392892843a6dcf9cd0b320b9fc1e8",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b31303d7267623a62392f63612f3461071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d32313b31303d7267623a66662f30302f3030071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/kitty-list/18/scalar",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/021252",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000039",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "d95aa9212491af9f7163477de370f74f86581286e163a2ceab717b1f372c125e",
+      "native_sha256": "73c64deb5245c928f290025f81bf73621328347dfa9215cdbd844fe92a16aa3b",
+      "rust_sha256": "9b69ebd1feb49cbe65714eb9222ab99f44356db21b5792a24c26c77d21ad9bdf",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b31303d7267623a62392f63612f3461071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d32313b31303d7267623a66662f30302f3030071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "protocol/colors/kitty-list/18/chunks",
+      "category": "color-numeric",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/failures/021253",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000040",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "d77fddfd0ebf5e525690b314a047c14360b661ecc0d7f842bda55ccff6f6d12e",
+      "native_sha256": "8af35416b746a259384829c6a72759a83a49b785609751109f66c9c22edc6633",
+      "rust_sha256": "19b0b46cd19dafb26f4a65680871f3b3f0114a01086a7ce0a0f8d32aaf910a2d",
+      "differences": [
+        {
+          "path": "response.events[0].data",
+          "native": "1b5d32313b31303d7267623a62392f63612f3461071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a623962392f636163612f3461346107",
+          "rust": "1b5d32313b31303d7267623a66662f30302f3030071b5d32313b666f726567726f756e643d3b6261636b67726f756e643d3b637572736f723d071b5d343b303b7267623a316431642f316631662f32313231071b5d343b313b7267623a616261622f636463642f65666566071b5d343b323b7267623a623562352f626462642f36383638071b5d343b31303b7267623a666666662f303030302f3030303007"
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[0].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[0]",
+          "native": 185,
+          "rust": 255
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[1]",
+          "native": 202,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].current[2]",
+          "native": 74,
+          "rust": 0
+        },
+        {
+          "path": "response.observations[1].colors.palette[10].override",
+          "native": null,
+          "rust": [
+            255,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "grid/selectors/line-options/5/0",
+      "category": "semantic-selection-trimming",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/005273",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000041",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "8550470454758e922e2856c7d7ad00ddd13495fc8bf1ea913058c52de57a13fa",
+      "native_sha256": "555ab9494551f7efef5c54611e0e94e48611e837d2419abdd6664dd4cee060a5",
+      "rust_sha256": "a6cb72aa639b2162b0e23bda54d11ca3e063ac29edec729cd869de7bfe35251a",
+      "differences": [
+        {
+          "path": "response.grid_results[7].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[7].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[8].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[8].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[9].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[9].status",
+          "native": "no_value",
+          "rust": "ok"
+        }
+      ]
+    },
+    {
+      "id": "grid/selectors/line-options/5/0/scalar",
+      "category": "semantic-selection-trimming",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/005274",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000042",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "431cfe7e41ad443b5b26021d16f072e4f82692d1aaf80144df9638b01846bc0c",
+      "native_sha256": "4a3f98312a40c7ef19e345079154ad6c132a5ee234260ea0bc5c0310f75ac508",
+      "rust_sha256": "11deeba5f790b1231611f6e9fd686d1b4f2dbc0143bd1c3559c66176b9a18a94",
+      "differences": [
+        {
+          "path": "response.grid_results[7].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[7].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[8].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[8].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[9].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[9].status",
+          "native": "no_value",
+          "rust": "ok"
+        }
+      ]
+    },
+    {
+      "id": "grid/selectors/line-options/5/0/chunks",
+      "category": "semantic-selection-trimming",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/005275",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000043",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "1d7bdb262df8841239e9304c69b21df35de52c7f1da850a45d7b10c49b5b7e1d",
+      "native_sha256": "f3bbb72e0769cbb9aa817cc92f4207d313c74cb20dbb14b08a10e3884ea9f332",
+      "rust_sha256": "62f18f054632826a1d5ad412512384e1cbe281d4423f4517f3361d2fcbbdfcdb",
+      "differences": [
+        {
+          "path": "response.grid_results[7].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[7].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[8].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[8].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[9].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[9].status",
+          "native": "no_value",
+          "rust": "ok"
+        }
+      ]
+    },
+    {
+      "id": "grid/selectors/line-options/5/3",
+      "category": "semantic-selection-trimming",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/005282",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000044",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "4253406b4eb6f5f53991e5f0676fc88232a8945f5abaaa9897185bdca1794215",
+      "native_sha256": "b0da56c485b36bf00c6b57efbc5d06139de910ff2908e109de4d64936ca4325f",
+      "rust_sha256": "a0ef330c79eda18fc0b5c7342321fd4bbf09a5b21871c2214fdcc5cb27ce9dbf",
+      "differences": [
+        {
+          "path": "response.grid_results[7].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[7].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[8].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[8].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[9].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[9].status",
+          "native": "no_value",
+          "rust": "ok"
+        }
+      ]
+    },
+    {
+      "id": "grid/selectors/line-options/5/3/scalar",
+      "category": "semantic-selection-trimming",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/005283",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000045",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "509881553e4935c098cb33e39f336378adbf5f98996dd8f87288f3baf699e549",
+      "native_sha256": "da0bedc5c4fbc1075912f297133fbe951b17137e4af6d66930b7e284ed4e1f6b",
+      "rust_sha256": "550ddf3a8e9f9db35b1e34352722ca11848759d5c1f43bad3c0ccff31c8c1902",
+      "differences": [
+        {
+          "path": "response.grid_results[7].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[7].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[8].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[8].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[9].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[9].status",
+          "native": "no_value",
+          "rust": "ok"
+        }
+      ]
+    },
+    {
+      "id": "grid/selectors/line-options/5/3/chunks",
+      "category": "semantic-selection-trimming",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/005284",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000046",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "c19030977f3015ffaaab80e0508e78dbcb2a41b1eb3d845d8ca118a519d7db50",
+      "native_sha256": "2b14e3b96c9b4856244bef7da613c5def01e7ad6ab7a160b246010dea4a7cca2",
+      "rust_sha256": "5233664daf8dbe1c7fcf8a7b80fe437b4cb09ca7ed8f4f7527bba595083b717a",
+      "differences": [
+        {
+          "path": "response.grid_results[7].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[7].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[8].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[8].status",
+          "native": "no_value",
+          "rust": "ok"
+        },
+        {
+          "path": "response.grid_results[9].selection_result",
+          "native": null,
+          "rust": {
+            "end": {
+              "active": [
+                5,
+                0
+              ],
+              "history": [
+                5,
+                0
+              ],
+              "screen": [
+                5,
+                0
+              ],
+              "viewport": [
+                5,
+                0
+              ]
+            },
+            "rectangle": false,
+            "start": {
+              "active": [
+                1,
+                1
+              ],
+              "history": [
+                1,
+                1
+              ],
+              "screen": [
+                1,
+                1
+              ],
+              "viewport": [
+                1,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "path": "response.grid_results[9].status",
+          "native": "no_value",
+          "rust": "ok"
+        }
+      ]
+    },
+    {
+      "id": "grid/terminal-format/contents/empty",
+      "category": "empty-vt-point-map",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/007646",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000047",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "ca0bc2a71d2b0011b4e2e5a5c456268b51d7d71f9623ad3f45a4ce9bdbb7912f",
+      "native_sha256": "8c3ffce8062bfd359e68879b2faeb787d8b6fd2b993a4d8638231d7d5aed60f8",
+      "rust_sha256": "39f9f92cafbe7f51bfcd35c381d08a989e171ff2bc99215beab8af87105ae1d9",
+      "differences": [
+        {
+          "path": "response.grid_results[4].format_map[0][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[4].format_map[1][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[6].format_map[0][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[6].format_map[1][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[29].format_map[0][1]",
+          "native": 6,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[29].format_map[1][1]",
+          "native": 6,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[31].format_map[0][1]",
+          "native": 6,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[31].format_map[1][1]",
+          "native": 6,
+          "rust": 0
+        }
+      ]
+    },
+    {
+      "id": "grid/terminal-format/contents/empty/scalar",
+      "category": "empty-vt-point-map",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/007647",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000048",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "17e5be6aed96caff7b5aec4d1588834cc681271d05a0a117faa5c8649836750f",
+      "native_sha256": "cceb346de241d5244f40cac47d86e91d2edd0f07982c3d9876ce5ce494c4cf5f",
+      "rust_sha256": "f1e50b8da8f600a00e5a90c8eae185e9ffb381956f820131d472a2ee975b2a22",
+      "differences": [
+        {
+          "path": "response.grid_results[4].format_map[0][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[4].format_map[1][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[6].format_map[0][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[6].format_map[1][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[29].format_map[0][1]",
+          "native": 6,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[29].format_map[1][1]",
+          "native": 6,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[31].format_map[0][1]",
+          "native": 6,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[31].format_map[1][1]",
+          "native": 6,
+          "rust": 0
+        }
+      ]
+    },
+    {
+      "id": "grid/terminal-format/contents/empty/chunks",
+      "category": "empty-vt-point-map",
+      "current_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/007648",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay/failures/000049",
+      "baseline_native_reply_exact_equal": true,
+      "baseline_rust_reply_exact_equal": true,
+      "request_sha256": "cef7f654add6dbcdc5513660f1c8db223fee1775c779386f0f6afd6e97ed82da",
+      "native_sha256": "e3b67d3c092435cdf976061dd69ffb0e47bf852a2a7f2342651a289a4f23d041",
+      "rust_sha256": "507e1e31e8b3aedcb027e2b142e3228abd6c592003d488d40c0cf6bcf4501c0d",
+      "differences": [
+        {
+          "path": "response.grid_results[4].format_map[0][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[4].format_map[1][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[6].format_map[0][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[6].format_map[1][1]",
+          "native": 7,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[29].format_map[0][1]",
+          "native": 6,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[29].format_map[1][1]",
+          "native": 6,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[31].format_map[0][1]",
+          "native": 6,
+          "rust": 0
+        },
+        {
+          "path": "response.grid_results[31].format_map[1][1]",
+          "native": 6,
+          "rust": 0
+        }
+      ]
+    }
+  ],
+  "scope": "Manual baseline/source disposition only; raw runner summaries and strict pointer-record classifier are unchanged."
+}

@@ -1,0 +1,16 @@
+{
+  "head": "96776a92676c59a40638b97621b160f72e64159a",
+  "branch": "rustty",
+  "base": "5acdbf154369928eb228d2263cbe612d165f7569",
+  "original_changes_retained": 289,
+  "new_local_commits": 25,
+  "all_original_parents_authors_subjects_preserved": true,
+  "refs": {
+    "refs/heads/exp/mouse-hover": "a62cd5c315d6bbca4a8440c382111bb0271d9c35",
+    "refs/heads/ghostty-adjustments-legacy": "e195531aae114f3ae898f7506a14df3c68ad0821",
+    "refs/heads/main": "5acdbf154369928eb228d2263cbe612d165f7569",
+    "refs/heads/rustty": "96776a92676c59a40638b97621b160f72e64159a",
+    "refs/heads/rustty-windows": "f65992bcce8be83d7038c086dfaae51b20c937eb"
+  },
+  "dictation_fork": "053fe390bf6d907b956cd5d21ab490b5a732d867"
+}

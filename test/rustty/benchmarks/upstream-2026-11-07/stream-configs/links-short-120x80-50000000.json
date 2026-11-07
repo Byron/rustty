@@ -1,0 +1,8 @@
+{
+  "name": "links-short-120x80-50000000",
+  "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/links-short.vt",
+  "cols": 120,
+  "rows": 80,
+  "scrollback_bytes": 50000000,
+  "grapheme_width": "legacy"
+}

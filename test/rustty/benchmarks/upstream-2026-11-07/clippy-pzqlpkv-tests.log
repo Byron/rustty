@@ -1,0 +1,55 @@
+   Compiling rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.76s
+     Running tests/snapshot.rs (target/debug/deps/snapshot-ff750452272474dc)
+
+running 31 tests
+test kitty_keyboard_ring_overflows_pops_and_resumes_after_restore ... ok
+test invalid_utf8_metadata_and_links_survive_without_loss ... ok
+test ghostty_sparse_page_preserves_styles_links_graphemes_and_wide_cells ... ok
+test ghostty_fixture_streams_history_and_leaves_transport_unread ... ok
+test repeated_nul_prints_empty_cells_with_the_current_pen ... ok
+test skipped_snapshot_records_still_validate_lengths_checksums_and_known_order ... ok
+test maximum_four_byte_grapheme_preserves_snapshot_and_suffix_limit ... ok
+test restored_defaults_survive_configuration_changes_and_protocol_resets ... ok
+test history_restore_preserves_mixed_physical_rows_while_live_input_arrives ... ok
+test default_right_charset_is_preserved_by_cursor_and_screen_lifecycles ... ok
+test distinct_grapheme_payloads_survive_page_transfer_reflow_and_live_erase ... ok
+test snapshot_rejects_empty_cursor_link_strings_before_resource_admission ... ok
+test decode_continuation_budget_does_not_limit_later_capture ... ok
+test snapshot_clamps_cursor_to_logical_and_physical_widths ... ok
+test streaming_restore_obeys_page_budget_and_discards_history_after_resize ... ok
+test streaming_restore_uses_the_minimum_scrollback_budget ... ok
+test terminal_reset_keeps_the_primary_history_restore_destination ... ok
+test index_scroll_widens_mixed_pages_before_moving_rows ... ok
+test unscroll_widens_restored_history_beneath_an_existing_cursor ... ok
+test snapshot_grapheme_capacity_drops_whole_clusters_and_limits_suffix_length ... ok
+test streaming_history_checks_width_when_each_page_arrives ... ok
+test unknown_cursor_default_flags_preserve_host_cursor_preferences ... ok
+test mixed_physical_widths_survive_observation_and_grow_before_mutation ... ok
+test narrow_restored_pages_support_direct_cursor_and_row_edits ... ok
+test exact_snapshot_decode_checks_eof_without_consuming_transport_bytes ... ok
+test multirow_page_snapshots_keep_all_owned_resources ... ok
+test snapshot_skips_unknown_records_at_every_boundary ... ok
+test snapshot_propagates_io_failures_at_record_boundaries ... ok
+test snapshot_preserves_screen_attributes_and_pending_parser ... ok
+test corrupt_truncated_and_excessive_snapshots_are_rejected ... ok
+test raised_decode_budget_keeps_the_normal_capture_limit ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.35s
+
+     Running tests/unscroll.rs (target/debug/deps/unscroll-9ed8d74678a63f42)
+
+running 9 tests
+test partial_width_restoration_repairs_split_wide_cells ... ok
+test discarded_bottom_rows_release_their_selection_and_image_placements ... ok
+test invalid_counts_do_not_consume_history_and_large_counts_stop_at_one_screen ... ok
+test partial_width_restoration_keeps_only_anchors_in_the_restored_columns ... ok
+test horizontal_margins_restore_only_selected_cells_and_preserve_the_exterior ... ok
+test unscroll_obeys_vertical_margins_and_discards_only_the_region_bottom ... ok
+test exhausted_history_and_alternate_screen_fill_with_the_current_background ... ok
+test restored_rows_keep_rich_cells_images_selection_viewport_and_snapshot_state ... ok
+test unscroll_restores_history_with_stable_ids_and_pending_wrap_at_every_split ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

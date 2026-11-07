@@ -1,0 +1,4682 @@
+[
+  {
+    "id": "pages/styles/transient-sgr/8/2",
+    "path": "target/parity/failures/000021",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/8/2/scalar",
+    "path": "target/parity/failures/000022",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/8/2/chunks",
+    "path": "target/parity/failures/000023",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/80/24",
+    "path": "target/parity/failures/000024",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/80/24/scalar",
+    "path": "target/parity/failures/000025",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/80/24/chunks",
+    "path": "target/parity/failures/000026",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/215/2",
+    "path": "target/parity/failures/000037",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/215/2/scalar",
+    "path": "target/parity/failures/000038",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/215/2/chunks",
+    "path": "target/parity/failures/000039",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/1024/2",
+    "path": "target/parity/failures/000052",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/1024/2/scalar",
+    "path": "target/parity/failures/000053",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/transient-sgr/1024/2/chunks",
+    "path": "target/parity/failures/000054",
+    "difference": "response.page_results[2].primary.allocation_bytes"
+  },
+  {
+    "id": "pages/styles/decoded-id-history/4",
+    "path": "target/parity/failures/000133",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/decoded-id-history/4/scalar",
+    "path": "target/parity/failures/000134",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/decoded-id-history/4/chunks",
+    "path": "target/parity/failures/000135",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/decoded-id-history/8",
+    "path": "target/parity/failures/000136",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/decoded-id-history/8/scalar",
+    "path": "target/parity/failures/000137",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/decoded-id-history/8/chunks",
+    "path": "target/parity/failures/000138",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/decoded-id-history/16",
+    "path": "target/parity/failures/000139",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/decoded-id-history/16/scalar",
+    "path": "target/parity/failures/000140",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/decoded-id-history/16/chunks",
+    "path": "target/parity/failures/000141",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/observe",
+    "path": "target/parity/failures/000142",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/observe/scalar",
+    "path": "target/parity/failures/000143",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/observe/chunks",
+    "path": "target/parity/failures/000144",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-down",
+    "path": "target/parity/failures/000145",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-down/scalar",
+    "path": "target/parity/failures/000146",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-down/chunks",
+    "path": "target/parity/failures/000147",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-down-across-page",
+    "path": "target/parity/failures/000148",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-down-across-page/scalar",
+    "path": "target/parity/failures/000149",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-down-across-page/chunks",
+    "path": "target/parity/failures/000150",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-up-across-page",
+    "path": "target/parity/failures/000151",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-up-across-page/scalar",
+    "path": "target/parity/failures/000152",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-up-across-page/chunks",
+    "path": "target/parity/failures/000153",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-right",
+    "path": "target/parity/failures/000154",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-right/scalar",
+    "path": "target/parity/failures/000155",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/cursor-right/chunks",
+    "path": "target/parity/failures/000156",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-chars",
+    "path": "target/parity/failures/000157",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-chars/scalar",
+    "path": "target/parity/failures/000158",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-chars/chunks",
+    "path": "target/parity/failures/000159",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-line",
+    "path": "target/parity/failures/000160",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-line/scalar",
+    "path": "target/parity/failures/000161",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-line/chunks",
+    "path": "target/parity/failures/000162",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-display",
+    "path": "target/parity/failures/000163",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-display/scalar",
+    "path": "target/parity/failures/000164",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-display/chunks",
+    "path": "target/parity/failures/000165",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-scrollback",
+    "path": "target/parity/failures/000166",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-scrollback/scalar",
+    "path": "target/parity/failures/000167",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/erase-scrollback/chunks",
+    "path": "target/parity/failures/000168",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/insert-lines",
+    "path": "target/parity/failures/000169",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/insert-lines/scalar",
+    "path": "target/parity/failures/000170",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/insert-lines/chunks",
+    "path": "target/parity/failures/000171",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/delete-lines",
+    "path": "target/parity/failures/000172",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/delete-lines/scalar",
+    "path": "target/parity/failures/000173",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/delete-lines/chunks",
+    "path": "target/parity/failures/000174",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/insert-blanks",
+    "path": "target/parity/failures/000175",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/insert-blanks/scalar",
+    "path": "target/parity/failures/000176",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/insert-blanks/chunks",
+    "path": "target/parity/failures/000177",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/delete-chars",
+    "path": "target/parity/failures/000178",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/delete-chars/scalar",
+    "path": "target/parity/failures/000179",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/delete-chars/chunks",
+    "path": "target/parity/failures/000180",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/alignment",
+    "path": "target/parity/failures/000181",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/alignment/scalar",
+    "path": "target/parity/failures/000182",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/alignment/chunks",
+    "path": "target/parity/failures/000183",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/scroll-up",
+    "path": "target/parity/failures/000184",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/scroll-up/scalar",
+    "path": "target/parity/failures/000185",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/scroll-up/chunks",
+    "path": "target/parity/failures/000186",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/scroll-down",
+    "path": "target/parity/failures/000187",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/scroll-down/scalar",
+    "path": "target/parity/failures/000188",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/scroll-down/chunks",
+    "path": "target/parity/failures/000189",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/print-wrap-margin",
+    "path": "target/parity/failures/000190",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/print-wrap-margin/scalar",
+    "path": "target/parity/failures/000191",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/print-wrap-margin/chunks",
+    "path": "target/parity/failures/000192",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/print-wide",
+    "path": "target/parity/failures/000193",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/print-wide/scalar",
+    "path": "target/parity/failures/000194",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/print-wide/chunks",
+    "path": "target/parity/failures/000195",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/linked-wrap",
+    "path": "target/parity/failures/000196",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/linked-wrap/scalar",
+    "path": "target/parity/failures/000197",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/8-4-8/linked-wrap/chunks",
+    "path": "target/parity/failures/000198",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/0/4",
+    "path": "target/parity/failures/000199",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/0/4/scalar",
+    "path": "target/parity/failures/000200",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/0/4/chunks",
+    "path": "target/parity/failures/000201",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/0/5",
+    "path": "target/parity/failures/000202",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/0/5/scalar",
+    "path": "target/parity/failures/000203",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/0/5/chunks",
+    "path": "target/parity/failures/000204",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/1/4",
+    "path": "target/parity/failures/000205",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/1/4/scalar",
+    "path": "target/parity/failures/000206",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/1/4/chunks",
+    "path": "target/parity/failures/000207",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/1/5",
+    "path": "target/parity/failures/000208",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/1/5/scalar",
+    "path": "target/parity/failures/000209",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/False/1/5/chunks",
+    "path": "target/parity/failures/000210",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/0/4",
+    "path": "target/parity/failures/000211",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/0/4/scalar",
+    "path": "target/parity/failures/000212",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/0/4/chunks",
+    "path": "target/parity/failures/000213",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/0/5",
+    "path": "target/parity/failures/000214",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/0/5/scalar",
+    "path": "target/parity/failures/000215",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/0/5/chunks",
+    "path": "target/parity/failures/000216",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/1/4",
+    "path": "target/parity/failures/000217",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/1/4/scalar",
+    "path": "target/parity/failures/000218",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/1/4/chunks",
+    "path": "target/parity/failures/000219",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/1/5",
+    "path": "target/parity/failures/000220",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/1/5/scalar",
+    "path": "target/parity/failures/000221",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/8-4-8/True/1/5/chunks",
+    "path": "target/parity/failures/000222",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/observe",
+    "path": "target/parity/failures/000223",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/observe/scalar",
+    "path": "target/parity/failures/000224",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/observe/chunks",
+    "path": "target/parity/failures/000225",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-down",
+    "path": "target/parity/failures/000226",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-down/scalar",
+    "path": "target/parity/failures/000227",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-down/chunks",
+    "path": "target/parity/failures/000228",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-down-across-page",
+    "path": "target/parity/failures/000229",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-down-across-page/scalar",
+    "path": "target/parity/failures/000230",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-down-across-page/chunks",
+    "path": "target/parity/failures/000231",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-up-across-page",
+    "path": "target/parity/failures/000232",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-up-across-page/scalar",
+    "path": "target/parity/failures/000233",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-up-across-page/chunks",
+    "path": "target/parity/failures/000234",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-right",
+    "path": "target/parity/failures/000235",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-right/scalar",
+    "path": "target/parity/failures/000236",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/cursor-right/chunks",
+    "path": "target/parity/failures/000237",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-chars",
+    "path": "target/parity/failures/000238",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-chars/scalar",
+    "path": "target/parity/failures/000239",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-chars/chunks",
+    "path": "target/parity/failures/000240",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-line",
+    "path": "target/parity/failures/000241",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-line/scalar",
+    "path": "target/parity/failures/000242",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-line/chunks",
+    "path": "target/parity/failures/000243",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-display",
+    "path": "target/parity/failures/000244",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-display/scalar",
+    "path": "target/parity/failures/000245",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-display/chunks",
+    "path": "target/parity/failures/000246",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-scrollback",
+    "path": "target/parity/failures/000247",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-scrollback/scalar",
+    "path": "target/parity/failures/000248",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/erase-scrollback/chunks",
+    "path": "target/parity/failures/000249",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/insert-lines",
+    "path": "target/parity/failures/000250",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/insert-lines/scalar",
+    "path": "target/parity/failures/000251",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/insert-lines/chunks",
+    "path": "target/parity/failures/000252",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/delete-lines",
+    "path": "target/parity/failures/000253",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/delete-lines/scalar",
+    "path": "target/parity/failures/000254",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/delete-lines/chunks",
+    "path": "target/parity/failures/000255",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/insert-blanks",
+    "path": "target/parity/failures/000256",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/insert-blanks/scalar",
+    "path": "target/parity/failures/000257",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/insert-blanks/chunks",
+    "path": "target/parity/failures/000258",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/delete-chars",
+    "path": "target/parity/failures/000259",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/delete-chars/scalar",
+    "path": "target/parity/failures/000260",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/delete-chars/chunks",
+    "path": "target/parity/failures/000261",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/alignment",
+    "path": "target/parity/failures/000262",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/alignment/scalar",
+    "path": "target/parity/failures/000263",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/alignment/chunks",
+    "path": "target/parity/failures/000264",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/scroll-up",
+    "path": "target/parity/failures/000265",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/scroll-up/scalar",
+    "path": "target/parity/failures/000266",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/scroll-up/chunks",
+    "path": "target/parity/failures/000267",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/scroll-down",
+    "path": "target/parity/failures/000268",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/scroll-down/scalar",
+    "path": "target/parity/failures/000269",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/scroll-down/chunks",
+    "path": "target/parity/failures/000270",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/print-wrap-margin",
+    "path": "target/parity/failures/000271",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/print-wrap-margin/scalar",
+    "path": "target/parity/failures/000272",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/print-wrap-margin/chunks",
+    "path": "target/parity/failures/000273",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/print-wide",
+    "path": "target/parity/failures/000274",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/print-wide/scalar",
+    "path": "target/parity/failures/000275",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/print-wide/chunks",
+    "path": "target/parity/failures/000276",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/linked-wrap",
+    "path": "target/parity/failures/000277",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/linked-wrap/scalar",
+    "path": "target/parity/failures/000278",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-edit/4-8-4/linked-wrap/chunks",
+    "path": "target/parity/failures/000279",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/0/4",
+    "path": "target/parity/failures/000280",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/0/4/scalar",
+    "path": "target/parity/failures/000281",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/0/4/chunks",
+    "path": "target/parity/failures/000282",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/0/5",
+    "path": "target/parity/failures/000283",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/0/5/scalar",
+    "path": "target/parity/failures/000284",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/0/5/chunks",
+    "path": "target/parity/failures/000285",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/1/4",
+    "path": "target/parity/failures/000286",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/1/4/scalar",
+    "path": "target/parity/failures/000287",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/1/4/chunks",
+    "path": "target/parity/failures/000288",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/1/5",
+    "path": "target/parity/failures/000289",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/1/5/scalar",
+    "path": "target/parity/failures/000290",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/False/1/5/chunks",
+    "path": "target/parity/failures/000291",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/0/4",
+    "path": "target/parity/failures/000292",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/0/4/scalar",
+    "path": "target/parity/failures/000293",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/0/4/chunks",
+    "path": "target/parity/failures/000294",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/0/5",
+    "path": "target/parity/failures/000295",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/0/5/scalar",
+    "path": "target/parity/failures/000296",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/0/5/chunks",
+    "path": "target/parity/failures/000297",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/1/4",
+    "path": "target/parity/failures/000298",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/1/4/scalar",
+    "path": "target/parity/failures/000299",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/1/4/chunks",
+    "path": "target/parity/failures/000300",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/1/5",
+    "path": "target/parity/failures/000301",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/1/5/scalar",
+    "path": "target/parity/failures/000302",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind/4-8-4/True/1/5/chunks",
+    "path": "target/parity/failures/000303",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b58",
+    "path": "target/parity/failures/000304",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b58/scalar",
+    "path": "target/parity/failures/000305",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b58/chunks",
+    "path": "target/parity/failures/000306",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b4b",
+    "path": "target/parity/failures/000307",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b4b/scalar",
+    "path": "target/parity/failures/000308",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b4b/chunks",
+    "path": "target/parity/failures/000309",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b324b",
+    "path": "target/parity/failures/000310",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b324b/scalar",
+    "path": "target/parity/failures/000311",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b324b/chunks",
+    "path": "target/parity/failures/000312",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b50",
+    "path": "target/parity/failures/000313",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b50/scalar",
+    "path": "target/parity/failures/000314",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/6162636458/1b5b50/chunks",
+    "path": "target/parity/failures/000315",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b58",
+    "path": "target/parity/failures/000316",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b58/scalar",
+    "path": "target/parity/failures/000317",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b58/chunks",
+    "path": "target/parity/failures/000318",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b4b",
+    "path": "target/parity/failures/000319",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b4b/scalar",
+    "path": "target/parity/failures/000320",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b4b/chunks",
+    "path": "target/parity/failures/000321",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b324b",
+    "path": "target/parity/failures/000322",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b324b/scalar",
+    "path": "target/parity/failures/000323",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b324b/chunks",
+    "path": "target/parity/failures/000324",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b50",
+    "path": "target/parity/failures/000325",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b50/scalar",
+    "path": "target/parity/failures/000326",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/wrap-reset/616263e7958c/1b5b50/chunks",
+    "path": "target/parity/failures/000327",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/max-capacity-split/1",
+    "path": "target/parity/failures/000328",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/max-capacity-split/1/scalar",
+    "path": "target/parity/failures/000329",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/max-capacity-split/1/chunks",
+    "path": "target/parity/failures/000330",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/max-capacity-split/2",
+    "path": "target/parity/failures/000331",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/max-capacity-split/2/scalar",
+    "path": "target/parity/failures/000332",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/max-capacity-split/2/chunks",
+    "path": "target/parity/failures/000333",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/0/4",
+    "path": "target/parity/failures/000334",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/0/4/scalar",
+    "path": "target/parity/failures/000335",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/0/4/chunks",
+    "path": "target/parity/failures/000336",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/0/5",
+    "path": "target/parity/failures/000337",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/0/5/scalar",
+    "path": "target/parity/failures/000338",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/0/5/chunks",
+    "path": "target/parity/failures/000339",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/1/4",
+    "path": "target/parity/failures/000340",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/1/4/scalar",
+    "path": "target/parity/failures/000341",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/1/4/chunks",
+    "path": "target/parity/failures/000342",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/1/5",
+    "path": "target/parity/failures/000343",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/1/5/scalar",
+    "path": "target/parity/failures/000344",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/False/1/5/chunks",
+    "path": "target/parity/failures/000345",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/0/4",
+    "path": "target/parity/failures/000346",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/0/4/scalar",
+    "path": "target/parity/failures/000347",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/0/4/chunks",
+    "path": "target/parity/failures/000348",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/0/5",
+    "path": "target/parity/failures/000349",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/0/5/scalar",
+    "path": "target/parity/failures/000350",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/0/5/chunks",
+    "path": "target/parity/failures/000351",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/1/4",
+    "path": "target/parity/failures/000352",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/1/4/scalar",
+    "path": "target/parity/failures/000353",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/1/4/chunks",
+    "path": "target/parity/failures/000354",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/1/5",
+    "path": "target/parity/failures/000355",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/1/5/scalar",
+    "path": "target/parity/failures/000356",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/8-4-8/True/1/5/chunks",
+    "path": "target/parity/failures/000357",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/0/4",
+    "path": "target/parity/failures/000358",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/0/4/scalar",
+    "path": "target/parity/failures/000359",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/0/4/chunks",
+    "path": "target/parity/failures/000360",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/0/5",
+    "path": "target/parity/failures/000361",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/0/5/scalar",
+    "path": "target/parity/failures/000362",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/0/5/chunks",
+    "path": "target/parity/failures/000363",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/1/4",
+    "path": "target/parity/failures/000364",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/1/4/scalar",
+    "path": "target/parity/failures/000365",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/1/4/chunks",
+    "path": "target/parity/failures/000366",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/1/5",
+    "path": "target/parity/failures/000367",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/1/5/scalar",
+    "path": "target/parity/failures/000368",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/False/1/5/chunks",
+    "path": "target/parity/failures/000369",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/0/4",
+    "path": "target/parity/failures/000370",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/0/4/scalar",
+    "path": "target/parity/failures/000371",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/0/4/chunks",
+    "path": "target/parity/failures/000372",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/0/5",
+    "path": "target/parity/failures/000373",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/0/5/scalar",
+    "path": "target/parity/failures/000374",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/0/5/chunks",
+    "path": "target/parity/failures/000375",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/1/4",
+    "path": "target/parity/failures/000376",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/1/4/scalar",
+    "path": "target/parity/failures/000377",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/1/4/chunks",
+    "path": "target/parity/failures/000378",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/1/5",
+    "path": "target/parity/failures/000379",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/1/5/scalar",
+    "path": "target/parity/failures/000380",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  },
+  {
+    "id": "pages/styles/mixed-ind-resume/4-8-4/True/1/5/chunks",
+    "path": "target/parity/failures/000381",
+    "difference": "response.snapshots[0]",
+    "snapshots": [
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      },
+      {
+        "same_native_records": true,
+        "rust_optional": [
+          "0x8001"
+        ],
+        "native_tags_differ": []
+      }
+    ]
+  }
+]

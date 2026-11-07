@@ -1,0 +1,78 @@
+{
+  "starting_head": "03be726e243bdc235bd641420f511fc2b7792f8e",
+  "reviewed_source_head": "6ad34306f7477ccad2f7fbd53f066b679b5aaf15",
+  "amendment_record_sha256": "a3e6dedf9fea5924a62e3de2b50bc50b8b5711ba51fe4951e0b260d770bc5061",
+  "source_files": {
+    "crates/rustty/src/tmuxx.rs": {
+      "before_sha256": "277bd9fcc888553bbb027d87e88e0aa145e37d938334bd54ff45d6b9cc218f24",
+      "after_sha256": "1e4c540ca4ca1edcfb3d1223d6bcc0e32e4a4c30b7768660167c5d7c8b2ed37d",
+      "diff_sha256": "faafee6fdb3ef8a79638294d739a392a5a1e0815c9bd46bbc5c152b52890b924"
+    },
+    "test/rustty/parity_reference.py": {
+      "before_sha256": "83cebea191dd2f9056ce44c4da917863dae7eed72d78a8bfa594b2b6db036594",
+      "after_sha256": "9376b165308830235dac2783c3e2873ba098c8707ec72bed5c1e669280efbc17",
+      "diff_sha256": "1ae1859868b2e32171aa24bc9d847a13c4342fee71eaf8863a8167cda5390526"
+    },
+    "test/rustty/zig-parser.zig": {
+      "before_sha256": "2e95d2d1e248ff6d8089a5a9bfde4fcb229f98a89687baa98689beb2a2a73a6f",
+      "after_sha256": "dde782eaa29d7b783385e7592d04131853dd9b385525d4e509aa5e1b614e0cc5",
+      "diff_sha256": "2a2b405de606c7999a84b66e25ec56f9bec59cafd8a36b16b24fcdb4f65554b2"
+    }
+  },
+  "expected_parser_change": {
+    "id": "parser/osc-cancel",
+    "before": {
+      "request": {
+        "id": "parser/osc-cancel",
+        "kind": "parser",
+        "operations": [
+          {
+            "op": "write",
+            "data": "1b5d323b756e66696e6973686564187461696c1b5d323b6f746865721a"
+          },
+          {
+            "op": "observe"
+          },
+          {
+            "op": "write",
+            "data": "1b5b306d"
+          },
+          {
+            "op": "reset"
+          }
+        ]
+      },
+      "covers": [
+        "parser.raw-events"
+      ]
+    },
+    "after": {
+      "request": {
+        "id": "parser/osc-cancel",
+        "kind": "parser",
+        "operations": [
+          {
+            "op": "write",
+            "data": "1b5d323b756e66696e6973686564187461696c1b5d323b6f746865721a1b5d323b646f6e65071b5d393939393b7261772d62656c07181b5d393939393b7261772d73741b5c1a"
+          },
+          {
+            "op": "observe"
+          },
+          {
+            "op": "write",
+            "data": "1b5b306d"
+          },
+          {
+            "op": "reset"
+          }
+        ]
+      },
+      "covers": [
+        "parser.raw-events"
+      ]
+    }
+  },
+  "expected_start_head": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+  "expected_native_sha256": "ffed07e73c1a44e3cae1cec05308a47aeb60bf7e990d763faba96ddca1234ccc",
+  "expected_fixture_manifest_sha256": "a69509af64b161c78bc796ac20691332de82fea89c8d0e6f269c3a56e1a7adf6"
+}

@@ -1,0 +1,28 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+   Compiling tmuxx-terminal v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-terminal)
+   Compiling tmuxx-protocol v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-protocol)
+   Compiling tmuxx-unix-ipc v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-unix-ipc)
+   Compiling tmuxx-core v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-core)
+   Compiling tmuxx-runtime v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.35s
+     Running tests/native_stream_consistency.rs (target/debug/deps/native_stream_consistency-0770d5e2e0c46b24)
+
+running 2 tests
+test blocked_native_view_recovers_while_healthy_view_and_pty_survive ... FAILED
+test live_native_snapshot_has_one_cut_and_updates_follow_its_end ... ok
+
+failures:
+
+---- blocked_native_view_recovers_while_healthy_view_and_pty_survive stdout ----
+
+thread 'blocked_native_view_recovers_while_healthy_view_and_pty_survive' (98002313) panicked at tmuxx/crates/tmuxx-runtime/tests/native_stream_consistency.rs:346:5:
+assertion failed: (1..=256).contains(&queued)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    blocked_native_view_recovers_while_healthy_view_and_pty_survive
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.98s
+
+error: test failed, to rerun pass `-p tmuxx-runtime --test native_stream_consistency`

@@ -1,0 +1,14 @@
+{
+  "before": "3882d7da6 / nokoswn",
+  "premap": "06ddbdb5a / ztmmomo (measured source; current equivalent ddfc413a6)",
+  "started": 1794039396.847973,
+  "profile": "release,thinLTO,codegen-units=1,locked offline",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "binaries": {
+    "carry-before-stream": "14eff8f38b37c2c6f561228f14ee022b303ab58c06dd7aa691fb87d20c14fb2f",
+    "carry-after-stream": "7ece381a718172123121328a3dfac5616f3372d697602fed0d220defb02c23fa",
+    "map-before-stream": "43b4fb1b0aeac9f0032ce7f1457bc127d63373682705bded149fe287b3a72a78",
+    "sgr-native-primitives": "1bbb6960f2a3f36d8eccb410f59e9621f528cdc44ef21760246cc2d8b2e2b772"
+  },
+  "finished": 1794039530.7313879
+}

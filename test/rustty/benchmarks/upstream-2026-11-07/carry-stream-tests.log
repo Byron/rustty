@@ -1,0 +1,8 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests ../../test/rustty/rust-stream-file.rs (target/debug/examples/stream_file-1dcea893f3cfca03)
+
+running 1 test
+test workload::tests::reset_and_chunking_retain_styles_widths_links_and_mode_defaults ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+

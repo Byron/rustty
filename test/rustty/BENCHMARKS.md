@@ -6,6 +6,11 @@ window. Criterion is a development dependency only. No application build is
 needed. Timing excludes terminal construction and input generation; the `feed`
 and `stream` workloads include UTF-8 decoding and VT parsing.
 
+The [November 7 mainline reintegration](UPSTREAM-2026-11-07.md) records shared-input
+feed measurements and resource, erase, Unicode and hyperlink comparisons, with
+control costs and retained-memory limits. Its [artifact manifest](benchmarks/upstream-2026-11-07/artifact-manifest.json)
+identifies the packaged evidence.
+
 The [November 5 assembly-guided follow-up](benchmarks/hot-path-2026-11-05/README.md)
 reduces styled ASCII scrolling by a further 16.2%, cutting the excess time over
 Ghostty in half. Its 18-workload comparison completes in about 130 seconds.
@@ -5526,15 +5531,23 @@ and 27% in Ghostty. Three tracked positions have negligible impact here.
 Odd-width padding changes Rustty's medians by less than 1%; Ghostty's CJK
 case is about 5% slower, while its mixed case is essentially unchanged.
 
-A separate dense-link correctness probe links the entire mixed record. Both
-engines lose the hyperlink on record 135, second physical row, column 31,
-during input and before any resize. That is a wide tail at linked-cell offset
-26,214, the usable capacity of the grown per-page hyperlink map. The text
-remains present, but its link metadata is missing. These invalid histories
-are excluded from timing. `RUSTTY_REFLOW_DENSE_LINKS=1` enables the explicit
-`mixed-dense-links/8192` probe; its exact precheck must fail until that existing
-capacity behavior is repaired. The ordinary `mixed-linked` control links only
-the first mixed unit (six display columns) of each record and passes all checks.
+At this historical checkpoint, a separate dense-link correctness probe linked
+the entire mixed record. Both engines lost the hyperlink on record 135, second
+physical row, column 31, during input and before any resize. That was a wide tail
+at linked-cell offset 26,214, the usable capacity of the grown per-page hyperlink
+map. Text remained present, but link metadata was missing. These invalid histories
+are excluded from timing. `RUSTTY_REFLOW_DENSE_LINKS=1` enabled the explicit
+`mixed-dense-links/8192` probe, whose precheck failed at this checkpoint. The
+ordinary `mixed-linked` control linked only the first mixed unit (six display
+columns) of each record and passed all checks.
+
+**November 7, 2026 correction:** The incoming native independent-map change and
+Rustty port `nokoswn` repair this capacity limit. Both engines now pass the
+8,192-record dense-link checks before and after 128→64→128 reflow. The opt-in was
+removed, making these ordinary benchmark checks. See the
+[November 7 reintegration report](UPSTREAM-2026-11-07.md). The earlier invalid
+histories remain excluded from timing comparisons; passing current checks does
+not validate those older results.
 
 The baseline source paths explain why the narrow-cell result could not be
 generalized. Ghostty's `ReflowCursor` admits complete wide head/tail pairs to
@@ -5572,7 +5585,7 @@ GHOSTTY_PRIMITIVES_BIN="$PWD/zig-out/bin/vt-primitives" \
 GHOSTTY_PRIMITIVES_BIN="$PWD/zig-out/bin/vt-primitives" \
   cargo bench --offline -p rustty-vt --bench primitives -- \
   reflow_history_content --test
-# Expected failing correctness probes; run separately for each engine:
+# Historical probe commands; now passing without requiring the opt-in:
 RUSTTY_REFLOW_DENSE_LINKS=1 \
   cargo bench --offline -p rustty-vt --bench primitives -- \
   rustty/reflow_history_content/mixed-dense-links --test
@@ -5784,8 +5797,10 @@ Sparse links still add resource work: at 8,192 records, Rustty rises from
 28.621 ms for mixed text to 45.112 ms with links, but remains faster than
 Ghostty's 57.666 ms linked result. Three tracked positions cost about 2% in
 Rustty, and the 63-column CJK control stays within 3% of Ghostty. This covers
-three anchors, not thousands of search-result anchors. The existing dense-link
-input metadata loss remains excluded from valid timing claims and is unchanged.
+three anchors, not thousands of search-result anchors. Dense-link metadata loss
+remained at this historical checkpoint, so those invalid histories remain excluded
+from its timing claims. The [November 7 correction](UPSTREAM-2026-11-07.md) later
+repaired the capacity limit.
 
 The small styled-emoji Ghostty median varied from 6.181 to 8.839 ms between
 orders, while Rustty stayed at 4.480/4.609 ms. A separate exact-case confirmation

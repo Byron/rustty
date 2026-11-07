@@ -1,0 +1,3470 @@
+[
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 1049760919,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 1055775297,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 1050641627,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 408907247,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "styled-1",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 1000569335,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 564,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "styled-1",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 920009125,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 431,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "styled-1",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 1001767626,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 564,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "styled-1",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 495848417,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 431,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "styled-4",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 766360499,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 506,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "styled-4",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 718152334,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "styled-4",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 772332961,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 506,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "styled-4",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 434087461,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-0",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 1118327209,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 884736,
+      "page_count": 1,
+      "owned_bytes": 565634
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-0",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 1099810082,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 901120,
+      "page_count": 1,
+      "owned_bytes": 578742
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-0",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 1095311458,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 573440,
+      "page_count": 1,
+      "owned_bytes": 666120
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-0",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 146191750,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 901120,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-0",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 876435958,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 688128,
+      "page_count": 1,
+      "owned_bytes": 797710
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-0",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 887481958,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 688128,
+      "page_count": 1,
+      "owned_bytes": 797710
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-0",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 881500626,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 720896,
+      "page_count": 1,
+      "owned_bytes": 901088
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-0",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 793186542,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 688128,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 1116464958,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 581,
+      "page_bytes": 950272,
+      "page_count": 2,
+      "owned_bytes": 1030696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 361790709,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-10000",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 966943208,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 581,
+      "page_bytes": 1146880,
+      "page_count": 2,
+      "owned_bytes": 1030696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 108488166,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-50000000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 1168033124,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 41369,
+      "page_bytes": 49889280,
+      "page_count": 105,
+      "owned_bytes": 55430352
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-50000000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 467438875,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 37740,
+      "page_bytes": 49971200,
+      "page_count": 122,
+      "owned_bytes": 52318774
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-50000000",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 1021203083,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 34241,
+      "page_bytes": 49889280,
+      "page_count": 87,
+      "owned_bytes": 45923616
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-50000000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 112604624,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 37740,
+      "page_bytes": 49971200,
+      "page_count": 122,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-215x215-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 1579578750,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 146,
+      "page_bytes": 901120,
+      "page_count": 2,
+      "owned_bytes": 920176
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-215x215-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 370153167,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 224,
+      "page_bytes": 1228800,
+      "page_count": 3,
+      "owned_bytes": 1216716
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-215x215-10000",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 1378875458,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 146,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 920176
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-short-215x215-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 114958626,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 224,
+      "page_bytes": 1228800,
+      "page_count": 3,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 1,
+      "elapsed_ns": 1047687000,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 2719744,
+      "page_count": 2,
+      "owned_bytes": 1829850
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 1,
+      "elapsed_ns": 316008125,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 1,
+      "elapsed_ns": 40050625,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-50000000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-50000000",
+      "iterations": 1,
+      "elapsed_ns": 1075117792,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 14303,
+      "page_bytes": 50888704,
+      "page_count": 37,
+      "owned_bytes": 40366202
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-50000000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-50000000",
+      "iterations": 1,
+      "elapsed_ns": 340937875,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 20639,
+      "page_bytes": 49496064,
+      "page_count": 53,
+      "owned_bytes": 58347746
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-50000000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-50000000",
+      "iterations": 1,
+      "elapsed_ns": 40600083,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 20639,
+      "page_bytes": 49496064,
+      "page_count": 53,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-10000",
+      "iterations": 1,
+      "elapsed_ns": 1280398416,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 188,
+      "page_bytes": 1785856,
+      "page_count": 2,
+      "owned_bytes": 1501242
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-10000",
+      "iterations": 1,
+      "elapsed_ns": 317923583,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 188,
+      "page_bytes": 1802240,
+      "page_count": 2,
+      "owned_bytes": 1503674
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-10000",
+      "iterations": 1,
+      "elapsed_ns": 35998541,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 188,
+      "page_bytes": 1802240,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-50000000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-50000000",
+      "iterations": 1,
+      "elapsed_ns": 1295734583,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 12176,
+      "page_bytes": 50446336,
+      "page_count": 56,
+      "owned_bytes": 42613914
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-50000000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-50000000",
+      "iterations": 1,
+      "elapsed_ns": 327875500,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 11954,
+      "page_bytes": 49561600,
+      "page_count": 55,
+      "owned_bytes": 41185068
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "links-full-215x215-50000000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-50000000",
+      "iterations": 1,
+      "elapsed_ns": 36647625,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 11954,
+      "page_bytes": 49561600,
+      "page_count": 55,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 420186877,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 1072301296,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 1076247876,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 1067402124,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "styled-1",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 510633917,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 431,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "styled-1",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 1024337042,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 564,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "styled-1",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 936982542,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 431,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "styled-1",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 1024422502,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 564,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "styled-4",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 446309334,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "styled-4",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 793614788,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 506,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "styled-4",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 736451333,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "styled-4",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 798013626,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 506,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-0",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 147095750,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 901120,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-0",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 1106248209,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 573440,
+      "page_count": 1,
+      "owned_bytes": 666120
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-0",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 1111664166,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 901120,
+      "page_count": 1,
+      "owned_bytes": 578742
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-0",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 1107680208,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 884736,
+      "page_count": 1,
+      "owned_bytes": 565634
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-0",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 808500084,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 688128,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-0",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 884410708,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 720896,
+      "page_count": 1,
+      "owned_bytes": 901088
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-0",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 896333749,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 688128,
+      "page_count": 1,
+      "owned_bytes": 797710
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-0",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 897369291,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 688128,
+      "page_count": 1,
+      "owned_bytes": 797710
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 109819458,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-10000",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 974686000,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 581,
+      "page_bytes": 1146880,
+      "page_count": 2,
+      "owned_bytes": 1030696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 359605873,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 1137488374,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 581,
+      "page_bytes": 950272,
+      "page_count": 2,
+      "owned_bytes": 1030696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-50000000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 117528084,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 37740,
+      "page_bytes": 49971200,
+      "page_count": 122,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-50000000",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 1029480874,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 34241,
+      "page_bytes": 49889280,
+      "page_count": 87,
+      "owned_bytes": 45923616
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-50000000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 469218208,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 37740,
+      "page_bytes": 49971200,
+      "page_count": 122,
+      "owned_bytes": 52318774
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-50000000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 1179448791,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 41369,
+      "page_bytes": 49889280,
+      "page_count": 105,
+      "owned_bytes": 55430352
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-215x215-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 115807500,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 224,
+      "page_bytes": 1228800,
+      "page_count": 3,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-215x215-10000",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 1393810791,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 146,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 920176
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-215x215-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 371898500,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 224,
+      "page_bytes": 1228800,
+      "page_count": 3,
+      "owned_bytes": 1216716
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-short-215x215-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 1624497083,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 146,
+      "page_bytes": 901120,
+      "page_count": 2,
+      "owned_bytes": 920176
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 1,
+      "elapsed_ns": 40690459,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 1,
+      "elapsed_ns": 317298583,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 1,
+      "elapsed_ns": 1070346291,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 2719744,
+      "page_count": 2,
+      "owned_bytes": 1829850
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-50000000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-50000000",
+      "iterations": 1,
+      "elapsed_ns": 39919166,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 20639,
+      "page_bytes": 49496064,
+      "page_count": 53,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-50000000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-50000000",
+      "iterations": 1,
+      "elapsed_ns": 340178458,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 20639,
+      "page_bytes": 49496064,
+      "page_count": 53,
+      "owned_bytes": 58347746
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-50000000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-50000000",
+      "iterations": 1,
+      "elapsed_ns": 1071558917,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 14303,
+      "page_bytes": 50888704,
+      "page_count": 37,
+      "owned_bytes": 40366202
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-10000",
+      "iterations": 1,
+      "elapsed_ns": 36551958,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 188,
+      "page_bytes": 1802240,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-10000",
+      "iterations": 1,
+      "elapsed_ns": 310672542,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 188,
+      "page_bytes": 1802240,
+      "page_count": 2,
+      "owned_bytes": 1503674
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-10000",
+      "iterations": 1,
+      "elapsed_ns": 1305832500,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 188,
+      "page_bytes": 1785856,
+      "page_count": 2,
+      "owned_bytes": 1501242
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-50000000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-50000000",
+      "iterations": 1,
+      "elapsed_ns": 36795584,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 11954,
+      "page_bytes": 49561600,
+      "page_count": 55,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-50000000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-50000000",
+      "iterations": 1,
+      "elapsed_ns": 328800250,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 11954,
+      "page_bytes": 49561600,
+      "page_count": 55,
+      "owned_bytes": 41185068
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "links-full-215x215-50000000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-50000000",
+      "iterations": 1,
+      "elapsed_ns": 1312967792,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 12176,
+      "page_bytes": 50446336,
+      "page_count": 56,
+      "owned_bytes": 42613914
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 1076762873,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 1091280833,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 1080082085,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "70"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 70,
+      "elapsed_ns": 424985539,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "styled-1",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 1029903042,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 564,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "styled-1",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 949154584,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 431,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "styled-1",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 1033609045,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 564,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "styled-1",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-1.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 20,
+      "elapsed_ns": 518077999,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 431,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "styled-4",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 801671378,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 506,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "styled-4",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 745658790,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "styled-4",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 799541084,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 506,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "styled-4",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 449145957,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-0",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 1105210208,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 884736,
+      "page_count": 1,
+      "owned_bytes": 565634
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-0",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 1112890125,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 901120,
+      "page_count": 1,
+      "owned_bytes": 578742
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-0",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 1110777000,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 573440,
+      "page_count": 1,
+      "owned_bytes": 666120
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-0",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-0",
+      "iterations": 3,
+      "elapsed_ns": 148363709,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 0,
+      "page_bytes": 901120,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-0",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 893441042,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 688128,
+      "page_count": 1,
+      "owned_bytes": 797710
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-0",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 892525458,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 688128,
+      "page_count": 1,
+      "owned_bytes": 797710
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-0",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 891433751,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 720896,
+      "page_count": 1,
+      "owned_bytes": 901088
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-0",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+      "2"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-0",
+      "iterations": 2,
+      "elapsed_ns": 816015793,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 0,
+      "page_bytes": 688128,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 1142131749,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 581,
+      "page_bytes": 950272,
+      "page_count": 2,
+      "owned_bytes": 1030696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 369935459,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-10000",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 992268082,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 581,
+      "page_bytes": 1146880,
+      "page_count": 2,
+      "owned_bytes": 1030696
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 3,
+      "elapsed_ns": 109561708,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-50000000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 1203508541,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 41369,
+      "page_bytes": 49889280,
+      "page_count": 105,
+      "owned_bytes": 55430352
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-50000000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 470625957,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 37740,
+      "page_bytes": 49971200,
+      "page_count": 122,
+      "owned_bytes": 52318774
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-50000000",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 1035909374,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 34241,
+      "page_bytes": 49889280,
+      "page_count": 87,
+      "owned_bytes": 45923616
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-50000000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-50000000",
+      "iterations": 3,
+      "elapsed_ns": 114300291,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 37740,
+      "page_bytes": 49971200,
+      "page_count": 122,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-215x215-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 1642152667,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 146,
+      "page_bytes": 901120,
+      "page_count": 2,
+      "owned_bytes": 920176
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-215x215-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 371715417,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 224,
+      "page_bytes": 1228800,
+      "page_count": 3,
+      "owned_bytes": 1216716
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-215x215-10000",
+    "version": "premap",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/map-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 1407545125,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 146,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 920176
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-short-215x215-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+      "3"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-215x215-10000",
+      "iterations": 3,
+      "elapsed_ns": 116238833,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 17134237088296637019,
+      "history_rows": 224,
+      "page_bytes": 1228800,
+      "page_count": 3,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 1,
+      "elapsed_ns": 1085708000,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 2719744,
+      "page_count": 2,
+      "owned_bytes": 1829850
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 1,
+      "elapsed_ns": 316450000,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 1,
+      "elapsed_ns": 39018125,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-50000000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-50000000",
+      "iterations": 1,
+      "elapsed_ns": 1075134500,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 14303,
+      "page_bytes": 50888704,
+      "page_count": 37,
+      "owned_bytes": 40366202
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-50000000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-50000000",
+      "iterations": 1,
+      "elapsed_ns": 342181125,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 20639,
+      "page_bytes": 49496064,
+      "page_count": 53,
+      "owned_bytes": 58347746
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-50000000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-50000000",
+      "iterations": 1,
+      "elapsed_ns": 39323333,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 20639,
+      "page_bytes": 49496064,
+      "page_count": 53,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-10000",
+      "iterations": 1,
+      "elapsed_ns": 1302374958,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 188,
+      "page_bytes": 1785856,
+      "page_count": 2,
+      "owned_bytes": 1501242
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-10000",
+      "iterations": 1,
+      "elapsed_ns": 311810292,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 188,
+      "page_bytes": 1802240,
+      "page_count": 2,
+      "owned_bytes": 1503674
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-10000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-10000",
+      "iterations": 1,
+      "elapsed_ns": 36792709,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 188,
+      "page_bytes": 1802240,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-50000000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-50000000",
+      "iterations": 1,
+      "elapsed_ns": 1315479333,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 12176,
+      "page_bytes": 50446336,
+      "page_count": 56,
+      "owned_bytes": 42613914
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-50000000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/carry-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-50000000",
+      "iterations": 1,
+      "elapsed_ns": 327060375,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 11954,
+      "page_bytes": 49561600,
+      "page_count": 55,
+      "owned_bytes": 41185068
+    },
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "links-full-215x215-50000000",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+      "1"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-215x215-50000000",
+      "iterations": 1,
+      "elapsed_ns": 37404750,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 2886038768371901496,
+      "history_rows": 11954,
+      "page_bytes": 49561600,
+      "page_count": 55,
+      "owned_bytes": null
+    },
+    "status": 0,
+    "stderr": ""
+  }
+]

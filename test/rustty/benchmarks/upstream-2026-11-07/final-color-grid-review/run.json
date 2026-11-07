@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/runner",
+    "--no-build",
+    "--fixtures",
+    "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/cases.json",
+    "--rust-bin",
+    "/private/tmp/rustty-reintegrate.leadij/carry-before-parity",
+    "--zig-bin",
+    "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/zig",
+    "--artifacts",
+    "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline-replay",
+    "--max-failures",
+    "100000",
+    "--timeout",
+    "60"
+  ],
+  "fixture_sha256": "7d87e7141531a3388c7ea4d878560425a1512fe1f2dc4aca76b896bbf5f4c790",
+  "baseline": {
+    "commit": "3882d7da60158d3042ae33efeb5bca72fcc4b085",
+    "binaries": {
+      "carry-before-stream": "14eff8f38b37c2c6f561228f14ee022b303ab58c06dd7aa691fb87d20c14fb2f",
+      "carry-before-parity": "f6c5f0ba373a67a6b27211d924171438811e9a14acf993acfe0dce67ca205275"
+    }
+  },
+  "request_count": 17,
+  "status": 1,
+  "summary": {
+    "aborted": false,
+    "checked": 49,
+    "coverage_gaps": [],
+    "covered": [],
+    "error": null,
+    "failures": 49,
+    "full_parity": false,
+    "mode": "smoke"
+  }
+}

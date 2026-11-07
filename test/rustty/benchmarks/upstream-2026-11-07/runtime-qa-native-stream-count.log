@@ -1,0 +1,22 @@
+   Compiling tmuxx-runtime v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.41s
+     Running tests/native_stream_consistency.rs (target/debug/deps/native_stream_consistency-0770d5e2e0c46b24)
+
+running 1 test
+test blocked_native_view_recovers_while_healthy_view_and_pty_survive ... FAILED
+
+failures:
+
+---- blocked_native_view_recovers_while_healthy_view_and_pty_survive stdout ----
+
+thread 'blocked_native_view_recovers_while_healthy_view_and_pty_survive' (98003885) panicked at tmuxx/crates/tmuxx-runtime/tests/native_stream_consistency.rs:346:5:
+queued messages: 257
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    blocked_native_view_recovers_while_healthy_view_and_pty_survive
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 1.85s
+
+error: test failed, to rerun pass `-p tmuxx-runtime --test native_stream_consistency`

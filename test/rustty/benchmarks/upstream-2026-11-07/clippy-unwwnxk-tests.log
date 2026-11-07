@@ -1,0 +1,12 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.43s
+     Running tests/program_status_records.rs (target/debug/deps/program_status_records-8aa4bae9e1fcc4d0)
+
+running 4 tests
+test complete_metadata_respects_state_and_replacement ... ok
+test bounded_restoration_rejects_invalid_records_and_orders ... ok
+test lifecycle_matches_kitty_production_reference ... ok
+test independent_change_and_eviction_order_survives_restoration ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/runner",
+    "--no-build",
+    "--fixtures",
+    "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/cases.json",
+    "--rust-bin",
+    "/private/tmp/rustty-reintegrate.leadij/carry-before-parity",
+    "--zig-bin",
+    "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/zig",
+    "--artifacts",
+    "/private/tmp/rustty-reintegrate.leadij/final-color-grid-review/baseline",
+    "--max-failures",
+    "100000",
+    "--timeout",
+    "60"
+  ],
+  "fixture_sha256": "280a11595a1a8355659078b2358919e9e811b72719d3cded2d5a275d9499322e",
+  "baseline": {
+    "commit": "3882d7da60158d3042ae33efeb5bca72fcc4b085",
+    "binaries": {
+      "carry-before-stream": "14eff8f38b37c2c6f561228f14ee022b303ab58c06dd7aa691fb87d20c14fb2f",
+      "carry-before-parity": "f6c5f0ba373a67a6b27211d924171438811e9a14acf993acfe0dce67ca205275"
+    }
+  },
+  "request_count": 17,
+  "status": 1,
+  "summary": {
+    "aborted": true,
+    "checked": 0,
+    "coverage_gaps": [],
+    "covered": [],
+    "error": "missing field `covers` at line 137 column 3",
+    "failures": 0,
+    "full_parity": false,
+    "mode": "smoke"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "parser/osc-cancel/scalar",
+  "kind": "parser",
+  "operations": [
+    {
+      "data": "1b5d323b756e66696e6973686564187461696c1b5d323b6f746865721a1b5d323b646f6e65071b5d393939393b7261772d62656c07181b5d393939393b7261772d73741b5c1a",
+      "op": "write"
+    },
+    {
+      "op": "observe"
+    },
+    {
+      "data": "1b5b306d",
+      "op": "write"
+    },
+    {
+      "op": "reset"
+    }
+  ],
+  "scalar": true
+}

@@ -1,0 +1,556 @@
+{
+  "range": "6ba144158..5acdbf154",
+  "status": "planned; no builds, generator executions or timings performed during this stage",
+  "build_commands": [
+    [
+      "zig",
+      "build",
+      "vt-primitives",
+      "test-vt-primitives",
+      "-Demit-lib-vt=true",
+      "-Demit-macos-app=false",
+      "-Doptimize=ReleaseFast"
+    ],
+    [
+      "zig",
+      "build",
+      "-Demit-lib-vt=true",
+      "-Demit-bench=true",
+      "-Demit-macos-app=false",
+      "-Doptimize=ReleaseFast"
+    ]
+  ],
+  "workloads": [
+    {
+      "name": "plain",
+      "generator": [
+        "+styled",
+        "--seed=42",
+        "--style-rate=0",
+        "--line-min=40",
+        "--line-max=80"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Every complete line contains40..80 printable ASCII characters and no escapes.",
+        "Use as shared plain stream control; styled is used because the ascii CLI has no seed option."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    },
+    {
+      "name": "styled-1",
+      "generator": [
+        "+styled",
+        "--seed=42",
+        "--sgr-attrs=1",
+        "--style-rate=1",
+        "--line-min=40",
+        "--line-max=80",
+        "--run-min=4",
+        "--run-max=16"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Each SGR has1 attributes except the final single reset per styled line. Count38/48 extended colors as one attribute, not their raw parameters.",
+        "Only first attribute may reset; RGB components are multiples51; no open style at complete line end.",
+        "Printable line lengths40..80; compare final visible text, fg/bg/flags, cursor and default cursor style with fresh native oracle."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    },
+    {
+      "name": "styled-2",
+      "generator": [
+        "+styled",
+        "--seed=42",
+        "--sgr-attrs=2",
+        "--style-rate=1",
+        "--line-min=40",
+        "--line-max=80",
+        "--run-min=4",
+        "--run-max=16"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Each SGR has2 attributes except the final single reset per styled line. Count38/48 extended colors as one attribute, not their raw parameters.",
+        "Only first attribute may reset; RGB components are multiples51; no open style at complete line end.",
+        "Printable line lengths40..80; compare final visible text, fg/bg/flags, cursor and default cursor style with fresh native oracle."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    },
+    {
+      "name": "styled-3",
+      "generator": [
+        "+styled",
+        "--seed=42",
+        "--sgr-attrs=3",
+        "--style-rate=1",
+        "--line-min=40",
+        "--line-max=80",
+        "--run-min=4",
+        "--run-max=16"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Each SGR has3 attributes except the final single reset per styled line. Count38/48 extended colors as one attribute, not their raw parameters.",
+        "Only first attribute may reset; RGB components are multiples51; no open style at complete line end.",
+        "Printable line lengths40..80; compare final visible text, fg/bg/flags, cursor and default cursor style with fresh native oracle."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    },
+    {
+      "name": "styled-4",
+      "generator": [
+        "+styled",
+        "--seed=42",
+        "--sgr-attrs=4",
+        "--style-rate=1",
+        "--line-min=40",
+        "--line-max=80",
+        "--run-min=4",
+        "--run-max=16"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Each SGR has4 attributes except the final single reset per styled line. Count38/48 extended colors as one attribute, not their raw parameters.",
+        "Only first attribute may reset; RGB components are multiples51; no open style at complete line end.",
+        "Printable line lengths40..80; compare final visible text, fg/bg/flags, cursor and default cursor style with fresh native oracle."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    },
+    {
+      "name": "erase-2",
+      "generator": [
+        "+erase",
+        "--seed=42",
+        "--rows=80",
+        "--cols=120"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Every complete iteration begins ED2 and endsCRLF.",
+        "Each redraw has home text, text at generated row/col,EL2, red text atcol1, reset andCRLF.",
+        "Validate all complete iterations structurally; compare fresh native visible text/style/cursor after one full replay."
+      ],
+      "match_generator_dimensions": true,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ],
+        [
+          120,
+          12
+        ],
+        [
+          300,
+          100
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000
+      ],
+      "grapheme_width": [
+        "legacy"
+      ]
+    },
+    {
+      "name": "erase-22",
+      "generator": [
+        "+erase",
+        "--seed=42",
+        "--rows=80",
+        "--cols=120",
+        "--scroll-clear=true"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Every complete iteration beginsED22; history growth is included.",
+        "Each redraw has home text, text at generated row/col,EL2, red text atcol1, reset andCRLF.",
+        "Validate all complete iterations structurally; compare fresh native visible text/style/cursor after one full replay."
+      ],
+      "match_generator_dimensions": true,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ],
+        [
+          120,
+          12
+        ],
+        [
+          300,
+          100
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000
+      ],
+      "grapheme_width": [
+        "legacy"
+      ]
+    },
+    {
+      "name": "erase-rate",
+      "generator": [
+        "+erase",
+        "--seed=42",
+        "--rows=80",
+        "--cols=120",
+        "--erase-rate=0.1"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Some iterations are plain lines; ED2 count is positive and below line count.",
+        "Each redraw has home text, text at generated row/col,EL2, red text atcol1, reset andCRLF.",
+        "Validate all complete iterations structurally; compare fresh native visible text/style/cursor after one full replay."
+      ],
+      "match_generator_dimensions": true,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ],
+        [
+          120,
+          12
+        ],
+        [
+          300,
+          100
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000
+      ],
+      "grapheme_width": [
+        "legacy"
+      ]
+    },
+    {
+      "name": "erase-lines",
+      "generator": [
+        "+erase",
+        "--seed=42",
+        "--rows=80",
+        "--cols=120",
+        "--line-clears=40"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Each redraw contains20EL2+20EL0 before home, then one extraEL2 in the redraw.",
+        "Each redraw has home text, text at generated row/col,EL2, red text atcol1, reset andCRLF.",
+        "Validate all complete iterations structurally; compare fresh native visible text/style/cursor after one full replay."
+      ],
+      "match_generator_dimensions": true,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ],
+        [
+          120,
+          12
+        ],
+        [
+          300,
+          100
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000
+      ],
+      "grapheme_width": [
+        "legacy"
+      ]
+    },
+    {
+      "name": "links-short",
+      "generator": [
+        "+hyperlink",
+        "--seed=42",
+        "--uris=1",
+        "--line-min=4",
+        "--line-max=4"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Every complete line is one implicitOSC8 open, URI integer0..0, exactly4 printable ASCII bytes,OSC8 close,CRLF.",
+        "No explicit id parameter; repeated URI lines must still have different implicit identities.",
+        "Check final cell text/URI and link spans/refcounts across page transitions; do not compare arbitrary IDs before style/hash/carry dependencies are finished."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    },
+    {
+      "name": "links-full",
+      "generator": [
+        "+hyperlink",
+        "--seed=42",
+        "--uris=1000",
+        "--line-min=120",
+        "--line-max=120"
+      ],
+      "bytes": 8388608,
+      "trim": "complete-crlf",
+      "checks": [
+        "Every complete line is one implicitOSC8 open, URI integer0..999, exactly120 printable ASCII bytes,OSC8 close,CRLF.",
+        "No explicit id parameter; repeated URI lines must still have different implicit identities.",
+        "Check final cell text/URI and link spans/refcounts across page transitions; do not compare arbitrary IDs before style/hash/carry dependencies are finished."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    },
+    {
+      "name": "wide",
+      "generator": [
+        "+utf8",
+        "--seed=42",
+        "--weight-wide=1",
+        "--weight-one=0",
+        "--weight-two=0",
+        "--weight-three=0",
+        "--weight-four=0",
+        "--ascii-printable-only=true",
+        "--space-rate=0"
+      ],
+      "bytes": 8388608,
+      "trim": "utf8-prefix",
+      "checks": [
+        "Every decoded character is CJK U+4E00..9FFF or printable ASCII; all-zero length weights are valid with wide weight1.",
+        "Wide-only case permits spaces at generator byte-block tails even at space-rate0.",
+        "Check UTF8 validity, output byte count and CJK/space counts; scalar/batch and mode2027 comparisons must preserve full cells/wide tails/cursor/styles."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    },
+    {
+      "name": "wide-spaces",
+      "generator": [
+        "+utf8",
+        "--seed=42",
+        "--weight-wide=1",
+        "--weight-one=0",
+        "--weight-two=0",
+        "--weight-three=0",
+        "--weight-four=0",
+        "--ascii-printable-only=true",
+        "--space-rate=0.3"
+      ],
+      "bytes": 8388608,
+      "trim": "utf8-prefix",
+      "checks": [
+        "Every decoded character is CJK U+4E00..9FFF or printable ASCII; all-zero length weights are valid with wide weight1.",
+        "Wide-only case permits spaces at generator byte-block tails even at space-rate0.",
+        "Check UTF8 validity, output byte count and CJK/space counts; scalar/batch and mode2027 comparisons must preserve full cells/wide tails/cursor/styles."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    },
+    {
+      "name": "mixed-wide",
+      "generator": [
+        "+utf8",
+        "--seed=42",
+        "--weight-wide=1",
+        "--weight-one=0.3",
+        "--weight-two=0",
+        "--weight-three=0",
+        "--weight-four=0",
+        "--ascii-printable-only=true",
+        "--space-rate=0.3"
+      ],
+      "bytes": 8388608,
+      "trim": "utf8-prefix",
+      "checks": [
+        "Every decoded character is CJK U+4E00..9FFF or printable ASCII; all-zero length weights are valid with wide weight1.",
+        "Wide-only case permits spaces at generator byte-block tails even at space-rate0.",
+        "Check UTF8 validity, output byte count and CJK/space counts; scalar/batch and mode2027 comparisons must preserve full cells/wide tails/cursor/styles."
+      ],
+      "match_generator_dimensions": false,
+      "terminal_sizes": [
+        [
+          120,
+          80
+        ]
+      ],
+      "scrollback_bytes": [
+        0,
+        10000,
+        50000000
+      ],
+      "grapheme_width": [
+        "legacy",
+        "unicode"
+      ]
+    }
+  ],
+  "shaper": {
+    "source": "small explicit shared80-row fixture, no RNG duplication",
+    "rows": 80,
+    "cols": 120,
+    "passes": 200,
+    "modes": [
+      "runs",
+      "shape-every-run",
+      "production-cache-warm"
+    ],
+    "text": [
+      "ordinary Latin office ffi -> ASCII",
+      "العربية mixed with Latin",
+      "CJK 天地玄黄 and spaces",
+      "combining é and emoji 👩‍💻"
+    ],
+    "checks": [
+      "Input feed and per-row paint preparation outside timing.",
+      "Native fonts Inconsolata+Arabic; Rust default JetBrainsMono/fallback explicitly disclosed.",
+      "Verify run/source cell coverage and glyph cluster mapping on explicit fixture.",
+      "Native endFrame once per pass; Rust uncached shape path must bypass result-cache lookup/insertion for every run."
+    ]
+  }
+}

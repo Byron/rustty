@@ -1,0 +1,14 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.42s
+     Running tests/modes.rs (target/debug/deps/modes-59e47a9dd358ae28)
+
+running 6 tests
+test raw_defaults_and_saved_modes_have_independent_reset_lifetimes ... ok
+test stream_mode_queries_follow_native_parameter_and_host_rules ... ok
+test ansi_mode_queries_report_mutable_fixed_and_unknown_modes_without_aliasing ... ok
+test column_mode_requires_permission_and_restore_rechecks_it ... ok
+test alternate_screen_restore_retains_the_primary_cursor_shape ... ok
+test host_defaults_reject_transitions_and_survive_ris_and_snapshots ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

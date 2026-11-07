@@ -1,0 +1,8 @@
+{
+  "name": "blank-prefix-erase-lines-120x80",
+  "data": "/private/tmp/rustty-reintegrate.leadij/blank-inputs/blank-prefix-erase-lines-120x80.vt",
+  "cols": 120,
+  "rows": 80,
+  "scrollback_bytes": 10000,
+  "grapheme_width": "legacy"
+}

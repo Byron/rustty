@@ -1,0 +1,8 @@
+{
+  "name": "erase-2-120x80",
+  "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/erase-2-120x80.vt",
+  "cols": 120,
+  "rows": 80,
+  "scrollback_bytes": 10000,
+  "grapheme_width": "legacy"
+}

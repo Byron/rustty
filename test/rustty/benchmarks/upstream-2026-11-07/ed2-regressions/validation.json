@@ -1,0 +1,35 @@
+{
+  "tests": "14/14 passed (7 preexisting +7 new)",
+  "native_comparisons": "33/33 passed, full/scalar/chunked with2 cross-decode snapshot cases",
+  "binaries": {
+    "target/release/examples/parity": "2354bc81155f7c2e64b80b9813a4bb27c5ace47bec7d3e44687cb722cfcbcb96",
+    "zig-out/bin/vt-oracle": "207c9e9b176ce9af981606c928be483dfe867c0a8e02a2a7702c2969b59166f3"
+  },
+  "commands": [
+    [
+      "cargo",
+      "test",
+      "--manifest-path",
+      "/private/tmp/rustty-reintegrate.leadij/ed2-regressions/Cargo.toml",
+      "--target-dir",
+      "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/target",
+      "--offline",
+      "--test",
+      "semantic"
+    ],
+    [
+      "python3",
+      "test/rustty/parity_reference.py",
+      "--no-build",
+      "--rust-bin",
+      "target/release/examples/parity",
+      "--zig-bin",
+      "zig-out/bin/vt-oracle",
+      "--fixtures",
+      "/private/tmp/rustty-reintegrate.leadij/ed2-regressions/native-cases.json",
+      "--artifacts",
+      "/private/tmp/rustty-reintegrate.leadij/ed2-regressions/native-after"
+    ]
+  ],
+  "note": "Initial visual fixture expected only text rows, but existing visual restore resolves backgrounds to RGB and ED2 retains all8 rows. Corrected expectation after tracing scroll_clear; no source issue found."
+}

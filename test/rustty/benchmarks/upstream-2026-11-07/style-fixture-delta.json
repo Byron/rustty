@@ -1,0 +1,309 @@
+{
+  "pages": {
+    "before": 687,
+    "after": 687,
+    "removed": [
+      "pages/grow/215/222",
+      "pages/grow/80/592",
+      "pages/initial/215/221",
+      "pages/initial/80/591",
+      "pages/lines/2/15974",
+      "pages/lines/2/15975",
+      "pages/lines/2/15976",
+      "pages/lines/2/31950",
+      "pages/lines/215/220",
+      "pages/lines/215/442",
+      "pages/lines/8/10650",
+      "pages/lines/8/5324",
+      "pages/lines/8/5325",
+      "pages/lines/8/5326",
+      "pages/lines/80/1182",
+      "pages/lines/80/590"
+    ],
+    "added": [
+      "pages/grow/215/223",
+      "pages/grow/80/593",
+      "pages/initial/215/223",
+      "pages/initial/80/593",
+      "pages/lines/2/15992",
+      "pages/lines/2/15993",
+      "pages/lines/2/15994",
+      "pages/lines/2/31986",
+      "pages/lines/215/223",
+      "pages/lines/215/444",
+      "pages/lines/8/10660",
+      "pages/lines/8/5329",
+      "pages/lines/8/5330",
+      "pages/lines/8/5331",
+      "pages/lines/80/1184",
+      "pages/lines/80/593"
+    ],
+    "renamed_capacity_boundaries": [
+      {
+        "before": "pages/lines/2/15974",
+        "after": "pages/lines/2/15992",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/2/15975",
+        "after": "pages/lines/2/15993",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/2/15976",
+        "after": "pages/lines/2/15994",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/2/31950",
+        "after": "pages/lines/2/31986",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/8/5324",
+        "after": "pages/lines/8/5329",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/8/5325",
+        "after": "pages/lines/8/5330",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/8/5326",
+        "after": "pages/lines/8/5331",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/8/10650",
+        "after": "pages/lines/8/10660",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/initial/80/591",
+        "after": "pages/initial/80/592",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/initial/80/592",
+        "after": "pages/initial/80/593",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/grow/80/592",
+        "after": "pages/grow/80/593",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/80/590",
+        "after": "pages/lines/80/591",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/80/591",
+        "after": "pages/lines/80/592",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/80/592",
+        "after": "pages/lines/80/593",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/80/1182",
+        "after": "pages/lines/80/1184",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/initial/215/221",
+        "after": "pages/initial/215/222",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/initial/215/222",
+        "after": "pages/initial/215/223",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/grow/215/222",
+        "after": "pages/grow/215/223",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/215/220",
+        "after": "pages/lines/215/221",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/215/221",
+        "after": "pages/lines/215/222",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/215/222",
+        "after": "pages/lines/215/223",
+        "same_coverage": true
+      },
+      {
+        "before": "pages/lines/215/442",
+        "after": "pages/lines/215/444",
+        "same_coverage": true
+      }
+    ],
+    "changed": [
+      "pages/bytes/2/0",
+      "pages/bytes/2/1",
+      "pages/bytes/2/1228800",
+      "pages/bytes/2/819200",
+      "pages/bytes/215/0",
+      "pages/bytes/215/1",
+      "pages/bytes/215/1228800",
+      "pages/bytes/215/819200",
+      "pages/bytes/8/0",
+      "pages/bytes/8/1",
+      "pages/bytes/8/1228800",
+      "pages/bytes/8/819200",
+      "pages/bytes/80/0",
+      "pages/bytes/80/1",
+      "pages/bytes/80/1228800",
+      "pages/bytes/80/819200",
+      "pages/clear/2/1b5b32324a",
+      "pages/clear/2/1b5b334a",
+      "pages/clear/2/1b63",
+      "pages/clear/215/1b5b32324a",
+      "pages/clear/215/1b5b334a",
+      "pages/clear/215/1b63",
+      "pages/clear/8/1b5b32324a",
+      "pages/clear/8/1b5b334a",
+      "pages/clear/8/1b63",
+      "pages/clear/80/1b5b32324a",
+      "pages/clear/80/1b5b334a",
+      "pages/clear/80/1b63",
+      "pages/grow/2/1",
+      "pages/grow/2/1024",
+      "pages/grow/2/24",
+      "pages/grow/215/1",
+      "pages/grow/215/24",
+      "pages/grow/8/1",
+      "pages/grow/8/1024",
+      "pages/grow/8/24",
+      "pages/grow/80/1",
+      "pages/grow/80/24",
+      "pages/height/8",
+      "pages/height/80",
+      "pages/lines/2/0",
+      "pages/lines/2/1",
+      "pages/lines/215/0",
+      "pages/lines/215/1",
+      "pages/lines/215/221",
+      "pages/lines/215/222",
+      "pages/lines/8/0",
+      "pages/lines/8/1",
+      "pages/lines/80/0",
+      "pages/lines/80/1",
+      "pages/lines/80/591",
+      "pages/lines/80/592",
+      "pages/reflow/215/80",
+      "pages/reflow/8/12",
+      "pages/reflow/8/4",
+      "pages/reflow/80/120",
+      "pages/reflow/80/40",
+      "pages/snapshot-stream/215/0",
+      "pages/snapshot-stream/215/1",
+      "pages/snapshot-stream/215/None",
+      "pages/snapshot-stream/8/0",
+      "pages/snapshot-stream/8/1",
+      "pages/snapshot-stream/8/None",
+      "pages/snapshot-stream/80/0",
+      "pages/snapshot-stream/80/1",
+      "pages/snapshot-stream/80/None",
+      "pages/snapshot/215",
+      "pages/snapshot/8",
+      "pages/snapshot/80",
+      "pages/styles/cursor-migration/80",
+      "pages/styles/max-capacity-split/1",
+      "pages/styles/max-capacity-split/2",
+      "pages/styles/row-lifetime/80/1b5b32324a",
+      "pages/styles/row-lifetime/80/1b5b3253",
+      "pages/styles/row-lifetime/80/1b5b3254",
+      "pages/styles/row-lifetime/80/1b5b334a"
+    ],
+    "native_probes_before": 148,
+    "native_probes_after": 148
+  },
+  "snapshot-wire": {
+    "before": 2183,
+    "after": 2183,
+    "removed": [],
+    "added": [],
+    "renamed_capacity_boundaries": [],
+    "changed": [
+      "snapshot/resources/styles/collision/flag-001/0",
+      "snapshot/resources/styles/collision/flag-001/63",
+      "snapshot/resources/styles/collision/flag-002/0",
+      "snapshot/resources/styles/collision/flag-002/63",
+      "snapshot/resources/styles/collision/flag-004/0",
+      "snapshot/resources/styles/collision/flag-004/63",
+      "snapshot/resources/styles/collision/flag-008/0",
+      "snapshot/resources/styles/collision/flag-008/63",
+      "snapshot/resources/styles/collision/flag-010/0",
+      "snapshot/resources/styles/collision/flag-010/63",
+      "snapshot/resources/styles/collision/flag-020/0",
+      "snapshot/resources/styles/collision/flag-020/63",
+      "snapshot/resources/styles/collision/flag-040/0",
+      "snapshot/resources/styles/collision/flag-040/63",
+      "snapshot/resources/styles/collision/flag-080/0",
+      "snapshot/resources/styles/collision/flag-080/63",
+      "snapshot/resources/styles/collision/flag-100/0",
+      "snapshot/resources/styles/collision/flag-100/63",
+      "snapshot/resources/styles/collision/flag-200/0",
+      "snapshot/resources/styles/collision/flag-200/63",
+      "snapshot/resources/styles/collision/flag-300/0",
+      "snapshot/resources/styles/collision/flag-300/63",
+      "snapshot/resources/styles/collision/flag-400/0",
+      "snapshot/resources/styles/collision/flag-400/63",
+      "snapshot/resources/styles/collision/flag-500/0",
+      "snapshot/resources/styles/collision/flag-500/63",
+      "snapshot/resources/styles/collision/flag-5ff/0",
+      "snapshot/resources/styles/collision/flag-5ff/63",
+      "snapshot/resources/styles/collision/mixed-tags-flags/0",
+      "snapshot/resources/styles/collision/mixed-tags-flags/63",
+      "snapshot/resources/styles/collision/rgb-channel-0/0",
+      "snapshot/resources/styles/collision/rgb-channel-0/63",
+      "snapshot/resources/styles/collision/rgb-channel-1/0",
+      "snapshot/resources/styles/collision/rgb-channel-1/63",
+      "snapshot/resources/styles/collision/rgb-channel-2/0",
+      "snapshot/resources/styles/collision/rgb-channel-2/63",
+      "snapshot/resources/styles/reference-count-displacement-ties"
+    ],
+    "native_probes_before": 14,
+    "native_probes_after": 14
+  },
+  "snapshots": {
+    "before": 112,
+    "after": 112,
+    "removed": [],
+    "added": [],
+    "renamed_capacity_boundaries": [],
+    "changed": [
+      "snapshot/encoding-resources/style-collision"
+    ],
+    "native_probes_before": 0,
+    "native_probes_after": 0
+  },
+  "page-layout": {
+    "before": 338,
+    "after": 342,
+    "removed": [],
+    "added": [
+      "page-layout/initial/47969",
+      "page-layout/initial/47970",
+      "page-layout/initial/47971",
+      "page-layout/initial/47972"
+    ],
+    "renamed_capacity_boundaries": [],
+    "changed": [],
+    "native_probes_before": 0,
+    "native_probes_after": 0
+  }
+}

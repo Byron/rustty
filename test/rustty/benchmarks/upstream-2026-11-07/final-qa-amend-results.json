@@ -1,0 +1,28 @@
+{
+  "head": "f2b7e1344a57dda204355a541d6a811e89891b64",
+  "starting_head": "cc309adab78b012fc15200306eab5883268eb31d",
+  "amendments": [
+    {
+      "change_id": "kksklpy",
+      "before": "0caf2b5a4579940948e085860bd24a82667eb622",
+      "after": "a3abd1c8e0a37e4a1f87a5cf9bf882395873df3d",
+      "checks": [
+        "final-qa-pty-clippy.log"
+      ]
+    },
+    {
+      "change_id": "psorvoo",
+      "before_travel": "26ac44e276778691cccfc28f7f26dbf14326da02",
+      "before_amend": "322f132aa0d451c3ae083223a7e9de5dd7b6e25d",
+      "after": "3c107222f40ef7cc820d32eac5ce6dead0ca94ad",
+      "checks": [
+        "final-qa-format-test.log",
+        "final-qa-format-check.log"
+      ],
+      "focused_tests": 1
+    }
+  ],
+  "exact_two_prepared_files_only": true,
+  "all_linked_source_hashes_preserved": true,
+  "authors_subjects_parents_preserved": true
+}

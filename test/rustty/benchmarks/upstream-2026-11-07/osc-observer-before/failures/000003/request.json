@@ -1,0 +1,77 @@
+{
+  "id": "parser/osc-cancel/chunks",
+  "kind": "parser",
+  "operations": [
+    {
+      "data": "1b5d",
+      "op": "write"
+    },
+    {
+      "data": "323b756e66696e",
+      "op": "write"
+    },
+    {
+      "data": "69",
+      "op": "write"
+    },
+    {
+      "data": "73686564187461696c1b5d323b",
+      "op": "write"
+    },
+    {
+      "data": "6f746865",
+      "op": "write"
+    },
+    {
+      "data": "721a",
+      "op": "write"
+    },
+    {
+      "data": "1b5d323b646f6e",
+      "op": "write"
+    },
+    {
+      "data": "65",
+      "op": "write"
+    },
+    {
+      "data": "071b5d393939393b7261772d62",
+      "op": "write"
+    },
+    {
+      "data": "656c0718",
+      "op": "write"
+    },
+    {
+      "data": "1b5d",
+      "op": "write"
+    },
+    {
+      "data": "393939393b7261",
+      "op": "write"
+    },
+    {
+      "data": "77",
+      "op": "write"
+    },
+    {
+      "data": "2d73741b5c1a",
+      "op": "write"
+    },
+    {
+      "op": "observe"
+    },
+    {
+      "data": "1b5b",
+      "op": "write"
+    },
+    {
+      "data": "306d",
+      "op": "write"
+    },
+    {
+      "op": "reset"
+    }
+  ],
+  "scalar": false
+}

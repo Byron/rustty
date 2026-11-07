@@ -1,0 +1,2811 @@
+{
+  "nnwzqpm": {
+    "hash": "f2b7e1344a57dda204355a541d6a811e89891b64",
+    "full_id": "nnwzqpmposrozyxknyuxzzwztlpourrwxtrlowym",
+    "parents": [
+      "e28199ae99f4ead68a18be6c7ea0e8855f579b2a"
+    ],
+    "author": "Codex <codex@openai.com> 1794048219 +0100",
+    "subject": "perf(vt): batch text under open hyperlinks"
+  },
+  "yppsryw": {
+    "hash": "e28199ae99f4ead68a18be6c7ea0e8855f579b2a",
+    "full_id": "yppsrywnmoqwnkuqnnqpnrtqtuvmszupqlyxqymo",
+    "parents": [
+      "61862f0ecb0ceb5a18678ffc2dc85cbd0a356c25"
+    ],
+    "author": "Codex <codex@openai.com> 1794043412 +0100",
+    "subject": "perf(vt): batch mixed-width printable rows"
+  },
+  "krlvrvl": {
+    "hash": "61862f0ecb0ceb5a18678ffc2dc85cbd0a356c25",
+    "full_id": "krlvrvlzpnrlmkuqytsyslpuynyxoyvovpvkrwlv",
+    "parents": [
+      "9b2d8694edc8cf6bd9320f92ac8c7e40bbe34ca5"
+    ],
+    "author": "Codex <codex@openai.com> 1794040318 +0100",
+    "subject": "perf(vt): skip cell work for conservatively blank rows"
+  },
+  "movrxsk": {
+    "hash": "9b2d8694edc8cf6bd9320f92ac8c7e40bbe34ca5",
+    "full_id": "movrxskkrsxyukkwolrkprqxlpnwktpnvnvovrvm",
+    "parents": [
+      "c3dab155685a3f297146109691a550c1c4ae817b"
+    ],
+    "author": "Codex <codex@openai.com> 1794039723 +0100",
+    "subject": "perf(vt): carry live resource demand into new pages"
+  },
+  "nokoswn": {
+    "hash": "c3dab155685a3f297146109691a550c1c4ae817b",
+    "full_id": "nokoswnlkuxzsrxztzxswypysumurzyzkmrlkspq",
+    "parents": [
+      "87334b6cb267e6e28f643500f7cb20c15e7e394d"
+    ],
+    "author": "Codex <codex@openai.com> 1794038283 +0100",
+    "subject": "fix(vt): size hyperlink cell maps independently of link values"
+  },
+  "ztmmomo": {
+    "hash": "87334b6cb267e6e28f643500f7cb20c15e7e394d",
+    "full_id": "ztmmomoupqolpmswrnmtpzslklttyrmonwsyrlxt",
+    "parents": [
+      "f74e4ccceb6178512b6bbc359accb2ab96771306"
+    ],
+    "author": "Codex <codex@openai.com> 1794037307 +0100",
+    "subject": "perf(vt): skip prompt scans before semantic output is seen"
+  },
+  "uxpryuy": {
+    "hash": "f74e4ccceb6178512b6bbc359accb2ab96771306",
+    "full_id": "uxpryuyorsuxsostqxsxsrqqvsvswlqqoqyxnrnr",
+    "parents": [
+      "069f771c1ae8db8b831dbdadfe1bc9bccdca5ebf"
+    ],
+    "author": "Codex <codex@openai.com> 1794036232 +0100",
+    "subject": "perf(vt): admit the final SGR style once per sequence"
+  },
+  "wswurtn": {
+    "hash": "069f771c1ae8db8b831dbdadfe1bc9bccdca5ebf",
+    "full_id": "wswurtnkmywxsmvvzpvxxzlsosxxvrtnsrzsqyxq",
+    "parents": [
+      "5e2af1a2a15329f1af7eaab3c24d17642d9049e0"
+    ],
+    "author": "Codex <codex@openai.com> 1794035436 +0100",
+    "subject": "fix(vt): match canonical native style hashing and page layout"
+  },
+  "mokoonq": {
+    "hash": "5e2af1a2a15329f1af7eaab3c24d17642d9049e0",
+    "full_id": "mokoonqwxkwslqzmvnnwlosnqqzrqznrxnrvkttu",
+    "parents": [
+      "11a64c5baa5080270e926b4943010f59e474fcc9"
+    ],
+    "author": "Codex <codex@openai.com> 1794034567 +0100",
+    "subject": "test(render): benchmark production text runs and uncached shaping"
+  },
+  "tpnlmqr": {
+    "hash": "11a64c5baa5080270e926b4943010f59e474fcc9",
+    "full_id": "tpnlmqronzyxlvsyvsuwmxvxnwpmvworuvztolyy",
+    "parents": [
+      "f83714a82515c800e55d8e1df399421d2e84be1d"
+    ],
+    "author": "Codex <codex@openai.com> 1794033644 +0100",
+    "subject": "feat(rustty): support session window appearance overrides"
+  },
+  "ouskoty": {
+    "hash": "f83714a82515c800e55d8e1df399421d2e84be1d",
+    "full_id": "ouskotyuzwwvvsovttxlmsptzwmsyvuuupqznmpq",
+    "parents": [
+      "56cb60133676b19dec1f3f5e215fa46e7a643b29"
+    ],
+    "author": "Codex <codex@openai.com> 1794033236 +0100",
+    "subject": "test(tmuxx): cover upstream control notification guarantees"
+  },
+  "ywqqypn": {
+    "hash": "56cb60133676b19dec1f3f5e215fa46e7a643b29",
+    "full_id": "ywqqypnouxsmtltvtklqvmynntxuvootrzutoyws",
+    "parents": [
+      "0aff4872e1b2f0af15aba4e7a9909259f5859c86"
+    ],
+    "author": "Codex <codex@openai.com> 1794033031 +0100",
+    "subject": "fix(vt): retain line selection while dragging over blank rows"
+  },
+  "sxuolkk": {
+    "hash": "0aff4872e1b2f0af15aba4e7a9909259f5859c86",
+    "full_id": "sxuolkkstvnzuxlrxymwlmqkywkmymqnpkvqpqvq",
+    "parents": [
+      "4e4c41bccfa05b21507da0af9ffb479320ac1e71"
+    ],
+    "author": "Codex <codex@openai.com> 1794032941 +0100",
+    "subject": "fix(vt): evict images by transmission age"
+  },
+  "nvwpkxp": {
+    "hash": "4e4c41bccfa05b21507da0af9ffb479320ac1e71",
+    "full_id": "nvwpkxplntlsklkoqqqpylmzvppmnsynqwopryks",
+    "parents": [
+      "2e49a23d70afe2e4967d75c70ed3753381f01988"
+    ],
+    "author": "Codex <codex@openai.com> 1794032795 +0100",
+    "subject": "fix(vt): resolve image numbers by transmission order"
+  },
+  "qouystx": {
+    "hash": "2e49a23d70afe2e4967d75c70ed3753381f01988",
+    "full_id": "qouystxlouowlovykpnoszywxnqwpyloyzukntwo",
+    "parents": [
+      "889204150eb334aa23e1d4f222f60c089258e3e6"
+    ],
+    "author": "Codex <codex@openai.com> 1794032680 +0100",
+    "subject": "fix(vt): restrict Unicode placeholders to virtual placements"
+  },
+  "powxpsq": {
+    "hash": "889204150eb334aa23e1d4f222f60c089258e3e6",
+    "full_id": "powxpsqxmoootymntttywplznpukvklxkxvznzwy",
+    "parents": [
+      "68eae106925fb91ff8e22866a172738aec095c57"
+    ],
+    "author": "Codex <codex@openai.com> 1794032589 +0100",
+    "subject": "fix(vt): restore pending wrap at exported horizontal margins"
+  },
+  "klmtlvn": {
+    "hash": "68eae106925fb91ff8e22866a172738aec095c57",
+    "full_id": "klmtlvnuswwkspqpslustyvyvrvwkqxpturtmkwz",
+    "parents": [
+      "bfc4c6cd45b57110399e9bba5020d3e8ebf45a5c"
+    ],
+    "author": "Codex <codex@openai.com> 1794032455 +0100",
+    "subject": "fix(vt): use the right margin after wrapping"
+  },
+  "ouskkly": {
+    "hash": "bfc4c6cd45b57110399e9bba5020d3e8ebf45a5c",
+    "full_id": "ouskklykywpoumznzmzwypxkuwzkqvzkvvntttrw",
+    "parents": [
+      "79a8084460fa9ab7187756045f50e9ee990935d4"
+    ],
+    "author": "Codex <codex@openai.com> 1794032391 +0100",
+    "subject": "feat(vt): implement VT420 horizontal scrolling controls"
+  },
+  "spppnxx": {
+    "hash": "79a8084460fa9ab7187756045f50e9ee990935d4",
+    "full_id": "spppnxxsmnkqkpxovzmmloxtvvpkysuuyyuqwwvs",
+    "parents": [
+      "f4694deef071d0995608ea8b1c75b0d04fcbe0d0"
+    ],
+    "author": "Codex <codex@openai.com> 1794032218 +0100",
+    "subject": "chore(rustty): refresh bundled terminal themes"
+  },
+  "ytlxxys": {
+    "hash": "f4694deef071d0995608ea8b1c75b0d04fcbe0d0",
+    "full_id": "ytlxxystlzkylrymsmznkzxvursmtvwnpxsnvzqz",
+    "parents": [
+      "692cd398e0ab96455c90ff50642d5be5b7fb4c0b"
+    ],
+    "author": "Codex <codex@openai.com> 1794032018 +0100",
+    "subject": "fix(rustty): decode OSC 7 authorities before hostname matching"
+  },
+  "upvquxw": {
+    "hash": "692cd398e0ab96455c90ff50642d5be5b7fb4c0b",
+    "full_id": "upvquxwkruunwprxmqlpyovquzoxztrlqzvtnuwy",
+    "parents": [
+      "c968fb635a5ffe5f0b10bbc68c6765087a82421b"
+    ],
+    "author": "Codex <codex@openai.com> 1794031877 +0100",
+    "subject": "fix(rustty): ignore repeated spaces in direct commands"
+  },
+  "ttmoqly": {
+    "hash": "c968fb635a5ffe5f0b10bbc68c6765087a82421b",
+    "full_id": "ttmoqlykxqswpmylxvrrzzmkwzkprrlxttmylrlz",
+    "parents": [
+      "67a00fc5e225a783067027525f006a3955d70d9c"
+    ],
+    "author": "Codex <codex@openai.com> 1794031785 +0100",
+    "subject": "fix(vt): reuse dead page resource IDs without breaking lookups"
+  },
+  "ylkpzwm": {
+    "hash": "67a00fc5e225a783067027525f006a3955d70d9c",
+    "full_id": "ylkpzwmkuwokptvyromuquutvmozysppmrmzxopp",
+    "parents": [
+      "43a623f8f28e0f210239bd400f9d3bfe917213ee"
+    ],
+    "author": "Codex <codex@openai.com> 1794031121 +0100",
+    "subject": "build(rustty): adapt native comparison tools to packed colors"
+  },
+  "ykmvmqm": {
+    "hash": "43a623f8f28e0f210239bd400f9d3bfe917213ee",
+    "full_id": "ykmvmqmtmllkqlknomtzquywvpmvottmyryumntw",
+    "parents": [
+      "5431d1e461651478b9d2f3d36b4292dca5917db7"
+    ],
+    "author": "Codex <codex@openai.com> 1793892187 +0100",
+    "subject": "docs(rustty): consolidate optimization reports after code changes"
+  },
+  "ymsrytz": {
+    "hash": "5431d1e461651478b9d2f3d36b4292dca5917db7",
+    "full_id": "ymsrytzqnkwrzttwmsutxsrslrvxwxstwnyvuyxq",
+    "parents": [
+      "e8d26d94959775748207e0bc15cbca593294176d"
+    ],
+    "author": "Codex <codex@openai.com> 1793891840 +0100",
+    "subject": "perf(rustty-vt): reuse prepared cursor location for ASCII writes"
+  },
+  "kkupsml": {
+    "hash": "e8d26d94959775748207e0bc15cbca593294176d",
+    "full_id": "kkupsmlqvpyzlsqklksvwulqqqlvqrznqqpnysox",
+    "parents": [
+      "8e48ffefe542f115bbab9d3522010552ff974075"
+    ],
+    "author": "Codex <codex@openai.com> 1793891701 +0100",
+    "subject": "perf(rustty-vt): skip inactive capture hooks while printing"
+  },
+  "zmytysu": {
+    "hash": "8e48ffefe542f115bbab9d3522010552ff974075",
+    "full_id": "zmytysunnxzlzozyrzlmwsoytkonxpwvlmxqyppv",
+    "parents": [
+      "d3ab9b332f7b3dae200886acf662e0d393cf2f92"
+    ],
+    "author": "Codex <codex@openai.com> 1793891563 +0100",
+    "subject": "perf(rustty-vt): group style attributes in cursor comparisons"
+  },
+  "pulovmp": {
+    "hash": "d3ab9b332f7b3dae200886acf662e0d393cf2f92",
+    "full_id": "pulovmpuvlvsmmqypmpqtqurtmsrkxmuwormqrrk",
+    "parents": [
+      "92177150806f62befdb8f45813fd4333b58725d6"
+    ],
+    "author": "Codex <codex@openai.com> 1793891307 +0100",
+    "subject": "perf(rustty-vt): locate active rows from the page-list tail"
+  },
+  "zzroxwq": {
+    "hash": "92177150806f62befdb8f45813fd4333b58725d6",
+    "full_id": "zzroxwqnotkzrmqwzklyzzolkzpnqmlyruszopwp",
+    "parents": [
+      "98bc69195780c855909f8c5f50b5ed6cf0ade5e2"
+    ],
+    "author": "Codex <codex@openai.com> 1793891078 +0100",
+    "subject": "perf(rustty-parser): fast-path complete CSI commands"
+  },
+  "ulwwwyo": {
+    "hash": "98bc69195780c855909f8c5f50b5ed6cf0ade5e2",
+    "full_id": "ulwwwyokvkvsyqmukkkppzrunopulknstuwnxzuw",
+    "parents": [
+      "8c2068b101654ddf3bfa321c3308381612498269"
+    ],
+    "author": "Codex <codex@openai.com> 1793889784 +0100",
+    "subject": "perf(rustty-vt): reuse resolved row IDs during writes"
+  },
+  "noslpsr": {
+    "hash": "8c2068b101654ddf3bfa321c3308381612498269",
+    "full_id": "noslpsrvunvmuxnqxvszxoytusssmuknszmznnzq",
+    "parents": [
+      "d5175f170482af217aaca5d130028472dccf9923"
+    ],
+    "author": "Codex <codex@openai.com> 1793887994 +0100",
+    "subject": "perf(rustty-parser): batch CSI parameter runs"
+  },
+  "wpwspzu": {
+    "hash": "d5175f170482af217aaca5d130028472dccf9923",
+    "full_id": "wpwspzuxstllqwmvtwtsoumuuzzlxuvxnpozlwmp",
+    "parents": [
+      "000cfcf217c238e380d45c656c03608b19675a72"
+    ],
+    "author": "Codex <codex@openai.com> 1793886505 +0100",
+    "subject": "feat(rustty-app): start quad peek outside quad zoom"
+  },
+  "uvszyut": {
+    "hash": "000cfcf217c238e380d45c656c03608b19675a72",
+    "full_id": "uvszyutwowyuoklzlsutqwqrkopmmswzqqukqmmk",
+    "parents": [
+      "a659a77f3946cf7cfeca5b6f9dd038eb4e215ec6"
+    ],
+    "author": "Codex <codex@openai.com> 1793885208 +0100",
+    "subject": "test(rustty): bound Ghostty benchmark comparisons"
+  },
+  "xouzrnl": {
+    "hash": "a659a77f3946cf7cfeca5b6f9dd038eb4e215ec6",
+    "full_id": "xouzrnlvmzrrnrwkxumttwywrpustpurnrulultp",
+    "parents": [
+      "3c107222f40ef7cc820d32eac5ce6dead0ca94ad"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793854896 +0000",
+    "subject": "perf(rustty-vt): walk native snapshot style runs by page"
+  },
+  "psorvoo": {
+    "hash": "3c107222f40ef7cc820d32eac5ce6dead0ca94ad",
+    "full_id": "psorvooytnnqvlllyqwkvoqrsorprqqlozmtznll",
+    "parents": [
+      "414bb7087e06bf800e6f14b44bd49b789c8f4409"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793854645 +0000",
+    "subject": "perf(tmuxx): search visible content without snapshots"
+  },
+  "yxqyqpl": {
+    "hash": "414bb7087e06bf800e6f14b44bd49b789c8f4409",
+    "full_id": "yxqyqplqkxxrsnvtkqotzyqtwlnxsmnsttllromp",
+    "parents": [
+      "3f18a1595eeda54d12821e981b598adc289e72cb"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793854036 +0000",
+    "subject": "perf(rustty-vt): preserve cold history during navigation"
+  },
+  "lqrxknv": {
+    "hash": "3f18a1595eeda54d12821e981b598adc289e72cb",
+    "full_id": "lqrxknvnzkvxvotnlwnzxunklllrkknpntnmzkln",
+    "parents": [
+      "66933165312c1e2630ff36d386f44cd024b7ddd8"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793853720 +0000",
+    "subject": "fix(tmuxx): restore bounded large-history snapshots"
+  },
+  "ytxkmrt": {
+    "hash": "66933165312c1e2630ff36d386f44cd024b7ddd8",
+    "full_id": "ytxkmrtvyqnuvsyyunmnzronvktwzmzyownmoxtu",
+    "parents": [
+      "e27fa9cee0ffaabb2b68b17838cb8c2a28792a6a"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793852574 +0000",
+    "subject": "fix(rustty-vt): reapply configured cursor defaults"
+  },
+  "osvyuyn": {
+    "hash": "e27fa9cee0ffaabb2b68b17838cb8c2a28792a6a",
+    "full_id": "osvyuynzslrrywqzwzwvkvrxzutpqzssqvkmuzrs",
+    "parents": [
+      "61b0f838e50383a2c1a9de8ecf825b521ee3167b"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793852363 +0000",
+    "subject": "fix(rustty-vt): clamp resize pins to their destination row"
+  },
+  "vmwpzyz": {
+    "hash": "61b0f838e50383a2c1a9de8ecf825b521ee3167b",
+    "full_id": "vmwpzyzlmtqwpmylytzolprruyrwqtwnswlqzmnw",
+    "parents": [
+      "99bfea5365b2338f7f82d3fda0be5496a2d18845"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793852234 +0000",
+    "subject": "fix(tmuxx): recover lagging native subscribers"
+  },
+  "nkpupzs": {
+    "hash": "99bfea5365b2338f7f82d3fda0be5496a2d18845",
+    "full_id": "nkpupzsyoozsotprkrosynktkluzknozupulouku",
+    "parents": [
+      "661aa14bbe5d4b8d0832b6646b92100ac5141fe4"
+    ],
+    "author": "Codex <codex@openai.com> 1793875802 +0100",
+    "subject": "feat(rustty-app): number quad peek targets"
+  },
+  "yoxxpsr": {
+    "hash": "661aa14bbe5d4b8d0832b6646b92100ac5141fe4",
+    "full_id": "yoxxpsrtnrvovplopknltnmrxyvuuknllrlmwvvw",
+    "parents": [
+      "488ea5c4193bd7fe80bd2933f0cf5c8073df4f7a"
+    ],
+    "author": "Codex <codex@openai.com> 1793874161 +0100",
+    "subject": "feat(rustty): advertise validated Unicode placeholder graphics"
+  },
+  "oolpkrm": {
+    "hash": "488ea5c4193bd7fe80bd2933f0cf5c8073df4f7a",
+    "full_id": "oolpkrmxwlsxsqsllyksmukpkkyzppwkpqxprpzs",
+    "parents": [
+      "5eabf465c2acd2575f972b27f0f896d30322676f"
+    ],
+    "author": "Codex <codex@openai.com> 1793873545 +0100",
+    "subject": "feat(rustty): report when the pointer leaves TUI panes"
+  },
+  "myywtyl": {
+    "hash": "5eabf465c2acd2575f972b27f0f896d30322676f",
+    "full_id": "myywtylqvpznrzpkozssmxpmrnomnumlupxypssv",
+    "parents": [
+      "c88f8a9cb00f08af599fa48d9ca9f2d7058ae1d0"
+    ],
+    "author": "Codex <codex@openai.com> 1793872837 +0100",
+    "subject": "feat(rustty): support actionable desktop notifications"
+  },
+  "kottxnp": {
+    "hash": "c88f8a9cb00f08af599fa48d9ca9f2d7058ae1d0",
+    "full_id": "kottxnpozzvnlnmynqrwplqumnuvzmmrlwzqyppt",
+    "parents": [
+      "5dae215cafbfcdeb33e0828c075eadf2e2940ae6"
+    ],
+    "author": "Codex <codex@openai.com> 1793868481 +0100",
+    "subject": "feat(rustty): support native TUI drag-and-drop"
+  },
+  "uutwtut": {
+    "hash": "5dae215cafbfcdeb33e0828c075eadf2e2940ae6",
+    "full_id": "uutwtutkslskltzlymvurqkllwnmzpvqnumyxzow",
+    "parents": [
+      "05b9262cd8999bef4dd877cedeae4de7388c88fa"
+    ],
+    "author": "Codex <codex@openai.com> 1793859489 +0100",
+    "subject": "feat(rustty): support multiple TUI cursors"
+  },
+  "lzkxpox": {
+    "hash": "05b9262cd8999bef4dd877cedeae4de7388c88fa",
+    "full_id": "lzkxpoxwnkpospplxmnzontpyrswlvwsumnruovv",
+    "parents": [
+      "5751a623dc8f8fdcd46c518cb24194f4adcc409d"
+    ],
+    "author": "Codex <codex@openai.com> 1793857871 +0100",
+    "subject": "feat(rustty): support explicit text widths"
+  },
+  "xvxwsov": {
+    "hash": "5751a623dc8f8fdcd46c518cb24194f4adcc409d",
+    "full_id": "xvxwsovnuolrmqoskmkkzkmsmvxytquxzxtkoqwq",
+    "parents": [
+      "4c8c1b0ee7d0a1daf39df10e24490b7b46a8b13c"
+    ],
+    "author": "Codex <codex@openai.com> 1793855285 +0100",
+    "subject": "feat(rustty): support indexed Kitty images"
+  },
+  "yloxtlu": {
+    "hash": "4c8c1b0ee7d0a1daf39df10e24490b7b46a8b13c",
+    "full_id": "yloxtlukxzokotkzrmymzlyvxtxnwurzztttnvlx",
+    "parents": [
+      "ae84eec3e500026d4d58a7b8f6a3d6cd6d4c42ac"
+    ],
+    "author": "Codex <codex@openai.com> 1793854272 +0100",
+    "subject": "perf(rustty-render): reuse stable row geometry"
+  },
+  "nyommyy": {
+    "hash": "ae84eec3e500026d4d58a7b8f6a3d6cd6d4c42ac",
+    "full_id": "nyommyyvuzwlykkppszvkkmswruzkltpumwzkvux",
+    "parents": [
+      "8fa843390161d6c367ce18170bea7da123087717"
+    ],
+    "author": "Codex <codex@openai.com> 1793852756 +0100",
+    "subject": "feat(rustty-app): copy and open terminal output in an editor"
+  },
+  "ylzumnp": {
+    "hash": "8fa843390161d6c367ce18170bea7da123087717",
+    "full_id": "ylzumnpwyyuplqklrtypknoznvxlqwmyknqvyuwk",
+    "parents": [
+      "823dca08eba86caadb1bee41e6a29b9d1dc23494"
+    ],
+    "author": "Codex <codex@openai.com> 1793852298 +0100",
+    "subject": "perf(rustty-vt): keep hidden history cold during viewport reads"
+  },
+  "tknvzqk": {
+    "hash": "823dca08eba86caadb1bee41e6a29b9d1dc23494",
+    "full_id": "tknvzqkspvmvwwzmvwrvxovuvmxqtznpwvnsvkmv",
+    "parents": [
+      "707116d16ab7ebbeb512fef52c630a1cb0524450"
+    ],
+    "author": "Codex <codex@openai.com> 1793851890 +0100",
+    "subject": "feat(rustty-app): add keyboard hints for visible links"
+  },
+  "qzkuxwx": {
+    "hash": "707116d16ab7ebbeb512fef52c630a1cb0524450",
+    "full_id": "qzkuxwxpktprnwpruopovonxlmlnpsyxupuytuno",
+    "parents": [
+      "4ed4e4a762d839e43cb09ec495843df7351c34e0"
+    ],
+    "author": "Codex <codex@openai.com> 1793850846 +0100",
+    "subject": "feat(rustty-app): present retained program status"
+  },
+  "xvspmry": {
+    "hash": "4ed4e4a762d839e43cb09ec495843df7351c34e0",
+    "full_id": "xvspmryyqptszntnsnsqtsnoxqrvwskvqvrzqkot",
+    "parents": [
+      "367c2844e0055376ba248faef03bea789a1650c6"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793828447 +0000",
+    "subject": "docs(rustty): record Linux validation and deferred work"
+  },
+  "onlmtsu": {
+    "hash": "367c2844e0055376ba248faef03bea789a1650c6",
+    "full_id": "onlmtsumpnpqkwulnvovysotvszsyqwntuxxzmty",
+    "parents": [
+      "c874a7af53ad2ff55acabb12e04fc741ba84222d"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793828151 +0000",
+    "subject": "perf(rustty): wake embedded tmuxx delivery on messages"
+  },
+  "uwmyzst": {
+    "hash": "c874a7af53ad2ff55acabb12e04fc741ba84222d",
+    "full_id": "uwmyzstxzrqxlyqlkvnvpmslpyknorznxkkyyvkx",
+    "parents": [
+      "a3abd1c8e0a37e4a1f87a5cf9bf882395873df3d"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793827765 +0000",
+    "subject": "perf(rustty): drain PTY output while parsing"
+  },
+  "kksklpy": {
+    "hash": "a3abd1c8e0a37e4a1f87a5cf9bf882395873df3d",
+    "full_id": "kksklpykmtmsynxzvpyowvmxpnyotuzozpunxvkn",
+    "parents": [
+      "3da49d01d00fec55b62a7429c72a016c44efd196"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793827400 +0000",
+    "subject": "test(rustty): measure PTY throughput and delivery latency"
+  },
+  "stpumxk": {
+    "hash": "3da49d01d00fec55b62a7429c72a016c44efd196",
+    "full_id": "stpumxkklooqqztroupksoutrolvzrotvnmqplvy",
+    "parents": [
+      "c34689234f7f8d3d083ae50fb043767c081258b2"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793826948 +0000",
+    "subject": "feat(rustty): connect program status to session owners"
+  },
+  "unwwnxk": {
+    "hash": "c34689234f7f8d3d083ae50fb043767c081258b2",
+    "full_id": "unwwnxkuozzwyxvmukmwwytrmlxzzvmyqymztmzl",
+    "parents": [
+      "bcd8d4a0da092d6e72691b0738d806e496759c11"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793826419 +0000",
+    "subject": "feat(rustty-vt): retain complete program status records"
+  },
+  "vtlsuyq": {
+    "hash": "bcd8d4a0da092d6e72691b0738d806e496759c11",
+    "full_id": "vtlsuyqtmnzxpwmptsqkuynnrqlvzyprrmlvkvxt",
+    "parents": [
+      "492aad71d2a88e4e0479910a7b7cc2cb147edebb"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793826282 +0000",
+    "subject": "feat(rustty): compress cold scrollback while idle"
+  },
+  "qkrlxpx": {
+    "hash": "492aad71d2a88e4e0479910a7b7cc2cb147edebb",
+    "full_id": "qkrlxpxurnowquwmxlnpzmxsyvwnynuwkksmtokz",
+    "parents": [
+      "eb443fa8ed38c5d299bd24dc984afda48ad88b5d"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793825392 +0000",
+    "subject": "fix(rustty-vt): complete terminal mode status replies"
+  },
+  "pzqlpkv": {
+    "hash": "eb443fa8ed38c5d299bd24dc984afda48ad88b5d",
+    "full_id": "pzqlpkvrypkwkkovzunlkzxustwttqtruqrypmtn",
+    "parents": [
+      "26044c75bd5d79f26b511f32c11b38cc6b708354"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793825191 +0000",
+    "subject": "feat(rustty-vt): restore scrollback with unscroll"
+  },
+  "mxqmuyy": {
+    "hash": "26044c75bd5d79f26b511f32c11b38cc6b708354",
+    "full_id": "mxqmuyyussulwussqqqmxttqvnvwnxtuuvlpmxlv",
+    "parents": [
+      "c3ccaab3f7f636fe2db7a1cd141212d00641ad5b"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793824714 +0000",
+    "subject": "feat(rustty-vt): style regions with DECCARA"
+  },
+  "moztyqk": {
+    "hash": "c3ccaab3f7f636fe2db7a1cd141212d00641ad5b",
+    "full_id": "moztyqkmnpvnzzluwnxwunykqqmklunxzxouwukq",
+    "parents": [
+      "2f7fb81584189d7cd6d6b5d9d52e08ea88281bab"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793824494 +0000",
+    "subject": "feat(rustty-vt): reset bold and faint independently"
+  },
+  "rxpkrwr": {
+    "hash": "2f7fb81584189d7cd6d6b5d9d52e08ea88281bab",
+    "full_id": "rxpkrwrlktoyuxsvxoluppmpvxoqmwzxvtlrvzrk",
+    "parents": [
+      "f8dc27f3665dcee6bbc1fc4d8347da26eb3621ed"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793824451 +0000",
+    "subject": "feat(rustty-vt): save all side-effect-free modes"
+  },
+  "ovwryqw": {
+    "hash": "f8dc27f3665dcee6bbc1fc4d8347da26eb3621ed",
+    "full_id": "ovwryqwkoqtzqlvymlvpptkzwzxlkmwlwllowowt",
+    "parents": [
+      "bd24855d371739ac7a6149fe1f0f2c6fbd4dfdf5"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793824335 +0000",
+    "subject": "feat(rustty-vt): complete pointer shape stacks"
+  },
+  "lstpmlp": {
+    "hash": "bd24855d371739ac7a6149fe1f0f2c6fbd4dfdf5",
+    "full_id": "lstpmlpssrkrnztwszrvvxrnvxrqvoxtvrvpltlw",
+    "parents": [
+      "5f16b44719f3aa28e72113e2d66ce46c2e24c413"
+    ],
+    "author": "Sebastian Thiel <sebastian.thiel@icloud.com> 1793824089 +0000",
+    "subject": "feat(rustty-vt): discover Kitty graphics features"
+  },
+  "pqzlxtr": {
+    "hash": "5f16b44719f3aa28e72113e2d66ce46c2e24c413",
+    "full_id": "pqzlxtrwumyrmykvrpkkqkqvrlumsskqtotwkzzn",
+    "parents": [
+      "f9aab170c5452e64703e019c5021c7bd36f5be60"
+    ],
+    "author": "Codex <codex@openai.com> 1793784654 +0100",
+    "subject": "feat(rustty): filter the outliner to agent panels"
+  },
+  "xrsmulx": {
+    "hash": "f9aab170c5452e64703e019c5021c7bd36f5be60",
+    "full_id": "xrsmulxzvsvnnwumntmrklznpxylwrxvyzxnlryt",
+    "parents": [
+      "5635211c06a6bf2af21266f4a817bf53e4cefaa6"
+    ],
+    "author": "Codex <codex@openai.com> 1793781166 +0100",
+    "subject": "feat(rustty): notify agent attention without a Stream Deck"
+  },
+  "urnquwk": {
+    "hash": "5635211c06a6bf2af21266f4a817bf53e4cefaa6",
+    "full_id": "urnquwknwrymquprvnqnrowrwqvvxorpstlprzvo",
+    "parents": [
+      "d19e5e079a9a00aaeb344b8771e2a57895758ecb"
+    ],
+    "author": "Codex <codex@openai.com> 1793737086 +0100",
+    "subject": "fix(rustty): locate parameterized benchmark results"
+  },
+  "nnlvlsk": {
+    "hash": "d19e5e079a9a00aaeb344b8771e2a57895758ecb",
+    "full_id": "nnlvlskwrpxzvxmoulyytollmnuxvykttrlryprw",
+    "parents": [
+      "984823afbe1512278b70a87cbc2b82454714fe7b"
+    ],
+    "author": "Codex <codex@openai.com> 1793735323 +0100",
+    "subject": "feat(rustty-vt): share native viewport render metadata"
+  },
+  "llkqvuw": {
+    "hash": "984823afbe1512278b70a87cbc2b82454714fe7b",
+    "full_id": "llkqvuwnotwpzkpxquzvmmtlukwtztpzxqtyvxxy",
+    "parents": [
+      "8fd2e64fab75786e7402fdeffcf56d7e0217f921"
+    ],
+    "author": "Codex <codex@openai.com> 1793724665 +0100",
+    "subject": "fix(rustty-vt): retain application cursor shape in VT handoff"
+  },
+  "woovllw": {
+    "hash": "8fd2e64fab75786e7402fdeffcf56d7e0217f921",
+    "full_id": "woovllwtkzstvspswprzyzvnuspzlvylqlupuquz",
+    "parents": [
+      "00c7e337e01a1ea5e4f08c8ce46b7fc2371f8b38"
+    ],
+    "author": "Codex <codex@openai.com> 1793724013 +0100",
+    "subject": "feat(rustty-vt): notify synchronous hosts when mouse tracking changes"
+  },
+  "wkpkpno": {
+    "hash": "00c7e337e01a1ea5e4f08c8ce46b7fc2371f8b38",
+    "full_id": "wkpkpnolurpyukuzmkoktstzvnntzoplspqwpuxm",
+    "parents": [
+      "c5aec0f087f2ff36f31eb82290132f9616fd7361"
+    ],
+    "author": "Codex <codex@openai.com> 1793723898 +0100",
+    "subject": "feat(rustty-vt): expose native row content revisions for rendering"
+  },
+  "uqrpptu": {
+    "hash": "c5aec0f087f2ff36f31eb82290132f9616fd7361",
+    "full_id": "uqrpptuuynpqsltmtsvywrwrvvntuwkvnuvxntlx",
+    "parents": [
+      "a549d15427291b963e8a8583d120b3c5be81ad4a"
+    ],
+    "author": "Codex <codex@openai.com> 1793723633 +0100",
+    "subject": "feat(rustty-vt): expose synchronous output hold transitions"
+  },
+  "qzqsnzl": {
+    "hash": "a549d15427291b963e8a8583d120b3c5be81ad4a",
+    "full_id": "qzqsnzlullplxswxyxozunytpypsonnrmvpxvnur",
+    "parents": [
+      "721303f774a2fbbe95d1e680489abf5f4f6b24b4"
+    ],
+    "author": "Codex <codex@openai.com> 1793723517 +0100",
+    "subject": "feat(rustty-vt): emit opt-in native OSC 7501 status reports"
+  },
+  "zsknsqv": {
+    "hash": "721303f774a2fbbe95d1e680489abf5f4f6b24b4",
+    "full_id": "zsknsqvnysuwuwprunlstwsytsuxmmynuknzmxzr",
+    "parents": [
+      "48a52ca02d902ea4003f9468c5483b0ea016b574"
+    ],
+    "author": "Codex <codex@openai.com> 1793723376 +0100",
+    "subject": "fix(rustty-vt): retain host graphics denial across resets and screens"
+  },
+  "nmvkomw": {
+    "hash": "48a52ca02d902ea4003f9468c5483b0ea016b574",
+    "full_id": "nmvkomwrxwqptpktomwmwkqxmkpzmrxsvxqkkury",
+    "parents": [
+      "bcc1ffe2d669cb8ddda2cf1600b923874c538020"
+    ],
+    "author": "Codex <codex@openai.com> 1793722980 +0100",
+    "subject": "fix(rustty): restore quad-root zoom when returning from peek"
+  },
+  "lkyorop": {
+    "hash": "bcc1ffe2d669cb8ddda2cf1600b923874c538020",
+    "full_id": "lkyoropwkrmwuktpqqywkzopnnyzmstopuxtszxy",
+    "parents": [
+      "dce420deee338b50f5689c4a2392af107f518d59"
+    ],
+    "author": "Codex <codex@openai.com> 1793609768 +0100",
+    "subject": "fix(rustty): anchor matching footer rows during resize"
+  },
+  "vnpyyss": {
+    "hash": "dce420deee338b50f5689c4a2392af107f518d59",
+    "full_id": "vnpyyssxwxrlzymvqsvuxtsukkwlrxxpvzqoxuqk",
+    "parents": [
+      "9b8f928aa78e0d83c2a192a5145925954faae962"
+    ],
+    "author": "Codex <codex@openai.com> 1793608660 +0100",
+    "subject": "feat(rustty): cross-fade resizes when most text stays put"
+  },
+  "wwrmqll": {
+    "hash": "9b8f928aa78e0d83c2a192a5145925954faae962",
+    "full_id": "wwrmqllqxpmksxkymzystwzpquwzxttqvrltplsy",
+    "parents": [
+      "e5eb1f924dbdbae594d21e4d6a660c5fc3ca8820"
+    ],
+    "author": "Codex <codex@openai.com> 1793558062 +0100",
+    "subject": "feat(rustty): populate remote tmuxx sessions from local environment providers"
+  },
+  "numllqw": {
+    "hash": "e5eb1f924dbdbae594d21e4d6a660c5fc3ca8820",
+    "full_id": "numllqwwnnuzutrwqtwyvswvmrmpkuquovszoqzq",
+    "parents": [
+      "fe537ed5ab091ed8064fc833b0af1f4399d041ac"
+    ],
+    "author": "Codex <codex@openai.com> 1793420539 +0100",
+    "subject": "test(rustty): remove startup fixture timing race"
+  },
+  "qpzqolm": {
+    "hash": "fe537ed5ab091ed8064fc833b0af1f4399d041ac",
+    "full_id": "qpzqolmrrmvmyspnxtuzprxokyvlltxsrqtnyyxs",
+    "parents": [
+      "ff3ee42b0171689980f8220bf5a2c02670f771dd"
+    ],
+    "author": "Codex <codex@openai.com> 1793419767 +0100",
+    "subject": "fix(rustty): clear CI Clippy failures"
+  },
+  "nqooryk": {
+    "hash": "ff3ee42b0171689980f8220bf5a2c02670f771dd",
+    "full_id": "nqoorykxoqrvorwlsxzopmrqkolskrmrtksqymmy",
+    "parents": [
+      "e4e66710c07823b35ea5b563b92eef2c41dc3b3d"
+    ],
+    "author": "Codex <codex@openai.com> 1793419464 +0100",
+    "subject": "test(rustty): cover quad roots across saved sessions"
+  },
+  "pwmqwuz": {
+    "hash": "e4e66710c07823b35ea5b563b92eef2c41dc3b3d",
+    "full_id": "pwmqwuzqvyuvlvszupzrlsryolkxwwzvkpsvupxq",
+    "parents": [
+      "1a8c10de699ade0494694c950c907e424269776b"
+    ],
+    "author": "Codex <codex@openai.com> 1793361611 +0100",
+    "subject": "fix(rustty): remove unused top headers from split panes"
+  },
+  "lyskklt": {
+    "hash": "1a8c10de699ade0494694c950c907e424269776b",
+    "full_id": "lyskkltnrkztxslqnzlvrqrstlvuxoxumnzoksvo",
+    "parents": [
+      "949d9bcbdbca7a4470e30d54e7e5192e77969d82"
+    ],
+    "author": "Codex <codex@openai.com> 1793361497 +0100",
+    "subject": "fix(rustty): retain single-tab breadcrumbs in macOS fullscreen"
+  },
+  "mwppttv": {
+    "hash": "949d9bcbdbca7a4470e30d54e7e5192e77969d82",
+    "full_id": "mwppttvstqoxptmomvmuvoqowsqpuwozrttqxopw",
+    "parents": [
+      "8cbeb6500ddb3f35f76209208ec6a85761a7bc08"
+    ],
+    "author": "Codex <codex@openai.com> 1793337836 +0100",
+    "subject": "feat(rustty): show running counts throughout the outliner"
+  },
+  "rqomqmv": {
+    "hash": "8cbeb6500ddb3f35f76209208ec6a85761a7bc08",
+    "full_id": "rqomqmvploxxpwvsmpknuuknkozwzoyskkvspuxq",
+    "parents": [
+      "2aa54606f286d7d54648f925089ea6cc861d3697"
+    ],
+    "author": "Codex <codex@openai.com> 1793332756 +0100",
+    "subject": "style(rustty): accent window breadcrumb text"
+  },
+  "nppzkpv": {
+    "hash": "2aa54606f286d7d54648f925089ea6cc861d3697",
+    "full_id": "nppzkpvtvosqlzxymoyoylwrwssoovnyrowunpqt",
+    "parents": [
+      "d18e1e7d97965b47144fe4ba5222ab42df9a9d70"
+    ],
+    "author": "Codex <codex@openai.com> 1793305990 +0100",
+    "subject": "fix(stream-deck): clear ready counts when panes are visited"
+  },
+  "qkupmxw": {
+    "hash": "d18e1e7d97965b47144fe4ba5222ab42df9a9d70",
+    "full_id": "qkupmxwlxvpmnzltzqzqlrmspowkqlyxkktkymxn",
+    "parents": [
+      "2d38e6373bcd7384981314e1b2a2e02fb77fedbb"
+    ],
+    "author": "Codex <codex@openai.com> 1793303096 +0100",
+    "subject": "feat(rustty): accept macOS emoji and text drops"
+  },
+  "pzvruwt": {
+    "hash": "2d38e6373bcd7384981314e1b2a2e02fb77fedbb",
+    "full_id": "pzvruwtpzprukwxtslsmtvvrqqswsqzktppslmwp",
+    "parents": [
+      "c2ba37091f7ece850771a4dd2f76e5139801394f"
+    ],
+    "author": "Codex <codex@openai.com> 1793282356 +0100",
+    "subject": "fix(rustty): preserve emoji picker input"
+  },
+  "wlmrzqv": {
+    "hash": "c2ba37091f7ece850771a4dd2f76e5139801394f",
+    "full_id": "wlmrzqvkvnplzuqkqsvustptxmkstzorupznnnpm",
+    "parents": [
+      "c53d903d2538f3eacb7fafc047d2f1289681a230",
+      "7a10cab4bba2af88659668898a3bf001611afb77"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1793281647 +0100",
+    "subject": "Merge branch 'macos-dictation' into HEAD"
+  },
+  "wtqokqq": {
+    "hash": "c53d903d2538f3eacb7fafc047d2f1289681a230",
+    "full_id": "wtqokqqrsmwzopwnnzwqvtpnqluxvoukvxosxxls",
+    "parents": [
+      "aedf0e87af6f788174aadbce78b4b6c329b62c8f"
+    ],
+    "author": "Codex <codex@openai.com> 1793276568 +0100",
+    "subject": "fix(tmuxx): forward tmux-wrapped clipboard requests"
+  },
+  "wxwtwqx": {
+    "hash": "7a10cab4bba2af88659668898a3bf001611afb77",
+    "full_id": "wxwtwqxrvxolszlmysompxusqvqxrmnxlxksnumr",
+    "parents": [
+      "b66c374b7ec616bd71bed88433cde7407433a7e9"
+    ],
+    "author": "Joaquin Coromina <bjoaquinc@gmail.com> 1793269760 +0100",
+    "subject": "rustty: let macOS dictation start in terminal panes"
+  },
+  "pvsmzzy": {
+    "hash": "aedf0e87af6f788174aadbce78b4b6c329b62c8f",
+    "full_id": "pvsmzzytnuswszzsztklxxyrxroqnqxttoqlkuoq",
+    "parents": [
+      "6dc707b99d418fb3b7a968de96803879333cd0bb"
+    ],
+    "author": "Codex <codex@openai.com> 1793275988 +0100",
+    "subject": "feat(rustty): configure unfocused tab saturation"
+  },
+  "nrqxxyn": {
+    "hash": "b66c374b7ec616bd71bed88433cde7407433a7e9",
+    "full_id": "nrqxxynwqkkopulkswzuqluroyzmrstonqvqynyk",
+    "parents": [
+      "b96a50d452feb97fbc9542a239072b6ff5cd8cbc"
+    ],
+    "author": "Codex <codex@openai.com> 1793257420 +0100",
+    "subject": "fix(rustty): preserve explicit tmuxx tab titles"
+  },
+  "rsvowyx": {
+    "hash": "6dc707b99d418fb3b7a968de96803879333cd0bb",
+    "full_id": "rsvowyxnsokwyntrvyyxwwsvsvvyulmsysxyuwps",
+    "parents": [
+      "a916dbed2c865f0cc6df4f70dd77b54e7ca56dce"
+    ],
+    "author": "Codex <codex@openai.com> 1793275753 +0100",
+    "subject": "style(rustty): mute tab accents in unfocused windows"
+  },
+  "ruynuyo": {
+    "hash": "b96a50d452feb97fbc9542a239072b6ff5cd8cbc",
+    "full_id": "ruynuyoxpsnrzypvkmqnlnzllrmtqwyrxuokrpps",
+    "parents": [
+      "ea91774e34180a13e83be1216877ea5eab3d720b"
+    ],
+    "author": "Codex <codex@openai.com> 1793202472 +0100",
+    "subject": "feat(rustty): make the tab frame color mix configurable"
+  },
+  "ymlmwtn": {
+    "hash": "a916dbed2c865f0cc6df4f70dd77b54e7ca56dce",
+    "full_id": "ymlmwtnzsuossrpytyupkyynwuooyslstqrqsozo",
+    "parents": [
+      "16f104230b67a4e522152441103900081ca70b3f"
+    ],
+    "author": "Codex <codex@openai.com> 1793274809 +0100",
+    "subject": "style(rustty): make window breadcrumb text bold"
+  },
+  "quvpstm": {
+    "hash": "ea91774e34180a13e83be1216877ea5eab3d720b",
+    "full_id": "quvpstmstyywyvwzkwvrkwkxqyxzqmlzkzrkzyxs",
+    "parents": [
+      "ea676d0787c2c393a8a1e7acee6db09845209c11"
+    ],
+    "author": "Codex <codex@openai.com> 1793201350 +0100",
+    "subject": "feat(rustty): keep breadcrumbs beside macOS window controls"
+  },
+  "vwstory": {
+    "hash": "16f104230b67a4e522152441103900081ca70b3f",
+    "full_id": "vwstoryymtsvtmpoonsotvtpsvpnvuopspoposko",
+    "parents": [
+      "1cbd3c13faabfc82935d39a755fa1a30f7406c66"
+    ],
+    "author": "Codex <codex@openai.com> 1793269268 +0100",
+    "subject": "feat(rustty): add recursive quad roots"
+  },
+  "mpptptp": {
+    "hash": "ea676d0787c2c393a8a1e7acee6db09845209c11",
+    "full_id": "mpptptpnlvzmxnlszxvntuxwltorqsmkkooomntn",
+    "parents": [
+      "fb1be48ce4874990acaa605125f1796cf10f1172"
+    ],
+    "author": "Codex <codex@openai.com> 1793195820 +0100",
+    "subject": "feat(rustty): animate panel splits"
+  },
+  "olowxzp": {
+    "hash": "1cbd3c13faabfc82935d39a755fa1a30f7406c66",
+    "full_id": "olowxzprurppvoutquntwqovyopxowzpxtwssyko",
+    "parents": [
+      "80dabfd527fce165552b9039d4c6d5e65652a671"
+    ],
+    "author": "Codex <codex@openai.com> 1793267027 +0100",
+    "subject": "feat(stream-deck): prioritize ready agents and retrace panel visits"
+  },
+  "uxsppup": {
+    "hash": "fb1be48ce4874990acaa605125f1796cf10f1172",
+    "full_id": "uxsppupomnzxozwnqwrnvovrplykykoqoyrqtnnr",
+    "parents": [
+      "4560c022c7c5e82a550f2702fb9c90481203ea3e"
+    ],
+    "author": "Codex <codex@openai.com> 1793176066 +0100",
+    "subject": "docs(rustty): record the October 28 mainline reintegration"
+  },
+  "ttxppwy": {
+    "hash": "80dabfd527fce165552b9039d4c6d5e65652a671",
+    "full_id": "ttxppwympxzsonkxyxntqmruspxmpkxyqwxorryn",
+    "parents": [
+      "b66c374b7ec616bd71bed88433cde7407433a7e9"
+    ],
+    "author": "Codex <codex@openai.com> 1793259717 +0100",
+    "subject": "fix(rustty): release native windows before workspace teardown"
+  },
+  "tttylxx": {
+    "hash": "4560c022c7c5e82a550f2702fb9c90481203ea3e",
+    "full_id": "tttylxxnwvxtkksnzuukuzokoqvrwxwrqltuqkvm",
+    "parents": [
+      "ee42471906cfec3de2bcf4993c44e1245c8f044d"
+    ],
+    "author": "Codex <codex@openai.com> 1793175831 +0100",
+    "subject": "docs(skills): add repository-local tix reintegration workflow"
+  },
+  "yvyrroz": {
+    "hash": "ee42471906cfec3de2bcf4993c44e1245c8f044d",
+    "full_id": "yvyrroznqyzrptqrkqnvuzynnzokmsoqosqnqnpp",
+    "parents": [
+      "e1fbaed7908fe92d07ffc1275de718dd37a6fed4"
+    ],
+    "author": "Codex <codex@openai.com> 1793175697 +0100",
+    "subject": "test(rustty): refresh mainline comparison fixtures"
+  },
+  "xvuvrpu": {
+    "hash": "e1fbaed7908fe92d07ffc1275de718dd37a6fed4",
+    "full_id": "xvuvrpuoprzwmrxtoxsnwkzpmqzutknrmuulvzzx",
+    "parents": [
+      "72bb84f266b7b3805bc21d9e235099d698dc77d6"
+    ],
+    "author": "Codex <codex@openai.com> 1793175343 +0100",
+    "subject": "test(rustty): preserve incoming mainline safety guarantees"
+  },
+  "wtowvtl": {
+    "hash": "72bb84f266b7b3805bc21d9e235099d698dc77d6",
+    "full_id": "wtowvtltlumzyxkvoxykzsnvrwqonkmykrrsloox",
+    "parents": [
+      "fe6d78322928d670ae0b2ced83f584debdb14a96"
+    ],
+    "author": "Codex <codex@openai.com> 1793175139 +0100",
+    "subject": "feat(rustty): preview every clipboard representation before approval"
+  },
+  "nskyxmo": {
+    "hash": "fe6d78322928d670ae0b2ced83f584debdb14a96",
+    "full_id": "nskyxmoqtvzxvxtlzzulowxwqxrkwwlkwosonlvr",
+    "parents": [
+      "93c131373ce747d6076f2f4e1519657eab75c90e"
+    ],
+    "author": "Codex <codex@openai.com> 1793174722 +0100",
+    "subject": "fix(rustty-vt): cap page rows when narrowing columns"
+  },
+  "kwwpmny": {
+    "hash": "93c131373ce747d6076f2f4e1519657eab75c90e",
+    "full_id": "kwwpmnylvmrqzusunztpwwymzlqtwlokqwlkvsqo",
+    "parents": [
+      "baf83c85a362bf1827308faf159211dba7c1fa19"
+    ],
+    "author": "Codex <codex@openai.com> 1793159585 +0100",
+    "subject": "fix(rustty): show focused panel labels during quad peek"
+  },
+  "qzsnypx": {
+    "hash": "baf83c85a362bf1827308faf159211dba7c1fa19",
+    "full_id": "qzsnypxuqkmntqptpoolvnwsroypwqzvxqvvvupr",
+    "parents": [
+      "5ad4fa3c12982aee068ea646d4c8a598471c7021"
+    ],
+    "author": "Codex <codex@openai.com> 1793158116 +0100",
+    "subject": "feat(rustty): keep session exports across reboots when selected"
+  },
+  "vykoqqq": {
+    "hash": "5ad4fa3c12982aee068ea646d4c8a598471c7021",
+    "full_id": "vykoqqqwpowmuymqwuxmplzwoswllrrqzlrnyktp",
+    "parents": [
+      "253e7ae349eb2742519d6878388e5f6c99523098"
+    ],
+    "author": "Codex <codex@openai.com> 1793101785 +0100",
+    "subject": "fix(rustty): restore imported tabs without blocking the UI"
+  },
+  "lwwnktn": {
+    "hash": "253e7ae349eb2742519d6878388e5f6c99523098",
+    "full_id": "lwwnktnmuoklrspxopnluvkpxkskqvlzpmvvtuur",
+    "parents": [
+      "615be935e54329b503c54bb9183595365ff1a921"
+    ],
+    "author": "Codex <codex@openai.com> 1793099197 +0100",
+    "subject": "fix(rustty): remove standalone pane status badges"
+  },
+  "xsuxlrm": {
+    "hash": "615be935e54329b503c54bb9183595365ff1a921",
+    "full_id": "xsuxlrmoorumstrqtnsuxzqzrknvwysxzmxpmqwn",
+    "parents": [
+      "0c1b20babd6c424a492d1700eab11362e5128ee2"
+    ],
+    "author": "Codex <codex@openai.com> 1793093738 +0100",
+    "subject": "perf(rustty): animate progress without window redraws"
+  },
+  "llllsny": {
+    "hash": "0c1b20babd6c424a492d1700eab11362e5128ee2",
+    "full_id": "llllsnyowyyzktvlqokqrrtsnvtrvtryktzwtwun",
+    "parents": [
+      "a5a9bbe37660a37ab1717c2e4ac257613b3ece3d"
+    ],
+    "author": "Codex <codex@openai.com> 1793092182 +0100",
+    "subject": "perf(rustty): avoid UI wakes for completed silent PTY writes"
+  },
+  "mwwtwxz": {
+    "hash": "a5a9bbe37660a37ab1717c2e4ac257613b3ece3d",
+    "full_id": "mwwtwxzvonyqkvzsxmskusprzqnoyolyypkowmkt",
+    "parents": [
+      "448dafc691b93956dfd738fe2d3dd43dee7b44f9"
+    ],
+    "author": "Codex <codex@openai.com> 1793091877 +0100",
+    "subject": "fix(rustty): reserve a third Metal drawable for cursor retirement"
+  },
+  "lxrrkqu": {
+    "hash": "448dafc691b93956dfd738fe2d3dd43dee7b44f9",
+    "full_id": "lxrrkquoqotkplxzlwqpzlxzzvlloovtymrklylz",
+    "parents": [
+      "7297c6403e039291240d0a77d98921c41dbd8137"
+    ],
+    "author": "Codex <codex@openai.com> 1793089581 +0100",
+    "subject": "perf(rustty): skip unchanged dashboard work on pointer motion"
+  },
+  "runtxnn": {
+    "hash": "7297c6403e039291240d0a77d98921c41dbd8137",
+    "full_id": "runtxnnlyuypwplvonksrnkqsrrqskvszlqozqtx",
+    "parents": [
+      "57bdec6e30765f63aeda5b74bce253866a504d5e"
+    ],
+    "author": "Codex <codex@openai.com> 1793085111 +0100",
+    "subject": "feat(rustty): automatically import a sole session dump"
+  },
+  "kkvvsul": {
+    "hash": "57bdec6e30765f63aeda5b74bce253866a504d5e",
+    "full_id": "kkvvsullwzpnnqwytuoylwzusuuwkuqntupqxtrz",
+    "parents": [
+      "915110c18bb52450bb4935fb3e033f96606f3d16"
+    ],
+    "author": "Codex <codex@openai.com> 1793083926 +0100",
+    "subject": "perf(rustty): retain cursor blinking across split panes"
+  },
+  "lwqttsm": {
+    "hash": "915110c18bb52450bb4935fb3e033f96606f3d16",
+    "full_id": "lwqttsmoosplrvyuqlylotzvulysqqwyvsqwypsp",
+    "parents": [
+      "df10208fe628f16adae25d4ad56abae9d0109537"
+    ],
+    "author": "Codex <codex@openai.com> 1793076654 +0100",
+    "subject": "fix(rustty): back off failed Stream Deck connections"
+  },
+  "xwptlul": {
+    "hash": "df10208fe628f16adae25d4ad56abae9d0109537",
+    "full_id": "xwptlulsvlnuvqlwyvqpywrnzkyovwpylxulsnnv",
+    "parents": [
+      "5748da08d6bdd0f69f1846c90912e3236d96d0b7"
+    ],
+    "author": "Codex <codex@openai.com> 1793075096 +0100",
+    "subject": "perf(rustty): retain idle cursor blinking in a macOS layer"
+  },
+  "krzxonu": {
+    "hash": "5748da08d6bdd0f69f1846c90912e3236d96d0b7",
+    "full_id": "krzxonuulwwlupknwtovsywsxqrknrwyrzsvwmpn",
+    "parents": [
+      "0e0e91360a41c0a3fd76fc85825589ab7ceba43f"
+    ],
+    "author": "Codex <codex@openai.com> 1793073119 +0100",
+    "subject": "test(rustty): verify visible Metal frame benchmarks"
+  },
+  "lnnruop": {
+    "hash": "0e0e91360a41c0a3fd76fc85825589ab7ceba43f",
+    "full_id": "lnnruoptmvnwkzlnrmosunpxpwupnnpxrmwtmmsq",
+    "parents": [
+      "817114695ce4b35d17b910984d620c90032032cb"
+    ],
+    "author": "Codex <codex@openai.com> 1793030914 +0100",
+    "subject": "perf(rustty): limit double-click link lookup to the clicked line"
+  },
+  "vpzrlpl": {
+    "hash": "817114695ce4b35d17b910984d620c90032032cb",
+    "full_id": "vpzrlplxumsyvlvvnvkxquwwqluzkzsntkozqwuu",
+    "parents": [
+      "9f759ca4ba34798ed1063d377b8a9409b5d784c4"
+    ],
+    "author": "Codex <codex@openai.com> 1793022767 +0100",
+    "subject": "revert(rustty): restore continuous zoom transitions"
+  },
+  "mzzmvyt": {
+    "hash": "9f759ca4ba34798ed1063d377b8a9409b5d784c4",
+    "full_id": "mzzmvytmmsusptlsyrprswukkqrsqoumyxmxluxr",
+    "parents": [
+      "64d61e1b2961c24cd8b3f3bae918b8856af37a1b"
+    ],
+    "author": "Codex <codex@openai.com> 1793009605 +0100",
+    "subject": "feat(rustty): disambiguate panel labels by directory path"
+  },
+  "pslnmos": {
+    "hash": "64d61e1b2961c24cd8b3f3bae918b8856af37a1b",
+    "full_id": "pslnmosqtzyrknkwlmpxuzqvovkynspqqyqsrzop",
+    "parents": [
+      "388fc315872ad8f2fe089f07ab5a3afc7d95ccdc"
+    ],
+    "author": "Codex <codex@openai.com> 1793008762 +0100",
+    "subject": "fix(rustty): keep quad label identity stable on focus"
+  },
+  "vmoxlzt": {
+    "hash": "388fc315872ad8f2fe089f07ab5a3afc7d95ccdc",
+    "full_id": "vmoxlztouqxkynrkwyspwpqttnqyxkmozrukxuzm",
+    "parents": [
+      "d39079a3f5457945f4d2849681cd248ef6987936"
+    ],
+    "author": "Codex <codex@openai.com> 1793007117 +0100",
+    "subject": "feat(rustty): add confirmed session dumping to the File menu"
+  },
+  "qnsnwlw": {
+    "hash": "d39079a3f5457945f4d2849681cd248ef6987936",
+    "full_id": "qnsnwlwyrxwlmzxooyxoyvmzxlzmszqspvrrxrys",
+    "parents": [
+      "8527f9e194d931c97edf51d2d279e9bc7ad63596"
+    ],
+    "author": "Codex <codex@openai.com> 1793005480 +0100",
+    "subject": "fix(rustty): keep zoom text anchored through redraws"
+  },
+  "mlxqsqm": {
+    "hash": "8527f9e194d931c97edf51d2d279e9bc7ad63596",
+    "full_id": "mlxqsqmqozvrkroqwromrzlrkvkmvwtomwlntyon",
+    "parents": [
+      "abc527e4335ce1ec392f455723d50e281019d56b"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1792996699 +0100",
+    "subject": "fix(rustty): start inactive local tabs lazily"
+  },
+  "ozmoqrr": {
+    "hash": "abc527e4335ce1ec392f455723d50e281019d56b",
+    "full_id": "ozmoqrrrpnwlzynrwropyvymllntzzqrtonwmlqm",
+    "parents": [
+      "7efa87c2675bb6a4bfb136312f532bef066a151d"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1792996253 +0100",
+    "subject": "fix(rustty): compare shell startup before separating restored history"
+  },
+  "rlryzqt": {
+    "hash": "7efa87c2675bb6a4bfb136312f532bef066a151d",
+    "full_id": "rlryzqtwyysrourpzprktmunrtykursutlrquvuq",
+    "parents": [
+      "a665c171398a6093a9f53b9daf7d1cc74cd7e880"
+    ],
+    "author": "Codex <codex@openai.com> 1792989306 +0100",
+    "subject": "docs(rustty): record ports from the updated Ghostty main"
+  },
+  "krpyolo": {
+    "hash": "a665c171398a6093a9f53b9daf7d1cc74cd7e880",
+    "full_id": "krpyolozuvskqstnyqrntmoqkswylrsxwxzulwry",
+    "parents": [
+      "011e8bc8abc374ee14de5cc00b7b6b987c3c8517"
+    ],
+    "author": "Codex <codex@openai.com> 1792988807 +0100",
+    "subject": "perf(rustty-render): cache Kitty placeholder runs by row"
+  },
+  "mvxnopl": {
+    "hash": "011e8bc8abc374ee14de5cc00b7b6b987c3c8517",
+    "full_id": "mvxnoplkvtmzrlxlxnyrlprtmlwsvmkuonzzmwkq",
+    "parents": [
+      "3b0d284d1251ec7b6dcfb852430a2a0932be4e1c"
+    ],
+    "author": "Codex <codex@openai.com> 1792988712 +0100",
+    "subject": "perf(rustty-vt): skip unchanged idle animation scans"
+  },
+  "yynrooq": {
+    "hash": "3b0d284d1251ec7b6dcfb852430a2a0932be4e1c",
+    "full_id": "yynrooqqwqkmwqxtmqmxtployxyqunxyrsxvsqkt",
+    "parents": [
+      "2fb3e1bcf63d33528ffc9298c835e985db5e67be"
+    ],
+    "author": "Codex <codex@openai.com> 1792988584 +0100",
+    "subject": "fix(rustty-vt): clean up images anchored in discarded history"
+  },
+  "xlxzmzm": {
+    "hash": "2fb3e1bcf63d33528ffc9298c835e985db5e67be",
+    "full_id": "xlxzmzmvuslltlvlnvyvltrnrlnsvwwvrvnlnxpn",
+    "parents": [
+      "966fcd1d9aa43be3213ccf33def63ec851632788"
+    ],
+    "author": "Codex <codex@openai.com> 1792988492 +0100",
+    "subject": "chore(rustty): refresh bundled color themes"
+  },
+  "rxwlxzx": {
+    "hash": "966fcd1d9aa43be3213ccf33def63ec851632788",
+    "full_id": "rxwlxzxznpkwzzsmtppvulrluuwoonvxnxtoruzk",
+    "parents": [
+      "5dee5d593990daa27eabd3e039e552a532839ae6"
+    ],
+    "author": "Codex <codex@openai.com> 1792988390 +0100",
+    "subject": "feat(rustty-vt): persist Kitty graphics in binary snapshots"
+  },
+  "kmtwuqs": {
+    "hash": "5dee5d593990daa27eabd3e039e552a532839ae6",
+    "full_id": "kmtwuqspzxukvnnqlkxzxwxvwumruyzqrnmysllv",
+    "parents": [
+      "71ae2bb9786a79b9344c1918913ca9368fe2c8c1"
+    ],
+    "author": "Codex <codex@openai.com> 1792988310 +0100",
+    "subject": "perf(rustty-vt): index common Kitty diacritics directly"
+  },
+  "ukzwlwk": {
+    "hash": "71ae2bb9786a79b9344c1918913ca9368fe2c8c1",
+    "full_id": "ukzwlwkskqozsqxxmtokqxkqypkzonpqtlnznsky",
+    "parents": [
+      "3e91686afa0c354b5a4f53cfd8321d5e4e77c4a4"
+    ],
+    "author": "Codex <codex@openai.com> 1792988187 +0100",
+    "subject": "feat(rustty-vt): stop input at selected parser boundaries"
+  },
+  "prxrxyy": {
+    "hash": "3e91686afa0c354b5a4f53cfd8321d5e4e77c4a4",
+    "full_id": "prxrxyyrvznztvwqxnwqsvktqksvrsntwnpxklzo",
+    "parents": [
+      "984d91876208dc134bc5b7bee71e8c45d159d96b"
+    ],
+    "author": "Codex <codex@openai.com> 1792988171 +0100",
+    "subject": "fix(rustty): keep cells visible in nested split layouts"
+  },
+  "wwkmqxz": {
+    "hash": "984d91876208dc134bc5b7bee71e8c45d159d96b",
+    "full_id": "wwkmqxzxwwmmqtkktpzyuxpuwqqstuvnrrrqwxzx",
+    "parents": [
+      "e5c522158590cd63cbd57e0a7a8692dbecef5338"
+    ],
+    "author": "Codex <codex@openai.com> 1792988160 +0100",
+    "subject": "build(rustty): refresh Ghostty reference tools for Zig 0.17"
+  },
+  "kkswlqt": {
+    "hash": "e5c522158590cd63cbd57e0a7a8692dbecef5338",
+    "full_id": "kkswlqtrlyqrpvkqotswxslyslnkslrkxnxlsqpt",
+    "parents": [
+      "9b04bf46b8e068d8c243662922b2cd20dc73f582"
+    ],
+    "author": "Codex <codex@openai.com> 1792987741 +0100",
+    "subject": "fix(rustty-parser): normalize C1 continuation restarts"
+  },
+  "rnopnlv": {
+    "hash": "9b04bf46b8e068d8c243662922b2cd20dc73f582",
+    "full_id": "rnopnlvkuuxqytkqmkkpsnkovlnquyopmyxxqmpt",
+    "parents": [
+      "16f251c6b01bd519dfd26c1e178606f5a2ab9b2a"
+    ],
+    "author": "Codex <codex@openai.com> 1792987510 +0100",
+    "subject": "fix(rustty-vt): discard cancelled and aborted APC commands"
+  },
+  "mulkpqz": {
+    "hash": "16f251c6b01bd519dfd26c1e178606f5a2ab9b2a",
+    "full_id": "mulkpqzprpssquuxrlqzoskyrwlmkwwtttuqulls",
+    "parents": [
+      "52202d2d0578a37bdde15bd8c922bb86e9481ce4"
+    ],
+    "author": "Codex <codex@openai.com> 1792987406 +0100",
+    "subject": "fix(rustty-vt): retain trailing blank rows in untrimmed VT exports"
+  },
+  "rkpnsxz": {
+    "hash": "52202d2d0578a37bdde15bd8c922bb86e9481ce4",
+    "full_id": "rkpnsxztzkvzxlyyroqzuozwuwvuyvvlvulrzqop",
+    "parents": [
+      "d267390ac204774ff36dd9c0b9b600da204eac47"
+    ],
+    "author": "Codex <codex@openai.com> 1792987295 +0100",
+    "subject": "fix(rustty-vt): preserve blank cells and backgrounds in VT exports"
+  },
+  "koxwtpq": {
+    "hash": "d267390ac204774ff36dd9c0b9b600da204eac47",
+    "full_id": "koxwtpqluuuymrrvxsznxqtwvzkvoxzovlmnrllo",
+    "parents": [
+      "21b0c8810b6b731c4a184d5c7ddcd89f7a0e33b2"
+    ],
+    "author": "Codex <codex@openai.com> 1792987292 +0100",
+    "subject": "fix(rustty): report color schemes after configuration changes"
+  },
+  "pxqrxkp": {
+    "hash": "21b0c8810b6b731c4a184d5c7ddcd89f7a0e33b2",
+    "full_id": "pxqrxkplsmsxmtprvzurknqrswrvkwmrrwttmuux",
+    "parents": [
+      "de7a0bd14b7c1c7540dba54b586f259f6775168d"
+    ],
+    "author": "Codex <codex@openai.com> 1792987239 +0100",
+    "subject": "fix(rustty-vt): abandon chunks before non-direct image transfers"
+  },
+  "uylptzm": {
+    "hash": "de7a0bd14b7c1c7540dba54b586f259f6775168d",
+    "full_id": "uylptzmnllwtxmvnzwtqzwvutkwtvyuyvopkyrns",
+    "parents": [
+      "f7532fcca3da1c9436655fdb5f9ee96d7ed84761"
+    ],
+    "author": "Codex <codex@openai.com> 1792987057 +0100",
+    "subject": "fix(rustty-vt): apply cursor origin offsets once"
+  },
+  "wxymspv": {
+    "hash": "f7532fcca3da1c9436655fdb5f9ee96d7ed84761",
+    "full_id": "wxymspvkzmkzquuqlporxnnuvlqwwznvmvrpsntt",
+    "parents": [
+      "2fe0f52e372eca783eb93b3b5bc9c45e68d0d20b"
+    ],
+    "author": "Codex <codex@openai.com> 1792987041 +0100",
+    "subject": "fix(rustty-vt): accept platform Kitty shared-memory names"
+  },
+  "vmwutrp": {
+    "hash": "2fe0f52e372eca783eb93b3b5bc9c45e68d0d20b",
+    "full_id": "vmwutrplvwuzqunssurtymzxtpnzuzkmtwrtymnt",
+    "parents": [
+      "8d19e809d5a067a44d86a61236d6a8fd1ab2ca3d"
+    ],
+    "author": "Codex <codex@openai.com> 1792987017 +0100",
+    "subject": "fix(rustty-vt): skip unknown snapshot records"
+  },
+  "vpputwr": {
+    "hash": "8d19e809d5a067a44d86a61236d6a8fd1ab2ca3d",
+    "full_id": "vpputwrkskxoluxlxpkxkrwrrylvyukkxvuxmxvm",
+    "parents": [
+      "66e8bb0421a11eb10bdb17f13364a1c77572f808"
+    ],
+    "author": "Codex <codex@openai.com> 1792986975 +0100",
+    "subject": "fix(rustty-vt): stop backward cursor moves at the left margin"
+  },
+  "qusvwtw": {
+    "hash": "66e8bb0421a11eb10bdb17f13364a1c77572f808",
+    "full_id": "qusvwtwwluyuonzqmzprkyollkuwolyyuvxsqmxr",
+    "parents": [
+      "b9dfb304fbfd75803dd1132f776eb8439bea26c4"
+    ],
+    "author": "Codex <codex@openai.com> 1792984838 +0100",
+    "subject": "style(rustty): use a subtle block band for restored displays"
+  },
+  "lkmqvrr": {
+    "hash": "b9dfb304fbfd75803dd1132f776eb8439bea26c4",
+    "full_id": "lkmqvrrkspylnqnwoowyptkzmuurrzqlltrmmznp",
+    "parents": [
+      "e496c33e1179cca01893920b84a357185a364985"
+    ],
+    "author": "Codex <codex@openai.com> 1792954066 +0100",
+    "subject": "fix(rustty): animate automatic zoom exits"
+  },
+  "nsrmoyw": {
+    "hash": "e496c33e1179cca01893920b84a357185a364985",
+    "full_id": "nsrmoywlkxzullonzozuwtmzrszpnmwywpkryklr",
+    "parents": [
+      "5fe07b4467c7e7bf26a3e4b7ed1d625bf9f5ef39"
+    ],
+    "author": "Codex <codex@openai.com> 1792939988 +0100",
+    "subject": "feat(rustty): animate pane and quadrant zoom transitions"
+  },
+  "rtzmssq": {
+    "hash": "5fe07b4467c7e7bf26a3e4b7ed1d625bf9f5ef39",
+    "full_id": "rtzmssqqlpkvrnlmrlksvtklkzlnyvmprvyypxno",
+    "parents": [
+      "f2d55ea61900cc71c463af72611bc03853c941ed"
+    ],
+    "author": "Codex <codex@openai.com> 1792811216 +0200",
+    "subject": "feat(rustty)!: save session dumps on quit and offer them at startup"
+  },
+  "yzmkpqk": {
+    "hash": "f2d55ea61900cc71c463af72611bc03853c941ed",
+    "full_id": "yzmkpqkklutrqszqmxnmsupqxksyprnupqxvklms",
+    "parents": [
+      "9e946d54083398115a28b9c54ec450353be01ed4"
+    ],
+    "author": "Codex <codex@openai.com> 1792782762 +0200",
+    "subject": "feat(rustty): offer theme colors for tab accents"
+  },
+  "kwlqlrk": {
+    "hash": "9e946d54083398115a28b9c54ec450353be01ed4",
+    "full_id": "kwlqlrkuoxtwwovowyosssoqmxkkuytlnwxmunwm",
+    "parents": [
+      "a0ec882afbfcdd0b05610bdab172ed716b633a63"
+    ],
+    "author": "Codex <codex@openai.com> 1792782582 +0200",
+    "subject": "feat(rustty): bleed tab colors into the existing window frame"
+  },
+  "uoqkvnp": {
+    "hash": "a0ec882afbfcdd0b05610bdab172ed716b633a63",
+    "full_id": "uoqkvnppwrlxmorwxkrpyutsrunourlpqmzpumuz",
+    "parents": [
+      "8194d6dfc09306227f9cc99544a180f8a3b7eb36"
+    ],
+    "author": "Codex <codex@openai.com> 1792744858 +0200",
+    "subject": "fix(rustty): fit restored banners to imported panels"
+  },
+  "tlzznuo": {
+    "hash": "8194d6dfc09306227f9cc99544a180f8a3b7eb36",
+    "full_id": "tlzznuosqzrnlypuxvvvozvsxyvvsqrtwysxrowu",
+    "parents": [
+      "6cf1e5cdee2a8eaf6994cbda12791c675278a989"
+    ],
+    "author": "Codex <codex@openai.com> 1792743517 +0200",
+    "subject": "fix(rustty): close disconnected tmuxx windows without prompting"
+  },
+  "qmrusvy": {
+    "hash": "6cf1e5cdee2a8eaf6994cbda12791c675278a989",
+    "full_id": "qmrusvynswnxqwpsstxtpysxqutxnkvptkonrtom",
+    "parents": [
+      "c560e4bac4f4f84d92b7db477cb94075c4458703"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1792729288 +0000",
+    "subject": "test(tmuxx): accept Windows short aliases in reported job directories"
+  },
+  "ooususy": {
+    "hash": "c560e4bac4f4f84d92b7db477cb94075c4458703",
+    "full_id": "ooususyrowontllzmxxyrpoumstwxymoztllppnt",
+    "parents": [
+      "c6796b0e14c3ec17d7457095fef49ce50a03dc3e"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1792727971 +0000",
+    "subject": "test(rustty): initialize ConPTY in Windows PTY fixtures"
+  },
+  "skqzpvz": {
+    "hash": "c6796b0e14c3ec17d7457095fef49ce50a03dc3e",
+    "full_id": "skqzpvztlvqmpvonmunurztvozptxspyulroypku",
+    "parents": [
+      "28aaf89b772ba0527607e62b152d750e07a585c9"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1792727730 +0000",
+    "subject": "test(rustty): restrict POSIX parity fixtures to Unix"
+  },
+  "qykrskr": {
+    "hash": "28aaf89b772ba0527607e62b152d750e07a585c9",
+    "full_id": "qykrskrlmlqxlxrkkyyqsousplmoymxozrztospl",
+    "parents": [
+      "46a3950ca3d105bab7975773307b5eaad796b7c5"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1792727730 +0000",
+    "subject": "test(rustty): make badge overflow cases independent of native font widths"
+  },
+  "lvnvlnp": {
+    "hash": "46a3950ca3d105bab7975773307b5eaad796b7c5",
+    "full_id": "lvnvlnpxwlmqnprssysylqmrluutxyuxqwyxtyls",
+    "parents": [
+      "cbedbfeb0f91c3b0974fdd219b8fb4c0f7986c40"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1792727564 +0000",
+    "subject": "build(rustty): install Windows development releases on the Desktop"
+  },
+  "uxslost": {
+    "hash": "cbedbfeb0f91c3b0974fdd219b8fb4c0f7986c40",
+    "full_id": "uxslosttzrlknxpwupwtrktuoqoqlutvvppqxxwo",
+    "parents": [
+      "37ab9f8b5d70a5dbfecac312c594d1a15760b67e"
+    ],
+    "author": "Codex <codex@openai.com> 1792726784 +0200",
+    "subject": "fix(rustty): emphasize the restored display banner"
+  },
+  "mtoqkun": {
+    "hash": "37ab9f8b5d70a5dbfecac312c594d1a15760b67e",
+    "full_id": "mtoqkunovuzwnzxmrputpoxksmxmovsyprpkqppl",
+    "parents": [
+      "39b3fbeeb88a8db6f5a4aa56472113db69e883d8"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1792726958 +0000",
+    "subject": "fix(rustty): gate the Unix test request helper on Unix"
+  },
+  "qsxpvvx": {
+    "hash": "39b3fbeeb88a8db6f5a4aa56472113db69e883d8",
+    "full_id": "qsxpvvxptppntrtruvspywonnspoxnpsrykkorws",
+    "parents": [
+      "ff471d407d29c9e0d5c0ddd8494b3c617a172ef9"
+    ],
+    "author": "Codex <codex@openai.com> 1792725813 +0200",
+    "subject": "fix(rustty): omit tmuxx windows from state exports"
+  },
+  "nzqyyov": {
+    "hash": "ff471d407d29c9e0d5c0ddd8494b3c617a172ef9",
+    "full_id": "nzqyyovrwsnvqxumnvosmrkuzolzmnrzmklwtzrq",
+    "parents": [
+      "176f74d19802f9e3abdccce806da39ea86f93cdd"
+    ],
+    "author": "Codex <codex@openai.com> 1792725205 +0200",
+    "subject": "fix(rustty): clear panel focus colors in inactive windows"
+  },
+  "vxozomx": {
+    "hash": "176f74d19802f9e3abdccce806da39ea86f93cdd",
+    "full_id": "vxozomxyqrskwywywzmouwwtvqwxrsqnwsvyoxos",
+    "parents": [
+      "d6dec83f0aa215cb237e32c3c7cc5d6bb04aed51"
+    ],
+    "author": "Codex <codex@openai.com> 1792680979 +0200",
+    "subject": "build(rustty): add explicit macOS install recipe"
+  },
+  "mtpvqoo": {
+    "hash": "d6dec83f0aa215cb237e32c3c7cc5d6bb04aed51",
+    "full_id": "mtpvqoowqrknqlmoyrysmxpskqnmktxzxvvkrkym",
+    "parents": [
+      "5f6e7f1171ad5fd7af1954f97e1b435f310a1173"
+    ],
+    "author": "Codex <codex@openai.com> 1792680741 +0200",
+    "subject": "build(rustty): support persistent local macOS signing"
+  },
+  "ytnzyxq": {
+    "hash": "5f6e7f1171ad5fd7af1954f97e1b435f310a1173",
+    "full_id": "ytnzyxqpxqwqryrzqnmnwsntosknrtrslvvyrxrn",
+    "parents": [
+      "6810367cf68719736682241c041cef0ba878262d"
+    ],
+    "author": "Byron <sebastian.thiel@icloud.com> 1792675112 +0000",
+    "subject": "feat(rustty): import visual state on Windows"
+  },
+  "ntskkws": {
+    "hash": "6810367cf68719736682241c041cef0ba878262d",
+    "full_id": "ntskkwsrrllsutnwuxlpzxksytvsxlovnsplpkou",
+    "parents": [
+      "458187efe7a1a3047108467ead0088788cdcbe91"
+    ],
+    "author": "Codex <codex@openai.com> 1792672430 +0200",
+    "subject": "feat(rustty): import visual state from another instance"
+  },
+  "lyprqpn": {
+    "hash": "458187efe7a1a3047108467ead0088788cdcbe91",
+    "full_id": "lyprqpnqnrsylrlmnsmznorzlolmvvwkwyqtwzkx",
+    "parents": [
+      "152600d3d7e58f378fd08b409e42b5e1989d10b8"
+    ],
+    "author": "Codex <codex@openai.com> 1792667730 +0200",
+    "subject": "docs(rustty): introduce the project and its daily use"
+  },
+  "lmwsrsl": {
+    "hash": "152600d3d7e58f378fd08b409e42b5e1989d10b8",
+    "full_id": "lmwsrslzxrprusypylxrpuxwokqlxwnkmnxmnqrv",
+    "parents": [
+      "6bf60294d8409c595caf64ddb1f4dc1a6d413ac3"
+    ],
+    "author": "Codex <codex@openai.com> 1792661521 +0200",
+    "subject": "feat(rustty): mark tmux reports on Stream Deck"
+  },
+  "nwsyzyp": {
+    "hash": "6bf60294d8409c595caf64ddb1f4dc1a6d413ac3",
+    "full_id": "nwsyzypmpxnvxrnlksymyxlmzxyzxuxqyttokrmr",
+    "parents": [
+      "1b0f7918046745862f1547674f54bda706568f06"
+    ],
+    "author": "Codex <codex@openai.com> 1792653864 +0200",
+    "subject": "feat(rustty): open local tmuxx server settings"
+  },
+  "twuwwml": {
+    "hash": "1b0f7918046745862f1547674f54bda706568f06",
+    "full_id": "twuwwmlnkyrzsmzvxtonrxnlxvuwwprqnvlkztry",
+    "parents": [
+      "06625067ccfd18d1ec7454493dbb2960a98367d3"
+    ],
+    "author": "Codex <codex@openai.com> 1792653452 +0200",
+    "subject": "feat(tmuxx): add shell completions and live fish targets"
+  },
+  "pqrkxty": {
+    "hash": "06625067ccfd18d1ec7454493dbb2960a98367d3",
+    "full_id": "pqrkxtyqrxyumpqwvyqrlzkqlltvxvwlllppsyrs",
+    "parents": [
+      "e5d37a89d695767942f83f81772e7c26d902667f"
+    ],
+    "author": "Codex <codex@openai.com> 1792652706 +0200",
+    "subject": "fix(rustty): stop tmuxx split dividers from wobbling"
+  },
+  "lrrutxu": {
+    "hash": "e5d37a89d695767942f83f81772e7c26d902667f",
+    "full_id": "lrrutxuzxyxymyknlslosluplnrmxxypuqqvokrt",
+    "parents": [
+      "b5dca09195636fd67a195d0515ebe42de84ba24f"
+    ],
+    "author": "Codex <codex@openai.com> 1792651515 +0200",
+    "subject": "feat(rustty): reload tmuxx server configuration"
+  },
+  "vzvoopw": {
+    "hash": "b5dca09195636fd67a195d0515ebe42de84ba24f",
+    "full_id": "vzvoopwsvvxsyutllsnssmpvxyymmkklzkpzqvus",
+    "parents": [
+      "9bd3ff0204f42f78e07a5cff57dbe743506fa665"
+    ],
+    "author": "Codex <codex@openai.com> 1792650852 +0200",
+    "subject": "fix(rustty): remove tabs from tmuxx session menus"
+  },
+  "psrkysw": {
+    "hash": "9bd3ff0204f42f78e07a5cff57dbe743506fa665",
+    "full_id": "psrkyswolquksukyznxxprqnnvntvnttsmutzupq",
+    "parents": [
+      "fbd8d9af0e89dda7c9382ad61038770f29df5297"
+    ],
+    "author": "Codex <codex@openai.com> 1792649448 +0200",
+    "subject": "fix(tmuxx): restore reflowed history on reconnect"
+  },
+  "zmmqzmy": {
+    "hash": "fbd8d9af0e89dda7c9382ad61038770f29df5297",
+    "full_id": "zmmqzmystqxrwmtvlmrruoqwxlwtwpomtrzvlstl",
+    "parents": [
+      "3d7ba2403a1158ce7311f45c40f6e309742a60cb"
+    ],
+    "author": "Codex <codex@openai.com> 1792637844 +0200",
+    "subject": "docs: adopt conventional changelog-style commits"
+  },
+  "qnrqkko": {
+    "hash": "3d7ba2403a1158ce7311f45c40f6e309742a60cb",
+    "full_id": "qnrqkkoyykpvmmqowulxqznqukwwzqyztvxormpq",
+    "parents": [
+      "d978ec69075893d118305c90adca6b91153d8f0d"
+    ],
+    "author": "Codex <codex@openai.com> 1792637752 +0200",
+    "subject": "fix(tmuxx): retain pane CWDs across reconnects"
+  },
+  "zwuoyrx": {
+    "hash": "d978ec69075893d118305c90adca6b91153d8f0d",
+    "full_id": "zwuoyrxwmsxvnltrynxrtslrtsqkzrkuzpyqonvm",
+    "parents": [
+      "3ba39d7af460c597c23dd2fab991469ab6ee2714"
+    ],
+    "author": "Codex <codex@openai.com> 1792613099 +0200",
+    "subject": "fix(tmuxx): flush Windows bridge responses promptly"
+  },
+  "usolxmp": {
+    "hash": "3ba39d7af460c597c23dd2fab991469ab6ee2714",
+    "full_id": "usolxmpxxnynsrnwmvxwzlzxouspklnozossmlun",
+    "parents": [
+      "a13ea2ddbf36bfef62fa4071442828d0270c3998"
+    ],
+    "author": "Codex <codex@openai.com> 1792611866 +0000",
+    "subject": "fix(tmuxx): load config before the first session"
+  },
+  "rqtqsrk": {
+    "hash": "a13ea2ddbf36bfef62fa4071442828d0270c3998",
+    "full_id": "rqtqsrkmsouzskwqvztmmqwmuqkwuusmxnwkrryv",
+    "parents": [
+      "2cda7e3d5e8c270b3909bce8fbd98446835110fe"
+    ],
+    "author": "Codex <codex@openai.com> 1792610794 +0200",
+    "subject": "fix(rustty): stop input after tmuxx disconnects"
+  },
+  "mwvuznl": {
+    "hash": "2cda7e3d5e8c270b3909bce8fbd98446835110fe",
+    "full_id": "mwvuznlkutryqmmymuzyyvuoyrzsvvupysozyozs",
+    "parents": [
+      "1ee52fc3262cf82626d1de82510bc14acd0c3c64"
+    ],
+    "author": "Codex <codex@openai.com> 1792605361 +0200",
+    "subject": "perf(tmuxx)!: compress native protocol records"
+  },
+  "tyrstxx": {
+    "hash": "1ee52fc3262cf82626d1de82510bc14acd0c3c64",
+    "full_id": "tyrstxxtmozvrsmpvvopmqvwklltnusoqmpuvmrr",
+    "parents": [
+      "38ed026caa41c43cffcc341cdb71fcc71ed3482b"
+    ],
+    "author": "Codex <codex@openai.com> 1792603554 +0200",
+    "subject": "fix(tmuxx): inherit source directories for new panes"
+  },
+  "kmnsozt": {
+    "hash": "38ed026caa41c43cffcc341cdb71fcc71ed3482b",
+    "full_id": "kmnsoztuxlxznvpsyxpwntnpykvqsosmppwtoqkp",
+    "parents": [
+      "c3e122682156ab204637a48d1770614643b158a1"
+    ],
+    "author": "Codex <codex@openai.com> 1792597620 +0200",
+    "subject": "perf(rustty): avoid snapshots on keyboard tab switches"
+  },
+  "rwnrvsm": {
+    "hash": "c3e122682156ab204637a48d1770614643b158a1",
+    "full_id": "rwnrvsmtwqkuqorqpqsxkzlyvztlknskozllspmm",
+    "parents": [
+      "f4c48e0d9c85e85d948b4ca8d961b74b04cd45eb"
+    ],
+    "author": "Codex <codex@openai.com> 1792594509 +0200",
+    "subject": "feat(rustty): identify tmuxx sessions in window pills"
+  },
+  "koomozs": {
+    "hash": "f4c48e0d9c85e85d948b4ca8d961b74b04cd45eb",
+    "full_id": "koomozsnzqtvqnpmrlpptsonzrmvmqkywmsuuoyo",
+    "parents": [
+      "499ffe47580e6aaf434ae778cdd7922976d89239"
+    ],
+    "author": "Codex <codex@openai.com> 1792594286 +0200",
+    "subject": "fix(rustty): restore remote CWD on tmuxx attachment"
+  },
+  "vvkuktp": {
+    "hash": "499ffe47580e6aaf434ae778cdd7922976d89239",
+    "full_id": "vvkuktprnvztvxszwmtnznkqznstvkvlqtsvzntv",
+    "parents": [
+      "976cc6aeee8d09aa207487ad3a034928000333c6"
+    ],
+    "author": "Codex <codex@openai.com> 1792593892 +0200",
+    "subject": "perf(tmuxx): remove duplicate cells from snapshots"
+  },
+  "ynoqzup": {
+    "hash": "976cc6aeee8d09aa207487ad3a034928000333c6",
+    "full_id": "ynoqzuppxtyqvmvvsyynxxosluuzyumlwyyrlsok",
+    "parents": [
+      "e7552dcc0873f9a71ab09a5e512f6023fbc95089"
+    ],
+    "author": "Codex <codex@openai.com> 1792593391 +0200",
+    "subject": "perf(tmuxx): keep focus updates free of scrollback"
+  },
+  "vknkxws": {
+    "hash": "e7552dcc0873f9a71ab09a5e512f6023fbc95089",
+    "full_id": "vknkxwsqnpzwokrovtpupqyntwyoovwoxupwkkxn",
+    "parents": [
+      "e2a0c0cc3894042524f0442f1382532a99b67f73"
+    ],
+    "author": "Codex <codex@openai.com> 1792591036 +0200",
+    "subject": "fix(rustty): preserve split pane backgrounds"
+  },
+  "pntkmqt": {
+    "hash": "e2a0c0cc3894042524f0442f1382532a99b67f73",
+    "full_id": "pntkmqtluoxuyrosvuwrzronnpoxxowrvktopxor",
+    "parents": [
+      "1d6f647cf3fe74aec17312dc2e91fa3a0bf8f3df"
+    ],
+    "author": "Codex <codex@openai.com> 1792587634 +0200",
+    "subject": "fix(rustty): reveal ungrouped panes in the outliner"
+  },
+  "tororyu": {
+    "hash": "1d6f647cf3fe74aec17312dc2e91fa3a0bf8f3df",
+    "full_id": "tororyumxmrxrsqlrsunkyklsktpnztuwluvylpu",
+    "parents": [
+      "d046fcdaf7d8fa59d27d9fff45aa1b75645dcde5"
+    ],
+    "author": "Codex <codex@openai.com> 1792573699 +0200",
+    "subject": "fix(rustty): exclude sessions from completion fallback"
+  },
+  "ptswymq": {
+    "hash": "d046fcdaf7d8fa59d27d9fff45aa1b75645dcde5",
+    "full_id": "ptswymqytyqmsqqvwwxyqoyxrqovnvlspsrlnkzv",
+    "parents": [
+      "0bbfbf540c8046c39d08b73340a68ec6f5436e0d"
+    ],
+    "author": "Codex <codex@openai.com> 1792566111 +0200",
+    "subject": "feat(rustty): show completed commands on Stream Deck"
+  },
+  "otrznrw": {
+    "hash": "0bbfbf540c8046c39d08b73340a68ec6f5436e0d",
+    "full_id": "otrznrwuzsovwuvxynsuqrpokkzwquvouspyzltl",
+    "parents": [
+      "95a1918c08bdd26e3b1523d9c7af282466acaec1"
+    ],
+    "author": "Codex <codex@openai.com> 1792561110 +0200",
+    "subject": "fix(rustty): accept tmux-wrapped agent reports"
+  },
+  "mnsmzwx": {
+    "hash": "95a1918c08bdd26e3b1523d9c7af282466acaec1",
+    "full_id": "mnsmzwxrzuukomqqwxpqnosnntqknoqxmqxwmvll",
+    "parents": [
+      "afd3c93ba7d5990835d478a52cbc5ca33ccc1bfe"
+    ],
+    "author": "Codex <codex@openai.com> 1792559603 +0200",
+    "subject": "fix(rustty): keep tmuxx pane focus local"
+  },
+  "yrxsknv": {
+    "hash": "afd3c93ba7d5990835d478a52cbc5ca33ccc1bfe",
+    "full_id": "yrxsknvtunzrkoqkmuyztwxzpsyzvnqkorwuvwlu",
+    "parents": [
+      "75f8c7f6078558e57db40609f623bf8cef49868f"
+    ],
+    "author": "Codex <codex@openai.com> 1792555583 +0000",
+    "subject": "feat(rustty): add portable local tmuxx addresses"
+  },
+  "vkyxwxy": {
+    "hash": "75f8c7f6078558e57db40609f623bf8cef49868f",
+    "full_id": "vkyxwxynkrltuzkmrmxnnwxrmvxzlwolsmurzzpw",
+    "parents": [
+      "1d7221b47efe9e830dc5539ce75b4a0a59ae6fb3"
+    ],
+    "author": "Codex <codex@openai.com> 1792554900 +0200",
+    "subject": "feat(rustty): let tmuxx views take resize control"
+  },
+  "myvszyz": {
+    "hash": "1d7221b47efe9e830dc5539ce75b4a0a59ae6fb3",
+    "full_id": "myvszyztzmpvolpvsqrozmnlpzqkqonryprlpqtr",
+    "parents": [
+      "0919e83c7eb9ac1e3afe7ba92015684458ab5110"
+    ],
+    "author": "Codex <codex@openai.com> 1792554693 +0200",
+    "subject": "fix(rustty): give tmuxx views stable resize ownership"
+  },
+  "uwpxwuz": {
+    "hash": "0919e83c7eb9ac1e3afe7ba92015684458ab5110",
+    "full_id": "uwpxwuzqntxsnwunwkyrzutltztntqoszksxnzsv",
+    "parents": [
+      "8edc818f39ea8f91511fd68ba8f3e4964bb3e393"
+    ],
+    "author": "Codex <codex@openai.com> 1792553988 +0200",
+    "subject": "fix(rustty): keep copied tmuxx windows resizable"
+  },
+  "vtnnouw": {
+    "hash": "8edc818f39ea8f91511fd68ba8f3e4964bb3e393",
+    "full_id": "vtnnouwmynvkwvoykqwzluvxrqzstwlopoqwkovk",
+    "parents": [
+      "6a41f4b5fce1e1df9eeac2d4db045d2bc977ee05"
+    ],
+    "author": "Codex <codex@openai.com> 1792553510 +0000",
+    "subject": "fix(rustty): stop injecting mouse motion on title-bar clicks"
+  },
+  "qnvzltp": {
+    "hash": "6a41f4b5fce1e1df9eeac2d4db045d2bc977ee05",
+    "full_id": "qnvzltpuuozpupvxxtrmwyrmpzmpyzqryvnsqqpv",
+    "parents": [
+      "da2ee638ee7a08c6da3727cf31a1aabfb6ac8caa"
+    ],
+    "author": "Codex <codex@openai.com> 1792553638 +0200",
+    "subject": "fix(rustty): scope new tmuxx theme choices to their session"
+  },
+  "qruslow": {
+    "hash": "da2ee638ee7a08c6da3727cf31a1aabfb6ac8caa",
+    "full_id": "qruslowzsnnquvtzklzzlvuurwnpvmmyulvuyknu",
+    "parents": [
+      "7cf56aaaa30f45d7252aec127e20130989946073"
+    ],
+    "author": "Codex <codex@openai.com> 1792551825 +0200",
+    "subject": "feat(rustty): keep idle local tmuxx servers manageable"
+  },
+  "yxtrkvn": {
+    "hash": "7cf56aaaa30f45d7252aec127e20130989946073",
+    "full_id": "yxtrkvnzzuryxzyqsrpuxzmuqtsyznkrtqttnuyv",
+    "parents": [
+      "c44bca21d746dbc1af322ac0a5af312a6fdc529c"
+    ],
+    "author": "Codex <codex@openai.com> 1792551042 +0200",
+    "subject": "fix(rustty): release source snapshots when tmuxx connections close"
+  },
+  "zozpokk": {
+    "hash": "c44bca21d746dbc1af322ac0a5af312a6fdc529c",
+    "full_id": "zozpokkutmpvqyxlzultxyormslyyurvtlmounuu",
+    "parents": [
+      "aed86fde5bd098b08367ab4e95be3e0625854243"
+    ],
+    "author": "Codex <codex@openai.com> 1792550725 +0200",
+    "subject": "perf(rustty): copy tmuxx windows without subscribing the worker"
+  },
+  "mmxkqsp": {
+    "hash": "aed86fde5bd098b08367ab4e95be3e0625854243",
+    "full_id": "mmxkqspzwptuttxkpywtwlvmvlwukzyppwxnvvsm",
+    "parents": [
+      "676874dce7f851e565dbb217a5dce6c571ac3d7c"
+    ],
+    "author": "Codex <codex@openai.com> 1792550355 +0200",
+    "subject": "feat(rustty): scope tmuxx themes by SSH host and session"
+  },
+  "kkkrnms": {
+    "hash": "676874dce7f851e565dbb217a5dce6c571ac3d7c",
+    "full_id": "kkkrnmsnoqxloznxrxqxoktwxrvyolxwoqyokvqo",
+    "parents": [
+      "a792ef06535d78e67e2d4a94071a6f2b49a11180"
+    ],
+    "author": "Codex <codex@openai.com> 1792527085 +0200",
+    "subject": "perf(rustty): share retained tmuxx snapshots across graph copies"
+  },
+  "upkkvox": {
+    "hash": "a792ef06535d78e67e2d4a94071a6f2b49a11180",
+    "full_id": "upkkvoxrywqutskvsxrmwqqkoxuskkyusnyopzwn",
+    "parents": [
+      "a61c917e87b8043ba00b1f026de339f93352b858"
+    ],
+    "author": "Codex <codex@openai.com> 1792526892 +0200",
+    "subject": "perf(tmuxx): compact repeated cells in negotiated snapshots"
+  },
+  "qsruzux": {
+    "hash": "a61c917e87b8043ba00b1f026de339f93352b858",
+    "full_id": "qsruzuxuwllupwqvwtplktpwzstxkzlqqzyrwuxu",
+    "parents": [
+      "c56f68db6d5060f69652e9ac764bb7d7d0714ae7"
+    ],
+    "author": "Codex <codex@openai.com> 1792525623 +0200",
+    "subject": "fix(rustty): stop automatic updates after tmuxx disconnects"
+  },
+  "xpynppl": {
+    "hash": "c56f68db6d5060f69652e9ac764bb7d7d0714ae7",
+    "full_id": "xpynpplmzloxmxxkwqrvtkwutssympvrosursrqr",
+    "parents": [
+      "29dd836d184ea09b082b0ba2bfbc0e1fc39772f4"
+    ],
+    "author": "Codex <codex@openai.com> 1792525485 +0200",
+    "subject": "fix(rustty): show diagnostics without taking terminal focus"
+  },
+  "krqklks": {
+    "hash": "29dd836d184ea09b082b0ba2bfbc0e1fc39772f4",
+    "full_id": "krqklksmvzwkomvnlnokxvozplsznpoplnzpsuzy",
+    "parents": [
+      "330fd1834c76e2e9b0b90f8de0d26d1d503f4d05"
+    ],
+    "author": "Codex <codex@openai.com> 1792524787 +0200",
+    "subject": "perf(rustty): skip dashboard labels for unregistered panes"
+  },
+  "zrlwzyo": {
+    "hash": "330fd1834c76e2e9b0b90f8de0d26d1d503f4d05",
+    "full_id": "zrlwzyonzlssqxkxozqrqtvtkxupsmuvloqppnwu",
+    "parents": [
+      "a51104946f285bd41c65f9396a96e1b8b5d7e01d"
+    ],
+    "author": "Codex <codex@openai.com> 1792524709 +0200",
+    "subject": "perf(rustty): avoid redundant tmuxx state transfers"
+  },
+  "xvwvlvm": {
+    "hash": "a51104946f285bd41c65f9396a96e1b8b5d7e01d",
+    "full_id": "xvwvlvmvusswlqkymptsmxowrkurtyoqsxpxkmol",
+    "parents": [
+      "e8e8b0d3c8cf4b46d012bf6629d13d675be27954"
+    ],
+    "author": "Codex <codex@openai.com> 1792524460 +0200",
+    "subject": "fix(tmuxx): notify every view when panes disappear"
+  },
+  "nqtwlmk": {
+    "hash": "e8e8b0d3c8cf4b46d012bf6629d13d675be27954",
+    "full_id": "nqtwlmkqrupqwyywlxtuoqokpxrtxnlztolwkrvr",
+    "parents": [
+      "e5025a7c311e7f74540d24f3da6317a80bb5bde4"
+    ],
+    "author": "Codex <codex@openai.com> 1792522465 +0200",
+    "subject": "fix(tmuxx): inherit Windows Terminal shell defaults for every pane"
+  },
+  "sxsozqy": {
+    "hash": "e5025a7c311e7f74540d24f3da6317a80bb5bde4",
+    "full_id": "sxsozqynxowrxlvzqvtpyuwwwnqyrskvumqsqunl",
+    "parents": [
+      "070c69ddbaa2fd7ce0cc72f936e7fa4017780535"
+    ],
+    "author": "Codex <codex@openai.com> 1792522136 +0200",
+    "subject": "feat(rustty): load configuration for automatically launched tmuxx servers"
+  },
+  "rlstomz": {
+    "hash": "070c69ddbaa2fd7ce0cc72f936e7fa4017780535",
+    "full_id": "rlstomztnowqzrxsxytuzomnpwzmymorztmprykm",
+    "parents": [
+      "98c70b8a6c5a1042d4c5338da784059ec3c575a3"
+    ],
+    "author": "Codex <codex@openai.com> 1792521108 +0200",
+    "subject": "feat(rustty): copy windows into persistent tmuxx sessions"
+  },
+  "krtqrnr": {
+    "hash": "98c70b8a6c5a1042d4c5338da784059ec3c575a3",
+    "full_id": "krtqrnrytrmpqquzovlzylpqkxtprqxuztvvvzrx",
+    "parents": [
+      "f6da97bf63b4425365b247d24f0f167398a2dd0a"
+    ],
+    "author": "Codex <codex@openai.com> 1792518007 +0200",
+    "subject": "ci(rustty): check the Rust workspace on macOS and Windows"
+  },
+  "mrxmolz": {
+    "hash": "f6da97bf63b4425365b247d24f0f167398a2dd0a",
+    "full_id": "mrxmolzwlmukuszmomlpwymrzvmmtrvlomwxmsrs",
+    "parents": [
+      "fd3673880bfde299b570058299168ac6db088d7f"
+    ],
+    "author": "Codex <codex@openai.com> 1792517799 +0200",
+    "subject": "test(rustty): configure handshake sockets before disconnecting"
+  },
+  "sssrkxv": {
+    "hash": "fd3673880bfde299b570058299168ac6db088d7f",
+    "full_id": "sssrkxvwnnyowqswmtzzqxromllkwnproonswumr",
+    "parents": [
+      "9990498f466be905eb21c7481249943eaba18d9f"
+    ],
+    "author": "Codex <codex@openai.com> 1792517725 +0200",
+    "subject": "chore(rustty): establish a warning-free workspace lint baseline"
+  },
+  "ooqlovv": {
+    "hash": "9990498f466be905eb21c7481249943eaba18d9f",
+    "full_id": "ooqlovvykltrvzynlzvyvwyzxwzxxkzprktvstzx",
+    "parents": [
+      "f11608d1bda56b4ec49a440f20847f0dadaadcda"
+    ],
+    "author": "Codex <codex@openai.com> 1792511895 +0200",
+    "subject": "fix(rustty): use pixel dividers for tmuxx pane layouts"
+  },
+  "mpmwknk": {
+    "hash": "f11608d1bda56b4ec49a440f20847f0dadaadcda",
+    "full_id": "mpmwknkzypnxvpxlykytsurtyzwnwykwsxypumqz",
+    "parents": [
+      "f2fef211a2505b52010ae4d3e3d6028c0fa23821"
+    ],
+    "author": "Codex <codex@openai.com> 1792511385 +0200",
+    "subject": "build(rustty): ship a console tmuxx sidecar with the GUI"
+  },
+  "tumwqru": {
+    "hash": "f2fef211a2505b52010ae4d3e3d6028c0fa23821",
+    "full_id": "tumwqrurwvxpwolrtloozmysvzkxmupyvkrptvvs",
+    "parents": [
+      "9000b8ad410dfbf24217d80e005df1546bfa7590"
+    ],
+    "author": "Codex <codex@openai.com> 1792511038 +0200",
+    "subject": "fix(rustty): ignore late view metadata for closed tmuxx panes"
+  },
+  "rxmpqpx": {
+    "hash": "9000b8ad410dfbf24217d80e005df1546bfa7590",
+    "full_id": "rxmpqpxyotttyutsrvwvvkkoukwkznonzvkmzyuv",
+    "parents": [
+      "61139dbaf67de2d62f3e8cfdad1c4245ad7ba11c"
+    ],
+    "author": "Codex <codex@openai.com> 1792510932 +0200",
+    "subject": "fix(rustty): keep pane focus steady while selection reaches tmuxx"
+  },
+  "xpmxpvx": {
+    "hash": "61139dbaf67de2d62f3e8cfdad1c4245ad7ba11c",
+    "full_id": "xpmxpvxmwrpsllpkmrqxxspkowqmyrwxkwxusptp",
+    "parents": [
+      "397c3883498d538b38a0ff4fcc8591e9c0608c6a"
+    ],
+    "author": "Codex <codex@openai.com> 1792510134 +0200",
+    "subject": "test(rustty): finish SSH fixture cleanup after its server exits"
+  },
+  "nuqtxqt": {
+    "hash": "397c3883498d538b38a0ff4fcc8591e9c0608c6a",
+    "full_id": "nuqtxqtlutnololkqoxoxqukkultvuotoynknnzr",
+    "parents": [
+      "72ebba997eaa9c2114f7c712828fe08e307fffcc"
+    ],
+    "author": "Codex <codex@openai.com> 1792509927 +0200",
+    "subject": "fix(rustty): keep size clients bound to their original tmuxx owner"
+  },
+  "wlxpyrk": {
+    "hash": "72ebba997eaa9c2114f7c712828fe08e307fffcc",
+    "full_id": "wlxpyrkqypztvlkllkrtrnysnxnsowpoowtkkwxu",
+    "parents": [
+      "c9e3724729ca33b71f45f848e13312b5cf435414"
+    ],
+    "author": "Codex <codex@openai.com> 1792509436 +0200",
+    "subject": "fix(rustty): validate native tmuxx hello before sending requests"
+  },
+  "lqmszom": {
+    "hash": "c9e3724729ca33b71f45f848e13312b5cf435414",
+    "full_id": "lqmszomksxqrysmnuunzuvnxyuswwxkrwusszxrq",
+    "parents": [
+      "7b95ee20da9cc21569d63c27f55150fd9be440e4"
+    ],
+    "author": "Codex <codex@openai.com> 1792509281 +0200",
+    "subject": "test(rustty): keep shared tmuxx regression adapters executable"
+  },
+  "pytpqpz": {
+    "hash": "7b95ee20da9cc21569d63c27f55150fd9be440e4",
+    "full_id": "pytpqpzokzpuywnlwpppmzrxpnsktnmkxpwuntzl",
+    "parents": [
+      "f61dfc5bcb38d8b74d374567440d9cd78b03429a"
+    ],
+    "author": "Codex <codex@openai.com> 1792509034 +0200",
+    "subject": "perf(rustty): track tmux capture metadata only for compatible terminals"
+  },
+  "sttomru": {
+    "hash": "f61dfc5bcb38d8b74d374567440d9cd78b03429a",
+    "full_id": "sttomrusnxqzknysxkukvzmuzspnxyvvnnyvqons",
+    "parents": [
+      "c647e932be4daee36df1a2257eeabc7e8bf67895"
+    ],
+    "author": "Codex <codex@openai.com> 1792508650 +0200",
+    "subject": "build(rustty): own tmuxx and share the local terminal engine"
+  },
+  "pxyttpx": {
+    "hash": "c647e932be4daee36df1a2257eeabc7e8bf67895",
+    "full_id": "pxyttpxsrpqkmqoyonsqmlltomssptxlkmvqrtpt",
+    "parents": [
+      "c107d1ed62db9393e75e5203bd7303fa2c7a567c"
+    ],
+    "author": "Codex <codex@openai.com> 1792507861 +0000",
+    "subject": "fix(rustty): enable native tmuxx sessions on Windows"
+  },
+  "ozuovqm": {
+    "hash": "c107d1ed62db9393e75e5203bd7303fa2c7a567c",
+    "full_id": "ozuovqmmvktoqoonzkukupzmxwpupplnmspwlyyz",
+    "parents": [
+      "f97583dd4bbd6ec48b0f70d6100e843c812f7489"
+    ],
+    "author": "Codex <codex@openai.com> 1792506949 +0000",
+    "subject": "fix(rustty): initialize the shared ConPTY backend before opening panes"
+  },
+  "lswnnro": {
+    "hash": "f97583dd4bbd6ec48b0f70d6100e843c812f7489",
+    "full_id": "lswnnrouqqoymzrwuuqxxmnoswrwztpuwwpnmklr",
+    "parents": [
+      "a84cad0843f94a9a22bd3565ce06fb44ed374a9a"
+    ],
+    "author": "Codex <codex@openai.com> 1792505432 +0200",
+    "subject": "build(rustty): update tmuxx while preserving native session compatibility"
+  },
+  "ovsuoqo": {
+    "hash": "a84cad0843f94a9a22bd3565ce06fb44ed374a9a",
+    "full_id": "ovsuoqorvztpnyzvxukurqytyzonpuzzmtklxzyo",
+    "parents": [
+      "af3dcb32ca217cb7714bb80d2189b135e788134b"
+    ],
+    "author": "Codex <codex@openai.com> 1792489675 +0200",
+    "subject": "fix(rustty): stream tmuxx input without snapshotting every key"
+  },
+  "loruptl": {
+    "hash": "af3dcb32ca217cb7714bb80d2189b135e788134b",
+    "full_id": "loruptlzuxrmyrpmpkzvrknvpzlzppwnrvrxoqov",
+    "parents": [
+      "6cc6ae8114941fd15469494b945099d97e6f857f"
+    ],
+    "author": "Codex <codex@openai.com> 1792489537 +0200",
+    "subject": "fix(rustty): release closed tmuxx panes without stale host updates"
+  },
+  "rpnvsqr": {
+    "hash": "6cc6ae8114941fd15469494b945099d97e6f857f",
+    "full_id": "rpnvsqronnnuvmwqytmrxqlpyuluwrrvxnxrnxuy",
+    "parents": [
+      "66264ed14c7697c16115623520735ad3ed9cc05e"
+    ],
+    "author": "Codex <codex@openai.com> 1792489506 +0200",
+    "subject": "fix(rustty): restore legacy tmuxx capture state after pane resizing"
+  },
+  "lxwokpu": {
+    "hash": "66264ed14c7697c16115623520735ad3ed9cc05e",
+    "full_id": "lxwokpuyulotwpqsokqksppmmvmvwttztvptvxtn",
+    "parents": [
+      "1c6da399e45644f64c4bababa6168c5cb16d1a77"
+    ],
+    "author": "Codex <codex@openai.com> 1792487515 +0200",
+    "subject": "fix(rustty): share configured SSH agents with GUI connections"
+  },
+  "xysrwxs": {
+    "hash": "1c6da399e45644f64c4bababa6168c5cb16d1a77",
+    "full_id": "xysrwxsoloxlnqtskvnroqylsqzvwsuunllnvlws",
+    "parents": [
+      "72cd40be27084fc35ff395b8d71d61c3e6e5ebe3"
+    ],
+    "author": "Codex <codex@openai.com> 1792485584 +0200",
+    "subject": "feat(rustty): connect to named SSH hosts from the tmuxx menu"
+  },
+  "yzuoypn": {
+    "hash": "72cd40be27084fc35ff395b8d71d61c3e6e5ebe3",
+    "full_id": "yzuoypnxmxmrxrsykplwnwspusxuomusxkvlsrqu",
+    "parents": [
+      "46568bc72e7025e79c2629cbdf5c6af0b43b739f"
+    ],
+    "author": "Codex <codex@openai.com> 1792484672 +0200",
+    "subject": "fix(rustty): put tmuxx controls in the native application menu"
+  },
+  "uxmnlry": {
+    "hash": "46568bc72e7025e79c2629cbdf5c6af0b43b739f",
+    "full_id": "uxmnlryrsllnwrlvzznpwpuqryntyqvyntlqrqov",
+    "parents": [
+      "1cd4c4f01116c768f49560c87282bbdd6b18a33e"
+    ],
+    "author": "Codex <codex@openai.com> 1792484504 +0200",
+    "subject": "fix(rustty): let the event loop sleep between tmuxx retries"
+  },
+  "ovonnzt": {
+    "hash": "1cd4c4f01116c768f49560c87282bbdd6b18a33e",
+    "full_id": "ovonnztxlsyxkxyvnsunnwxvxkuqqzxnroontpzm",
+    "parents": [
+      "93db437bd3beea00c78d9002a1a0acaad00782c7"
+    ],
+    "author": "Codex <codex@openai.com> 1792483780 +0200",
+    "subject": "feat(rustty): select native SSH helpers per host"
+  },
+  "typmvuw": {
+    "hash": "93db437bd3beea00c78d9002a1a0acaad00782c7",
+    "full_id": "typmvuwvowynlluvlzmyovrlkwlxzxyrmytktyvo",
+    "parents": [
+      "41b737ab29d9d3113bcd65087ae96689cc5fea59"
+    ],
+    "author": "Codex <codex@openai.com> 1792479081 +0200",
+    "subject": "build(rustty): pin tmuxx dependencies to their published revision"
+  },
+  "xxoxwmp": {
+    "hash": "41b737ab29d9d3113bcd65087ae96689cc5fea59",
+    "full_id": "xxoxwmpmpnypklkvupxoywzukmqsqkyyuzopvkzs",
+    "parents": [
+      "023572c1c4faa3af66622c2917b0ff0f6f1a2267"
+    ],
+    "author": "Codex <codex@openai.com> 1792478846 +0200",
+    "subject": "feat(rustty): manage temporary and persistent tmuxx windows"
+  },
+  "ulvtwtt": {
+    "hash": "023572c1c4faa3af66622c2917b0ff0f6f1a2267",
+    "full_id": "ulvtwttpzznxorwllxmqzltltxqynlkxpsmnzynv",
+    "parents": [
+      "ef56e2c3f2a95a5d3007967b98a199e9ebbe6104"
+    ],
+    "author": "Codex <codex@openai.com> 1792477645 +0200",
+    "subject": "feat(rustty): integrate native tmuxx terminal views"
+  },
+  "notsrxv": {
+    "hash": "ef56e2c3f2a95a5d3007967b98a199e9ebbe6104",
+    "full_id": "notsrxvpssknzzomxzlryynnlvzzyxrqwksqoqqq",
+    "parents": [
+      "8ce1c84afab7d03f44b66a3e72d4281d2dc377be"
+    ],
+    "author": "Codex <codex@openai.com> 1792345199 +0200",
+    "subject": "fix(rustty): preserve outliner expansion on focus"
+  },
+  "smkoqrk": {
+    "hash": "8ce1c84afab7d03f44b66a3e72d4281d2dc377be",
+    "full_id": "smkoqrknwkuomlxonmqrwpvwoqrumospnrxrrsql",
+    "parents": [
+      "e0190dfae4a1044b6d31186b02f0ae68fb43a9a5"
+    ],
+    "author": "Codex <codex@openai.com> 1792328570 +0200",
+    "subject": "fix(rustty): discard expired Stream Deck progress"
+  },
+  "qyslrxv": {
+    "hash": "e0190dfae4a1044b6d31186b02f0ae68fb43a9a5",
+    "full_id": "qyslrxvztpmmsptupyrnrkmquplyusumtprtvlvv",
+    "parents": [
+      "525e8d37594eef700f7c39de3a94dbcf0e9cb467"
+    ],
+    "author": "Codex <codex@openai.com> 1792325949 +0200",
+    "subject": "style(rustty): hide redundant expanded quad labels"
+  },
+  "lmvyyxy": {
+    "hash": "525e8d37594eef700f7c39de3a94dbcf0e9cb467",
+    "full_id": "lmvyyxykwrozkymqkwlyvzkrxzkmovtktmtsryrl",
+    "parents": [
+      "6e5f78682d15e868a16ce984ff653621eb5eea1e"
+    ],
+    "author": "Codex <codex@openai.com> 1792323903 +0200",
+    "subject": "fix(rustty): separate pin dragging from unpinning"
+  },
+  "lyznrxu": {
+    "hash": "6e5f78682d15e868a16ce984ff653621eb5eea1e",
+    "full_id": "lyznrxuzzupktvunlstkztsvnooxzswzroynlsqs",
+    "parents": [
+      "521af142188f81dc795f988df3b2e95860a75c50"
+    ],
+    "author": "Codex <codex@openai.com> 1792315792 +0200",
+    "subject": "feat(rustty): highlight the active quad in pins"
+  },
+  "smpukku": {
+    "hash": "521af142188f81dc795f988df3b2e95860a75c50",
+    "full_id": "smpukkuqssnkxzvmxsntnnwwwusxpmnoxsznxmyu",
+    "parents": [
+      "0f5cf99fd59411712cd343cd3ff95399cb8ffb0d"
+    ],
+    "author": "Codex <codex@openai.com> 1792313613 +0200",
+    "subject": "feat(rustty): highlight the focused pinned panel"
+  },
+  "ylosrus": {
+    "hash": "0f5cf99fd59411712cd343cd3ff95399cb8ffb0d",
+    "full_id": "ylosruszvknslykmkxzmrtwqsonxvuulyqppnxzy",
+    "parents": [
+      "2f1d8df2ab0ae7c0a5456692230234f2c50f3838"
+    ],
+    "author": "Codex <codex@openai.com> 1792312737 +0200",
+    "subject": "fix(rustty): preserve zoom when pins interrupt peek"
+  },
+  "prunsrs": {
+    "hash": "2f1d8df2ab0ae7c0a5456692230234f2c50f3838",
+    "full_id": "prunsrsurzspmuunxpnnvnlwxlvtpsrqwxwvwxys",
+    "parents": [
+      "782dff855517389616b5f3a5cfb4366b06da4bd3"
+    ],
+    "author": "Codex <codex@openai.com> 1792312317 +0200",
+    "subject": "style(rustty): simplify quad position icons"
+  },
+  "ytwvxpy": {
+    "hash": "782dff855517389616b5f3a5cfb4366b06da4bd3",
+    "full_id": "ytwvxpymmlkyoonoovuvuqowkmpzqvoqnpstzkrz",
+    "parents": [
+      "e7fda539246609140a46ecee35521326e486f041"
+    ],
+    "author": "Codex <codex@openai.com> 1792312171 +0200",
+    "subject": "fix(rustty): give each panel a separate tree row"
+  },
+  "vsywlov": {
+    "hash": "e7fda539246609140a46ecee35521326e486f041",
+    "full_id": "vsywlovzsmwomvzwsrmpkroznvpvorvwllwvmnqq",
+    "parents": [
+      "c2a17cceadfcdbca069b8fe74c61ed2622c1f957"
+    ],
+    "author": "Codex <codex@openai.com> 1792312117 +0200",
+    "subject": "feat(rustty): label quads with distinct panel names"
+  },
+  "oqxnlsk": {
+    "hash": "c2a17cceadfcdbca069b8fe74c61ed2622c1f957",
+    "full_id": "oqxnlskpwlmwwxptpwqnnxoykmqzquruonwnsxkt",
+    "parents": [
+      "868068c2d07b221c815416a53aa24827131b57af"
+    ],
+    "author": "Codex <codex@openai.com> 1792308559 +0200",
+    "subject": "docs(rustty): explain configurable pin shortcuts"
+  },
+  "wvnssks": {
+    "hash": "868068c2d07b221c815416a53aa24827131b57af",
+    "full_id": "wvnsskstotzxnzwumzzoyzlxypwsrpxywktoltnz",
+    "parents": [
+      "9720cd55ce55c458a8955dc5bf9c48b40c018b8d"
+    ],
+    "author": "Codex <codex@openai.com> 1792308183 +0200",
+    "subject": "fix(rustty): keep offscreen smoke hidden"
+  },
+  "pnzlpmr": {
+    "hash": "9720cd55ce55c458a8955dc5bf9c48b40c018b8d",
+    "full_id": "pnzlpmrrqkppksxzmqxmxqvumxuzowxkprxpsrkt",
+    "parents": [
+      "167d39503baeb308cd454deae53fe3718d8709fa"
+    ],
+    "author": "Codex <codex@openai.com> 1792307688 +0200",
+    "subject": "feat(rustty): add numbered pin shortcuts"
+  },
+  "xqyuvlt": {
+    "hash": "167d39503baeb308cd454deae53fe3718d8709fa",
+    "full_id": "xqyuvltwuozpknqwyzouqwpkxnmknoupommowplx",
+    "parents": [
+      "14847574b741f8ad0373a0294061b2607ceb0ffd"
+    ],
+    "author": "Codex <codex@openai.com> 1792306822 +0200",
+    "subject": "fix(rustty): keep pinned breadcrumbs stable"
+  },
+  "wtvmuro": {
+    "hash": "14847574b741f8ad0373a0294061b2607ceb0ffd",
+    "full_id": "wtvmurorlxvwoumtukynyqnzzkwmsxvqkktouzqs",
+    "parents": [
+      "ddd1b7aae2bee95db81231d7f4cdb24fbed84961"
+    ],
+    "author": "Codex <codex@openai.com> 1792306470 +0200",
+    "subject": "fix(rustty): stop idle outliner redraws"
+  },
+  "vtotpuv": {
+    "hash": "ddd1b7aae2bee95db81231d7f4cdb24fbed84961",
+    "full_id": "vtotpuvtvolurnmpovluklprlssvrtlukxlssslo",
+    "parents": [
+      "44617ed802b9fab74588be4ea63e928f7a1925e4"
+    ],
+    "author": "Codex <codex@openai.com> 1792306155 +0200",
+    "subject": "fix(rustty): require explicit search selection"
+  },
+  "pzuwxzs": {
+    "hash": "44617ed802b9fab74588be4ea63e928f7a1925e4",
+    "full_id": "pzuwxzswkslzmsrkxmnzmzxxwuvtzlwqpzwnrzqz",
+    "parents": [
+      "4f8a278870b45e43d4dd3fdf5c187acb1401b5e5"
+    ],
+    "author": "Codex <codex@openai.com> 1792306069 +0200",
+    "subject": "feat(rustty): group search results by hierarchy"
+  },
+  "onmlopx": {
+    "hash": "4f8a278870b45e43d4dd3fdf5c187acb1401b5e5",
+    "full_id": "onmlopxzourkpqkvtntllrquzluxytmpxonmtpru",
+    "parents": [
+      "4373f77fc6795c168093641e3f9f53d17cacc73d"
+    ],
+    "author": "Codex <codex@openai.com> 1792271642 +0200",
+    "subject": "feat(rustty): group sibling panels with equal names"
+  },
+  "uzursvp": {
+    "hash": "4373f77fc6795c168093641e3f9f53d17cacc73d",
+    "full_id": "uzursvpvkkyvtztpyunqxsmwoznmouxpoqzxovnx",
+    "parents": [
+      "0276bd16f6f45f25c1d88e3ac7f0d621e9f42960"
+    ],
+    "author": "Codex <codex@openai.com> 1792267099 +0200",
+    "subject": "feat(rustty): find panels from the outliner"
+  },
+  "utxqnyy": {
+    "hash": "0276bd16f6f45f25c1d88e3ac7f0d621e9f42960",
+    "full_id": "utxqnyyuwtpoukzpkruuwwxvqlwwxxktpxktrnqs",
+    "parents": [
+      "89b2cc61a054c74133cc0bc23b2fdcd124eee982"
+    ],
+    "author": "Codex <codex@openai.com> 1792264440 +0200",
+    "subject": "feat(rustty): pin panels above the workspace outliner"
+  },
+  "pmoztwz": {
+    "hash": "89b2cc61a054c74133cc0bc23b2fdcd124eee982",
+    "full_id": "pmoztwzvtqsomnylnyoorotvvkumozxorkpozqwu",
+    "parents": [
+      "9a3d64e86d2db380390dca9984583e6d129fd39c"
+    ],
+    "author": "Codex <codex@openai.com> 1792263097 +0200",
+    "subject": "fix(rustty): dismiss the command palette on outside clicks"
+  },
+  "zouwuzy": {
+    "hash": "9a3d64e86d2db380390dca9984583e6d129fd39c",
+    "full_id": "zouwuzylkonlpusykptwqktqlnqrxozluylxwkzo",
+    "parents": [
+      "0d4623d7c4bf37e909cf338ece8022310f5b2386"
+    ],
+    "author": "Codex <codex@openai.com> 1792259565 +0200",
+    "subject": "feat(rustty): add a floating workspace outliner"
+  },
+  "uswywwt": {
+    "hash": "0d4623d7c4bf37e909cf338ece8022310f5b2386",
+    "full_id": "uswywwtoksvzwuxmpvutpspuzlpmmrytuzsrvvps",
+    "parents": [
+      "05100c1924746c1fde0425901914c48e71e164c9"
+    ],
+    "author": "Codex <codex@openai.com> 1792225322 +0200",
+    "subject": "feat(rustty): include OSC progress in deck aggregates"
+  },
+  "suzrmro": {
+    "hash": "05100c1924746c1fde0425901914c48e71e164c9",
+    "full_id": "suzrmroptpxrqyvszwrplqrutmtktqqsvptvvxox",
+    "parents": [
+      "cf6e9f2d1cdc0898a5fb7c3d1e456413c98e87a7"
+    ],
+    "author": "Codex <codex@openai.com> 1792162491 +0200",
+    "subject": "fix(rustty): keep tab editors open while editing"
+  },
+  "tnnuzul": {
+    "hash": "cf6e9f2d1cdc0898a5fb7c3d1e456413c98e87a7",
+    "full_id": "tnnuzulrmsyzlqtxywnsznplnrlywzvqzoxwkpym",
+    "parents": [
+      "0fda7ecc26220e1351ee0a5e5d9ab56bc4040139"
+    ],
+    "author": "Codex <codex@openai.com> 1792158557 +0200",
+    "subject": "fix(rustty): distinguish the three zoom layers"
+  },
+  "pzqtqpt": {
+    "hash": "0fda7ecc26220e1351ee0a5e5d9ab56bc4040139",
+    "full_id": "pzqtqptxkylxoookzrvvvqzzkpkympvoknwwnmur",
+    "parents": [
+      "feb2c7786d15f26c66c6130d217b7b74b6296568"
+    ],
+    "author": "Codex <codex@openai.com> 1792125349 +0000",
+    "subject": "fix(render): align software image storage limits"
+  },
+  "kuvlrwx": {
+    "hash": "feb2c7786d15f26c66c6130d217b7b74b6296568",
+    "full_id": "kuvlrwxsluzkyvxyoospvkltutyxnpwtmuotxwnn",
+    "parents": [
+      "bfc18d8f83a3619af8135c910fa9c08a4d39fd32"
+    ],
+    "author": "Codex <codex@openai.com> 1792138110 +0200",
+    "subject": "fix(rustty): keep quadrant zoom while multiple panes remain"
+  },
+  "nxtvuly": {
+    "hash": "bfc18d8f83a3619af8135c910fa9c08a4d39fd32",
+    "full_id": "nxtvulyqlprurtwqyzykyoxylsllrqmpkxuwzzst",
+    "parents": [
+      "aeb5dc50f9482f748dd6be13279b9049e3c8a0d5"
+    ],
+    "author": "Codex <codex@openai.com> 1792070656 +0200",
+    "subject": "feat(rustty): add a copper crab app icon"
+  },
+  "vlyrnsr": {
+    "hash": "aeb5dc50f9482f748dd6be13279b9049e3c8a0d5",
+    "full_id": "vlyrnsrlwmkvrqwxztownnvkyktontxxqyowqmll",
+    "parents": [
+      "8a429b3be81626faa27cfc734d086118b54ae9e6"
+    ],
+    "author": "Codex <codex@openai.com> 1792067089 +0200",
+    "subject": "feat(rustty): expose Stream Deck commands and held-page actions"
+  },
+  "uuwypkk": {
+    "hash": "8a429b3be81626faa27cfc734d086118b54ae9e6",
+    "full_id": "uuwypkknsmlsoylnvypmznwwunosknmoxtlmyyzk",
+    "parents": [
+      "25a08732032de151442f800c36ea31fd476dda9d"
+    ],
+    "author": "Codex <codex@openai.com> 1792066276 +0200",
+    "subject": "feat(rustty): pull active agents onto the first Stream Deck page"
+  },
+  "qpxtlwx": {
+    "hash": "25a08732032de151442f800c36ea31fd476dda9d",
+    "full_id": "qpxtlwxqmuxkunpmtnurnyrurrnxspqplxwrosry",
+    "parents": [
+      "1140fadebc03dd6a3e955aadafaaa11111c4ebe6"
+    ],
+    "author": "Codex <codex@openai.com> 1792064181 +0200",
+    "subject": "feat(rustty): preview themes from the command palette"
+  },
+  "uuqlnnl": {
+    "hash": "1140fadebc03dd6a3e955aadafaaa11111c4ebe6",
+    "full_id": "uuqlnnlkknlyvoypsvrkyusyrxrywqxyuowqoqqo",
+    "parents": [
+      "df747bdf62362b38684454f0c064049990f0db86"
+    ],
+    "author": "Codex <codex@openai.com> 1792061640 +0200",
+    "subject": "feat(rustty): support Unicode 18 widths and grapheme boundaries"
+  },
+  "vrnttms": {
+    "hash": "df747bdf62362b38684454f0c064049990f0db86",
+    "full_id": "vrnttmskslnkyzorumrqnvorrxzvzokknqzosxtz",
+    "parents": [
+      "70cb30b602bcba2f07312dc80ae62a2dca72e299"
+    ],
+    "author": "Codex <codex@openai.com> 1792061629 +0200",
+    "subject": "feat(rustty): preserve hyperlinks in VT exports"
+  },
+  "sqtmztk": {
+    "hash": "70cb30b602bcba2f07312dc80ae62a2dca72e299",
+    "full_id": "sqtmztklwrpluzsrwwrzzksovtsxovwmsxoquwkp",
+    "parents": [
+      "8edae665a6ed7088fe00daa18047fb245926d650"
+    ],
+    "author": "Codex <codex@openai.com> 1792059565 +0200",
+    "subject": "feat(rustty): support soft terminal reset"
+  },
+  "zxvqzyl": {
+    "hash": "8edae665a6ed7088fe00daa18047fb245926d650",
+    "full_id": "zxvqzyltkwlxwknqypowwlpstyokvqztoqywptsr",
+    "parents": [
+      "4e981745410d728e8bf87df90115d74942fed7e2"
+    ],
+    "author": "Codex <codex@openai.com> 1792059502 +0200",
+    "subject": "feat(rustty): recover terminal panes from the command palette"
+  },
+  "llpvkoq": {
+    "hash": "4e981745410d728e8bf87df90115d74942fed7e2",
+    "full_id": "llpvkoqzvwrsmuvxtqkslmsrvrmyxyqsmzrmrqvk",
+    "parents": [
+      "5654dfd569fd477f6f1edf4f6a0895b52ee789eb"
+    ],
+    "author": "Codex <codex@openai.com> 1792056114 +0200",
+    "subject": "docs(rustty): record the October upstream review"
+  },
+  "qoxuslk": {
+    "hash": "5654dfd569fd477f6f1edf4f6a0895b52ee789eb",
+    "full_id": "qoxuslknrsuzqpvlyrsqntmolvrxklxzqtrxvlmq",
+    "parents": [
+      "d6c6a138e6cee1922215a1238fdc674c7b9c6812"
+    ],
+    "author": "Codex <codex@openai.com> 1792056096 +0200",
+    "subject": "perf(rustty): batch legacy character-set printing"
+  },
+  "trotvpk": {
+    "hash": "d6c6a138e6cee1922215a1238fdc674c7b9c6812",
+    "full_id": "trotvpktuoyoqytuzmwvluyvrrxuxsuozzstxrkx",
+    "parents": [
+      "a969ec6d783df8b2744a9c235256cc63d42c7ca1"
+    ],
+    "author": "Codex <codex@openai.com> 1792055743 +0200",
+    "subject": "fix(rustty): validate macOS links before opening handlers"
+  },
+  "zpnsnkm": {
+    "hash": "a969ec6d783df8b2744a9c235256cc63d42c7ca1",
+    "full_id": "zpnsnkmyolzxszvnnmvmwnqokzxwnzrqvzssnzzz",
+    "parents": [
+      "0e4a98a5a68b65da273594e1b4221d52d99862ab"
+    ],
+    "author": "Codex <codex@openai.com> 1792055681 +0200",
+    "subject": "test(rustty): measure legacy character-set throughput"
+  },
+  "uruottv": {
+    "hash": "0e4a98a5a68b65da273594e1b4221d52d99862ab",
+    "full_id": "uruottvzxvxnmukxuoqopmokpwxzzrumqmzssywo",
+    "parents": [
+      "fb02bc40276b3cd0a17cc2ea045848268cf63942"
+    ],
+    "author": "Codex <codex@openai.com> 1792055676 +0200",
+    "subject": "fix(rustty): preserve graphemes through scrolling wraps"
+  },
+  "txmywtn": {
+    "hash": "fb02bc40276b3cd0a17cc2ea045848268cf63942",
+    "full_id": "txmywtnrolmrtruxuuywqovtwvuntoqxlpyunxyx",
+    "parents": [
+      "f9435f874fda00178d306aca76c65095be211de5"
+    ],
+    "author": "Codex <codex@openai.com> 1792055624 +0200",
+    "subject": "fix(rustty): retain output when clearing above blank rows"
+  },
+  "qryxzyk": {
+    "hash": "f9435f874fda00178d306aca76c65095be211de5",
+    "full_id": "qryxzyktvyqpnksskvptypvqzoszymrmylxnwnot",
+    "parents": [
+      "c26a96ac8eeb4f7c536af5bcb25ad12d413c2b63"
+    ],
+    "author": "Codex <codex@openai.com> 1792055564 +0200",
+    "subject": "fix(rustty): restore configured palette on terminal reset"
+  },
+  "mmzownk": {
+    "hash": "c26a96ac8eeb4f7c536af5bcb25ad12d413c2b63",
+    "full_id": "mmzownkqmyumtrlqwoqptwllqyvkqlwnqkzpwnts",
+    "parents": [
+      "e27f21f5e156ce613cfea70d1834050b3b81db62"
+    ],
+    "author": "Codex <codex@openai.com> 1792055462 +0200",
+    "subject": "fix(rustty): preserve Unicode and consume single shifts once"
+  },
+  "rnurpot": {
+    "hash": "e27f21f5e156ce613cfea70d1834050b3b81db62",
+    "full_id": "rnurpotyyvvwqxzyxklpsvxuukrrsnnruvwqoxpk",
+    "parents": [
+      "3ceb882cb4a3bf77ce10a102ac3808a9bac2d6b1"
+    ],
+    "author": "Codex <codex@openai.com> 1792055377 +0200",
+    "subject": "fix(rustty): select words across wide cells and soft wraps"
+  },
+  "wosvlpq": {
+    "hash": "3ceb882cb4a3bf77ce10a102ac3808a9bac2d6b1",
+    "full_id": "wosvlpqwxwooowtnntmyrozlstptmtzrytwnvqxz",
+    "parents": [
+      "0210d1588d83a78f550ed8247940ed1514a110d5"
+    ],
+    "author": "Codex <codex@openai.com> 1792055249 +0200",
+    "subject": "fix(rustty): encode extended mouse and modified backspace"
+  },
+  "ukrlqpq": {
+    "hash": "0210d1588d83a78f550ed8247940ed1514a110d5",
+    "full_id": "ukrlqpqsqssywqzmznwnlttzxxkrnwxpsmuqozlu",
+    "parents": [
+      "8fcf08e0dafe8c935248009a204215dd0684f580"
+    ],
+    "author": "Codex <codex@openai.com> 1792055226 +0200",
+    "subject": "fix(rustty): repair pending wrap when resizing"
+  },
+  "vvnxupx": {
+    "hash": "8fcf08e0dafe8c935248009a204215dd0684f580",
+    "full_id": "vvnxupxnpttxqrlvkwrksttwsqlpntlnsmkkwrrv",
+    "parents": [
+      "6e082c9258e5806042872729897f587692486ec2"
+    ],
+    "author": "Codex <codex@openai.com> 1792055202 +0200",
+    "subject": "fix(rustty): discard cancelled OSC commands"
+  },
+  "lnytkrz": {
+    "hash": "6e082c9258e5806042872729897f587692486ec2",
+    "full_id": "lnytkrzxvpqtxuoswvpypmpnqwlrxrsvzlxxqvyx",
+    "parents": [
+      "d7c1ce0c24d413a2a63ffeebe123c099a1a3818c"
+    ],
+    "author": "Codex <codex@openai.com> 1792055174 +0200",
+    "subject": "fix(rustty): flag carriage returns in unsafe pastes"
+  },
+  "vpwlpow": {
+    "hash": "d7c1ce0c24d413a2a63ffeebe123c099a1a3818c",
+    "full_id": "vpwlpowtytwszmpttwytolzlonxnwzqrxtoynmko",
+    "parents": [
+      "919c75d2611572d35a20d16a4514c42431b55d35"
+    ],
+    "author": "Codex <codex@openai.com> 1791988835 +0200",
+    "subject": "perf(rustty): batch APC image payload parsing"
+  },
+  "rsqxxvl": {
+    "hash": "919c75d2611572d35a20d16a4514c42431b55d35",
+    "full_id": "rsqxxvlnkzsltmwqkmumkvxopwvqxnlrxspunxqv",
+    "parents": [
+      "613a05e9e81916861317bd407c1aa697d6b0ee9f"
+    ],
+    "author": "Codex <codex@openai.com> 1791863348 +0200",
+    "subject": "fix(rustty): keep pane selections and labels legible"
+  },
+  "wpzqnup": {
+    "hash": "613a05e9e81916861317bd407c1aa697d6b0ee9f",
+    "full_id": "wpzqnupnktrzvyuxvtmwuovstutqrwtkqtsznkvz",
+    "parents": [
+      "3d5ee5748ce9045ab935e4f226e058fa6b0d3469"
+    ],
+    "author": "Codex <codex@openai.com> 1791653625 +0200",
+    "subject": "perf(rustty): share Kitty images and index tile updates"
+  },
+  "wtwyymp": {
+    "hash": "3d5ee5748ce9045ab935e4f226e058fa6b0d3469",
+    "full_id": "wtwyympnttzvonkmyrpqxnxlnqzzkqyronuwlpnw",
+    "parents": [
+      "a8645ab632331dd90ce8951b66f160d88a90d334"
+    ],
+    "author": "Codex <codex@openai.com> 1791486046 +0200",
+    "subject": "feat(rustty): report agent activity on Stream Deck dashboards"
+  },
+  "xzlymrq": {
+    "hash": "a8645ab632331dd90ce8951b66f160d88a90d334",
+    "full_id": "xzlymrqpvwmppsqmkomkvkmtylptnkplwxktxsoo",
+    "parents": [
+      "abcea8cba529f8544a31de0d463411288c8159d9"
+    ],
+    "author": "Codex <codex@openai.com> 1789396357 +0000",
+    "subject": "feat(rustty): ship a native Windows desktop with software fallback"
+  },
+  "kzpkvsv": {
+    "hash": "abcea8cba529f8544a31de0d463411288c8159d9",
+    "full_id": "kzpkvsvsuxrmswmznxmrystynooynquvwvpwwvok",
+    "parents": [
+      "6d65ca15834e5c0a3bccffaea67ab6ee69609370"
+    ],
+    "author": "Codex <codex@openai.com> 1791427885 +0200",
+    "subject": "perf(rustty): batch styled and Unicode reflow"
+  },
+  "kutpqky": {
+    "hash": "6d65ca15834e5c0a3bccffaea67ab6ee69609370",
+    "full_id": "kutpqkynosmryzprmvoxtnznrqmtuulssmqltvln",
+    "parents": [
+      "964e12ed4c2d7c70545a8676781af1b6181884fa"
+    ],
+    "author": "Codex <codex@openai.com> 1789895891 +0200",
+    "subject": "feat(rustty): refine desktop search, selection and native controls"
+  },
+  "zyuvoov": {
+    "hash": "964e12ed4c2d7c70545a8676781af1b6181884fa",
+    "full_id": "zyuvoovnsszpoyxsyuswuyuxxsqlqsloktlzmzxq",
+    "parents": [
+      "cb4c37c7845c2bc6dd58cbafea9916fffce8e19c"
+    ],
+    "author": "Codex <codex@openai.com> 1789624427 +0100",
+    "subject": "perf(rustty): streamline shaping and GPU frame preparation"
+  },
+  "qoruknw": {
+    "hash": "cb4c37c7845c2bc6dd58cbafea9916fffce8e19c",
+    "full_id": "qoruknwwkmlkyqsqwxyntnmykrvtsowzqvyryuss",
+    "parents": [
+      "13be7aed6b41df3116aaedb16f171e82f3f935c6"
+    ],
+    "author": "Codex <codex@openai.com> 1789572328 +0100",
+    "subject": "perf(rustty): accelerate UTF-8 input and active-page access"
+  },
+  "ksrntwr": {
+    "hash": "13be7aed6b41df3116aaedb16f171e82f3f935c6",
+    "full_id": "ksrntwrymqprvlqrlpvlroqkollwoyysprtzuqqz",
+    "parents": [
+      "60d52826d68d7b196cd485d960b19f41793e7c89"
+    ],
+    "author": "Codex <codex@openai.com> 1789542321 +0100",
+    "subject": "perf(rustty): pack terminal pages and vectorize printing"
+  },
+  "vmoxywy": {
+    "hash": "60d52826d68d7b196cd485d960b19f41793e7c89",
+    "full_id": "vmoxywyzozxouulsuxyyxyrkvkqosnpzlmkpnpzz",
+    "parents": [
+      "8de9067045d8036ce9992404f8178da406109bd2"
+    ],
+    "author": "Codex <codex@openai.com> 1789446658 +0200",
+    "subject": "perf(rustty): reduce terminal storage and batch parsed input"
+  },
+  "xwmwxzo": {
+    "hash": "8de9067045d8036ce9992404f8178da406109bd2",
+    "full_id": "xwmwxzokywqzmzypqkzzlwxovxznozkvnnpwltym",
+    "parents": [
+      "506f9a55e4aaa5a993533ec11d75651e6e67d6c7"
+    ],
+    "author": "Codex <codex@openai.com> 1789374490 +0200",
+    "subject": "perf(rustty): reuse pane frames and honor terminal interaction modes"
+  },
+  "kswnroz": {
+    "hash": "506f9a55e4aaa5a993533ec11d75651e6e67d6c7",
+    "full_id": "kswnrozlzstqnyvnmrsztwkkwvvxsoyurlyvmoxm",
+    "parents": [
+      "fec3e3d600cc56202c430cb1aedf62cb0117a539"
+    ],
+    "author": "Codex <codex@openai.com> 1789354319 +0200",
+    "subject": "feat(rustty): complete screen exports and Kitty animation support"
+  },
+  "oxqqpnm": {
+    "hash": "fec3e3d600cc56202c430cb1aedf62cb0117a539",
+    "full_id": "oxqqpnmrnrunuvyxvnqpsklvvwznyssxmqzvpurt",
+    "parents": [
+      "faae34267cefc47b152ffa89dbf0e9f0466bcc6b"
+    ],
+    "author": "Codex <codex@openai.com> 1789311086 +0200",
+    "subject": "feat(rustty): restore workspaces and complete selection and search"
+  },
+  "qoxvwzm": {
+    "hash": "faae34267cefc47b152ffa89dbf0e9f0466bcc6b",
+    "full_id": "qoxvwzmouslqmqurkqtvtswpqlzvmppzmpntpxnq",
+    "parents": [
+      "eb5b4b7a717d9abe470b0d1a7021cc9a25070a29"
+    ],
+    "author": "Codex <codex@openai.com> 1789298957 +0200",
+    "subject": "fix(rustty): preserve screen resources through resize and restoration"
+  },
+  "ltzvxkq": {
+    "hash": "eb5b4b7a717d9abe470b0d1a7021cc9a25070a29",
+    "full_id": "ltzvxkqstlvtmvzvlwtrrlontmzmxztkptnvpysw",
+    "parents": [
+      "85f83174f17d797aeeb0b6e8eb1eb712b3a13ad5"
+    ],
+    "author": "Codex <codex@openai.com> 1789294026 +0200",
+    "subject": "fix(rustty): match native input and terminal control semantics"
+  },
+  "trrquvr": {
+    "hash": "85f83174f17d797aeeb0b6e8eb1eb712b3a13ad5",
+    "full_id": "trrquvrmsykolroqwsoquqqxrxxkzzklrklyyvyt",
+    "parents": [
+      "f39d7a043af1eb653884dbe02627816a4407f1c6"
+    ],
+    "author": "Codex <codex@openai.com> 1789287838 +0200",
+    "subject": "feat(rustty): implement clipboard consent and host query protocols"
+  },
+  "rouqlwo": {
+    "hash": "f39d7a043af1eb653884dbe02627816a4407f1c6",
+    "full_id": "rouqlwounmyonlmywklkmorolostsokrpyyqytkt",
+    "parents": [
+      "cad5f78425c9ee8985fcc2fc43d24eb2c2e1cce2"
+    ],
+    "author": "Codex <codex@openai.com> 1789285199 +0200",
+    "subject": "fix(rustty): preserve sessions through native workspace changes"
+  },
+  "txqqmwp": {
+    "hash": "cad5f78425c9ee8985fcc2fc43d24eb2c2e1cce2",
+    "full_id": "txqqmwpxpusvwuwvywszsuxtnxkksrxtstswrkrp",
+    "parents": [
+      "5acdbf154369928eb228d2263cbe612d165f7569"
+    ],
+    "author": "Codex <codex@openai.com> 1789281515 +0200",
+    "subject": "feat(rustty): establish the native terminal and macOS desktop"
+  }
+}

@@ -1,0 +1,24 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.47s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 1 test
+test screen::tests::native_style_hash_matches_canonical_packed_fields ... FAILED
+
+failures:
+
+---- screen::tests::native_style_hash_matches_canonical_packed_fields stdout ----
+
+thread 'screen::tests::native_style_hash_matches_canonical_packed_fields' (96413408) panicked at crates/rustty-vt/src/screen/tests.rs:26:9:
+assertion `left == right` failed: Style { foreground: Indexed(1), background: Default, underline_color: Default, bold: false, faint: false, italic: false, blink: false, inverse: false, invisible: false, strikethrough: false, overline: false, underline: None, tmux_ansi: 0, tmux_tab: 0 }
+  left: 4923397528956101199
+ right: 16551772900670226536
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    screen::tests::native_style_hash_matches_canonical_packed_fields
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 198 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p rustty-vt --lib`

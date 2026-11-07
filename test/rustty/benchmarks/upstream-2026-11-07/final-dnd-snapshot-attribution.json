@@ -1,0 +1,350 @@
+{
+  "status": "older intentional lifecycle difference; no classifier relaxation",
+  "comparisons": 27,
+  "standard_runner_root_exclusions": [
+    "capabilities"
+  ],
+  "runtime_driver": "Rust parity-runner; Python here only audits retained JSON replies",
+  "fixture_sha256": "219f80d7e42c5b3604e54b831e04d903c54b00a1413895ba9aac184b81355f18",
+  "runner_source_sha256": "6831e8a2f2d5b37be8b897f3d518ca498794cbdc2d0b5ed9c43c65e944add0a4",
+  "audit_source_sha256": "60712d34dbce040ce3f8adac336c52a48bb42b3a694d20b5ad59d83ec186c0c2",
+  "binaries": {
+    "/private/tmp/rustty-reintegrate.leadij/linked-before-parity": "1b7e7b8e36865eb22932effc079899975d27d2b04aeced8b550ab3110ac9fdb6",
+    "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5",
+    "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner": "0a2dbe6ec2d5a01aad642a689d49727ea9a699279a2fe0b54d64c67db5e14de7",
+    "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-oracle": "9107e2e57f503b7e081091651be1342d892e6a6a48052c6efe4770af52aa8b89"
+  },
+  "rust_source_unchanged_since_pre_task": true,
+  "rust_dnd_source_sha256": "92310737a164e40a21923910cae183c5a640cfac3b318c80f0d9732d4737ff41",
+  "rust_policy_origin": "fb662cab004cecd1c983ae95dc540dd8e3091aa6",
+  "native_policy_origin": "50f69b883c",
+  "upstream_base_has_same_no_data_error": true,
+  "only_incoming_dnd_change": "6573de67e replaces ArrayListUnmanaged aliases only",
+  "incoming_diff_sha256": "e112c8813841db53401840795ea572f17137739fdcbf20fa1646af8dee733664",
+  "records": [
+    {
+      "id": "protocol/dnd/snapshot/rust/0",
+      "request_sha256": "a345d6537b0d8781495f7416be3019a6c6f893b68799735079a9be47d0b50b2b",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "755ffae4035df7f81880239f5bac85990d4afb66c3a530ace3a4d23db27c7f56",
+      "pre_link_rust_sha256": "755ffae4035df7f81880239f5bac85990d4afb66c3a530ace3a4d23db27c7f56",
+      "native_sha256": "7ed5ff6dfcf23986b8e6cd92d39ca2d3685b75f4327be7bcfa0c979454e8cf46"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust/0/scalar",
+      "request_sha256": "d27778254e1f6479bb92b535d15f521d47c75bf23a97ba6851a9b438a30156e8",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "aac56da306a09a34cf7e0a0679f76db1167072bfa7f5c4e7e03b60491e8ee1d8",
+      "pre_link_rust_sha256": "aac56da306a09a34cf7e0a0679f76db1167072bfa7f5c4e7e03b60491e8ee1d8",
+      "native_sha256": "f4e61295de402f4be72ef15aeb778a7b3165bf55a5e394484b71639e3d195948"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust/0/chunks",
+      "request_sha256": "46875a768d5a441e30582c4e47c5e7a0b42399fec90ab4d9d7cdee6bde1cdf0d",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "1563a099add0bb40824723d72d46ceaeba8f485da9ff670d6c8d3d38dd2089f0",
+      "pre_link_rust_sha256": "1563a099add0bb40824723d72d46ceaeba8f485da9ff670d6c8d3d38dd2089f0",
+      "native_sha256": "b36b38b58442000a34e95cdd55d3e40aa46ce02f793f8c1d6c48a3c369c39602"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust/1",
+      "request_sha256": "60971308b81abc95b90b5bcdd66ba414133e79d8c19f3ae6d8f0432e48baccb5",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "05d78b0317081539b360c39ccc1c265069ac1834de4350d1355ef6269295ba1b",
+      "pre_link_rust_sha256": "05d78b0317081539b360c39ccc1c265069ac1834de4350d1355ef6269295ba1b",
+      "native_sha256": "8eecf5ce0c25be6ed2c803cc89062abfb59c349cf16bc0b1764e93657612f87a"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust/1/scalar",
+      "request_sha256": "0600867eb8710eef36ad650b8f2f7fd0f8863f1722649c68dee2e3cde2d04577",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "5607586b8f2681a31a04840098d5a44dde96d9cc227e3a789d13d5d65bf3f3ce",
+      "pre_link_rust_sha256": "5607586b8f2681a31a04840098d5a44dde96d9cc227e3a789d13d5d65bf3f3ce",
+      "native_sha256": "f688386352cecd3cc4471971a9fcf7e886b2ca53b0e4ef20f24db9017061f425"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust/1/chunks",
+      "request_sha256": "2e0aae3804b989b32b7920e7e577bfdd7b5b2d6f196eca88b5f77109e6029af7",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "b308ad4673b108548c8e4b163d7515dfd129970d32f767b7289e9aea636a0ba7",
+      "pre_link_rust_sha256": "b308ad4673b108548c8e4b163d7515dfd129970d32f767b7289e9aea636a0ba7",
+      "native_sha256": "d717f7fea4d10ae190e66b002e93716da32dad6b8252b92321314ab62a541717"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust/2",
+      "request_sha256": "c0e8cf02f5259ef17284609622d27249642a89307dc0e16a8e96de7ffbd494da",
+      "difference_paths": [
+        "response.events[3].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "434766c2b7b2bd45adee1245de9d53c2ee88909e93eeec8a97a0ea1941b51937",
+      "pre_link_rust_sha256": "434766c2b7b2bd45adee1245de9d53c2ee88909e93eeec8a97a0ea1941b51937",
+      "native_sha256": "16011a62808696e26994c85e96c82d3f1a1bf14ecc1d9280e3232b75213dfcb8"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust/2/scalar",
+      "request_sha256": "3f53788965a70086bf084e90d396e81a8de8c4835ac8ecdef9619ee4a768b679",
+      "difference_paths": [
+        "response.events[3].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "5c486d62016e9cffc4b398b0e57bff8a9f498336817e5477bc8600ed8aa598e6",
+      "pre_link_rust_sha256": "5c486d62016e9cffc4b398b0e57bff8a9f498336817e5477bc8600ed8aa598e6",
+      "native_sha256": "fd68b610d35b533247f0a063928517b4dc11a479ead17af27415ea913a5ad7e2"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust/2/chunks",
+      "request_sha256": "a377de6d2b99970685bc66f3d2b85e15f7c6fc89c18d64b071bd30bdf7c46a13",
+      "difference_paths": [
+        "response.events[3].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "94f54787ccccb4074ccd87c0742c222c87ca92e5756b13ec234ff815b6de8180",
+      "pre_link_rust_sha256": "94f54787ccccb4074ccd87c0742c222c87ca92e5756b13ec234ff815b6de8180",
+      "native_sha256": "e6f0bc6d123ee0c3b489165762ff2c51ca1a8a1db3eeb6c6c30ad21587d7f7fa"
+    },
+    {
+      "id": "protocol/dnd/snapshot/zig/0",
+      "request_sha256": "53baa074cd35f69ce684792f8d02eac532bdba58da3f1aa01b0195847e0eb2b6",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "c0ca42ef7045b796d24e8469a0e98e8d53cd7ca7152561efa4326ef9bb92bc28",
+      "pre_link_rust_sha256": "c0ca42ef7045b796d24e8469a0e98e8d53cd7ca7152561efa4326ef9bb92bc28",
+      "native_sha256": "54575eee450ac24663db18337cb3a21664431087e67869bd76fbe4102364dec5"
+    },
+    {
+      "id": "protocol/dnd/snapshot/zig/0/scalar",
+      "request_sha256": "0c06db3b9d70855359a75736ac38d46b5323ddb47eea3a84e95670140c072016",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "f0598e1973a15b842049e356eb9b363f3ac58cc01aaf0e07f3f4e0f4c5750f90",
+      "pre_link_rust_sha256": "f0598e1973a15b842049e356eb9b363f3ac58cc01aaf0e07f3f4e0f4c5750f90",
+      "native_sha256": "026ff61eac8ae7c4b5891e8bfd818e6acff4bea9dc453757e98d3c301ce5a215"
+    },
+    {
+      "id": "protocol/dnd/snapshot/zig/0/chunks",
+      "request_sha256": "036e1c3b6907475c6fdc16ca0326754b1b1de3b2662d2ea897067c949064801f",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "b65fcea94c1e2910109fd53218d56ebc4b1ba742bc6857ea2dd60c5e09f19d1e",
+      "pre_link_rust_sha256": "b65fcea94c1e2910109fd53218d56ebc4b1ba742bc6857ea2dd60c5e09f19d1e",
+      "native_sha256": "9fc10b8e24b7fc06adf15a7a93de9438da4f6f2622c3a0d7026a9a686f53b707"
+    },
+    {
+      "id": "protocol/dnd/snapshot/zig/1",
+      "request_sha256": "b92baa1efaf85a4d5327ca13947d846ca8128684af1768fbcfcf2bc1e01c6c21",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "5e38ebc0e1012179b2b9c293cd66717280a622c4fe6b6db47e5ef3cfcd87e98f",
+      "pre_link_rust_sha256": "5e38ebc0e1012179b2b9c293cd66717280a622c4fe6b6db47e5ef3cfcd87e98f",
+      "native_sha256": "2086976aab6bf740276d1d906e3ae07b0be8ba414b839fb6124e0de05787cd8d"
+    },
+    {
+      "id": "protocol/dnd/snapshot/zig/1/scalar",
+      "request_sha256": "f87838c69cb214a5001541e6ee7750b5cfd431df23b75db61f2c939e1e4640ab",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "4f5e241bdd4359e9ac9882dd8377029bd3c303c795684b1ce1bef1d1980612e3",
+      "pre_link_rust_sha256": "4f5e241bdd4359e9ac9882dd8377029bd3c303c795684b1ce1bef1d1980612e3",
+      "native_sha256": "acd8a1ada9411eb50d90ae876c41ba62191902b67bd756b84fd277632144c687"
+    },
+    {
+      "id": "protocol/dnd/snapshot/zig/1/chunks",
+      "request_sha256": "bb09805c611f60a6b90fc5433a168d214544c7f8db6543b4e66f9fbb35e7f80d",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "2a44ccf930424f92f27f8538cfe6781d3bb9eafd2d90462bd4a95e9b6bd4ca01",
+      "pre_link_rust_sha256": "2a44ccf930424f92f27f8538cfe6781d3bb9eafd2d90462bd4a95e9b6bd4ca01",
+      "native_sha256": "5e4302068354be5559916085b15182fd7f39198ee20f931939288d24db3eb230"
+    },
+    {
+      "id": "protocol/dnd/snapshot/zig/2",
+      "request_sha256": "8486776d2e2ec7a34f15302d3a43afb765f72721cd714b48c8ac98d74ee75593",
+      "difference_paths": [
+        "response.events[3].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "d02a6815627653164276d92320acfd04a5c45cd2e01cacb816c07b80f25780cc",
+      "pre_link_rust_sha256": "d02a6815627653164276d92320acfd04a5c45cd2e01cacb816c07b80f25780cc",
+      "native_sha256": "29eae6a583a71a3aebb80ba87998f36a0400cf59c6ecd7042c09ebba60d6a0a0"
+    },
+    {
+      "id": "protocol/dnd/snapshot/zig/2/scalar",
+      "request_sha256": "299cb4c27dd4db552be3e55fd40ec5bc7e439dc9176ff7bafc56a3ca9f845e8d",
+      "difference_paths": [
+        "response.events[3].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "e2e690862f1b7f5b04c4c720195800149e93f4d766c12533db1f1f9418a22f0a",
+      "pre_link_rust_sha256": "e2e690862f1b7f5b04c4c720195800149e93f4d766c12533db1f1f9418a22f0a",
+      "native_sha256": "6df9e90b461387bbd940bf4939fa5965c29e654a464d1857f9d21c3c341e88f7"
+    },
+    {
+      "id": "protocol/dnd/snapshot/zig/2/chunks",
+      "request_sha256": "f5f88f0815ba9be24aaa4fa764aa71ae0e4d451c057d2342edb2f7b375b15e75",
+      "difference_paths": [
+        "response.events[3].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "99fe3f2f49d025865eb7bfc9227a078d5474a78c2fada00f01ed31386b5a4243",
+      "pre_link_rust_sha256": "99fe3f2f49d025865eb7bfc9227a078d5474a78c2fada00f01ed31386b5a4243",
+      "native_sha256": "3e1a8fe7c88ecf1d42169f5a1bac98c4248d194117d2d0279edc6f9375f8816f"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust-current/0",
+      "request_sha256": "ee267e105872784ddcd63ae5b2d0fa352a8deac6f712fd928bc9e0c79559f99d",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "f24f07b5a5efe3dcec4604135911e4c7bc067926d90d99e3215e7860448bb442",
+      "pre_link_rust_sha256": "f24f07b5a5efe3dcec4604135911e4c7bc067926d90d99e3215e7860448bb442",
+      "native_sha256": "b13c978c9c89320cc976ae3c65af300d3dd26df7069b3aeac036d5bd36b07d0d"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust-current/0/scalar",
+      "request_sha256": "10b1cc3bc3d8d60fc96789beaa33de95a8db6b178e6a6d9b543564ff82ac7421",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "e80cc1fc567cf20cc705627e662b5a522d04103b18c2efd9a0bd6a21e2bff967",
+      "pre_link_rust_sha256": "e80cc1fc567cf20cc705627e662b5a522d04103b18c2efd9a0bd6a21e2bff967",
+      "native_sha256": "1c07ca2866ccc000fdc7f6ee9068b6b905db9930f68a886b27ab4a2dfbe51056"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust-current/0/chunks",
+      "request_sha256": "e41b0b1cc44741e38a58370bb814943b5b62b99c856062514944dbc7f84745c1",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "43047e71b9bb506aa5a0fc3ec4fa0a5984035bfbd7a4dc42ce4440de236c9032",
+      "pre_link_rust_sha256": "43047e71b9bb506aa5a0fc3ec4fa0a5984035bfbd7a4dc42ce4440de236c9032",
+      "native_sha256": "b9fc0d0283e000541d94e7e12b07145e86c83d0824940458fca3e62169fc479b"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust-current/1",
+      "request_sha256": "0ee1f55a638ba4c41c8bce2743c27d8ece91a12b2edc69533d9980f4ca9b4bc1",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "7224a4591bf038e5dda5d64fd2a0ba6a5e878c0fb85e4a4d3001b8523fac96c1",
+      "pre_link_rust_sha256": "7224a4591bf038e5dda5d64fd2a0ba6a5e878c0fb85e4a4d3001b8523fac96c1",
+      "native_sha256": "3d894806bddfb8cf19b91adcdf65ffb89bd3bba5c3fac46074d3ac07c9f387ba"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust-current/1/scalar",
+      "request_sha256": "a45b2838bb931504d4419a6ebb88fd405b0d9b846e71bb93f4bb260894045726",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "06ba2b846c85d782bb8c6159088435613a30cfe222a49ee2c1745f15fdc31222",
+      "pre_link_rust_sha256": "06ba2b846c85d782bb8c6159088435613a30cfe222a49ee2c1745f15fdc31222",
+      "native_sha256": "230fd1a0ccd8f576caf8acf3f14da5efa30bc6d7d29d4951bc9f53244317160f"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust-current/1/chunks",
+      "request_sha256": "f75b3258d1ed3dc33d7622064e251b77304b9df2c199297e24dfafc274d9eda0",
+      "difference_paths": [
+        "response.events[1].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "2dcc80ea26293c36e349c4577a451c5151618637ce8072d6210ca23e73f0e6f3",
+      "pre_link_rust_sha256": "2dcc80ea26293c36e349c4577a451c5151618637ce8072d6210ca23e73f0e6f3",
+      "native_sha256": "0a17066ff06916bc27947785b08bdf3d7f2062d286bccf642000560ba14d60bb"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust-current/2",
+      "request_sha256": "99fc584934407be3e91b844a23cb64b1ef638eda816376a87580344cce2aa817",
+      "difference_paths": [
+        "response.events[3].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "cdd908fe7eb4f3baba075df55feb1776b98df47d3b13bf05d21fcf2c2c72f4c7",
+      "pre_link_rust_sha256": "cdd908fe7eb4f3baba075df55feb1776b98df47d3b13bf05d21fcf2c2c72f4c7",
+      "native_sha256": "07fd1244edb731c68f516e7eb119588cc53adacd5bb95891c84b161a2d33a00d"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust-current/2/scalar",
+      "request_sha256": "5511c8c591b91a05e6c844c23d66432de558ecf43f17d6fa6341a936dda019be",
+      "difference_paths": [
+        "response.events[3].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "a1b63049cb4a28e682c251499c869b784d8e81e2a3276f43551192d6767a1d5f",
+      "pre_link_rust_sha256": "a1b63049cb4a28e682c251499c869b784d8e81e2a3276f43551192d6767a1d5f",
+      "native_sha256": "c416c0c6633fe42c335556cb80f2bc2cdd9521431c6c60b92ba6ad7e01f41713"
+    },
+    {
+      "id": "protocol/dnd/snapshot/rust-current/2/chunks",
+      "request_sha256": "e46c8c82e9de72c15b4ac8f3b5e66fdf469e8d97f46c3ef2d321455db20f8ce5",
+      "difference_paths": [
+        "response.events[3].data"
+      ],
+      "only_exact_error_message_differs": true,
+      "current_rust_equals_pre_link_raw_reply": true,
+      "current_rust_sha256": "560e90daf951bd82b18c9e913a5ed6edb732da80d7381ec5ae4e2e89552cfbb1",
+      "pre_link_rust_sha256": "560e90daf951bd82b18c9e913a5ed6edb732da80d7381ec5ae4e2e89552cfbb1",
+      "native_sha256": "af18d7da15757174447f473fe869ec1cdd2e094a49dc811a88f3c3d143ef32b9"
+    }
+  ]
+}

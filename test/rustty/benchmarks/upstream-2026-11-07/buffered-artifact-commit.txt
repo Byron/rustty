@@ -1,0 +1,6 @@
+perf(test): buffer parity failure artifacts
+
+- Buffer large JSON failure records to avoid a filesystem write for every serializer fragment.
+- Flush each record before reporting success so write failures still propagate.
+- Preserve JSON formatting, trailing newlines and existing failure directories.
+- Validation: 13 runner tests, strict Clippy and formatting; all 192 saved witness files remain byte-identical across warmups and three paired runs.

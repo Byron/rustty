@@ -1,0 +1,63 @@
+[
+  {
+    "request": {
+      "id": "protocol/graphics/placements/blank-rows/repeated-ed2",
+      "cols": 12,
+      "rows": 8,
+      "observe_graphics": true,
+      "observe_graphics_placements": true,
+      "operations": [
+        {
+          "op": "resize",
+          "cols": 12,
+          "rows": 8,
+          "cell_size": [
+            8,
+            16
+          ]
+        },
+        {
+          "op": "write",
+          "data": "1b5f47613d742c663d33322c733d312c763d312c693d313b494543412f773d3d1b5c"
+        },
+        {
+          "op": "write",
+          "data": "1b5b323b3348"
+        },
+        {
+          "op": "write",
+          "data": "1b5f47613d702c693d312c703d312c633d322c723d322c433d313b1b5c"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324b"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a"
+        },
+        {
+          "op": "observe"
+        }
+      ]
+    },
+    "covers": [
+      "graphics.kitty",
+      "effects.pty",
+      "terminal.cells"
+    ]
+  }
+]

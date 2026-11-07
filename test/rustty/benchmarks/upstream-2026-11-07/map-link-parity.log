@@ -1,0 +1,7 @@
+Checked 100 comparisons (snapshot/resources/hyperlinks/strings/0/1024/bytes)
+Checked 200 comparisons (snapshot/resources/hyperlinks/strings/1/2048/int/scalar)
+Checked 300 comparisons (snapshot/resources/hyperlinks/strings/32/2080/bytes/chunks)
+Checked 400 comparisons (snapshot/resources/hyperlinks/strings/2049/32/bytes)
+Checked 500 comparisons (snapshot/resources/hyperlinks/strings/4096/64/int/scalar)
+Checked 600 comparisons (snapshot/resources/hyperlinks/same-id-different-uri/chunks)
+669 comparisons, 0 failures, 0 coverage gaps; full parity not established

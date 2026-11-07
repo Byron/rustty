@@ -1,0 +1,1507 @@
+{
+  "scope": "Whole Rust-runner wall time including process/oracle startup, comparisons and saved failure artifacts; excludes post-run artifact hashing. Not terminal throughput or UI latency.",
+  "source": "Buffering-only uncommitted runner candidate onca7e1373; root validated13tests/Clippy/fmt before handoff.",
+  "runner_comparison_engine": "Existing Rust parity-runner; Python schedules processes and verifies recorded file hashes only.",
+  "identities": {
+    "before": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/runner",
+      "sha256": "0a2dbe6ec2d5a01aad642a689d49727ea9a699279a2fe0b54d64c67db5e14de7"
+    },
+    "after": {
+      "path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner",
+      "sha256": "c45d897330f1faf16c3ed43d7bab4f3f51ed4aa41bd05bef058c1e9c45587a08"
+    },
+    "zig": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+      "sha256": "ffed07e73c1a44e3cae1cec05308a47aeb60bf7e990d763faba96ddca1234ccc"
+    },
+    "rust": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+      "sha256": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5"
+    }
+  },
+  "frozen_after": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/buffered-runner",
+  "fixture_sha256": "51d90bd2c0cc3bfc4e090591ac824213150ca0ebd7a05cc6283aa6d210a30150",
+  "expected_manifest_sha256": "26632a7e34c1bf2cfd6adeb48c0d385135efe5100730fd8caeb1f9d76b753d0f",
+  "driver_sha256": "4911ac84b30d86da342864c7c42f67814707c3b1af03445f537c15308cdedd68",
+  "started_utc": "2026-11-07T11:58:48.683849+00:00",
+  "runs": [
+    {
+      "phase": "warmup",
+      "round": 0,
+      "version": "before",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+        "--zig-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/warmup-0-before",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/warmup-0-before.log",
+      "artifacts": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/warmup-0-before",
+      "exit_status": 1,
+      "elapsed_ns": 247898666,
+      "summary": {
+        "aborted": false,
+        "checked": 6,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 6,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "eae33b0b86ef0a28086910e60fb3de6aed38141c9c8c91822f7d08e95ff5dd12",
+      "all24_artifact_files_exact": true,
+      "files": [
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "request.json",
+          "sha256": "ebcbc15b3d1bd8120549de2b597f4fbdf6dc499ac63151038133cd16ec39044f",
+          "bytes": 742
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "zig.json",
+          "sha256": "bf5eb97bc2a9dca9e7f7bb198d1d95c6d6d4f8c172ad9a112d661c88395f5673",
+          "bytes": 24041
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "rust.json",
+          "sha256": "637075eec434f36e60c48aaeb79e23354ed4d9f56cd98143bbc372e21cb36a44",
+          "bytes": 24089
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "request.json",
+          "sha256": "c1452c4614382cd1fa9502cdaa327d970db56c229b439282470c6edf13d58512",
+          "bytes": 767
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "zig.json",
+          "sha256": "eaac6764887e5e3f2ac2cc38fedc3088c3e57cc197fb7a9491ed8f16ccf6a928",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "rust.json",
+          "sha256": "bdfc505affc6f649cb17f434739ff63eb08737dce40bfd65d247771a565fca4e",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "request.json",
+          "sha256": "6c20b344bbe5684564b337e969c39dd69e9f038c4ff0599d5fc8ca31fae3bc73",
+          "bytes": 972
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "zig.json",
+          "sha256": "afdaf5f0944b172aaa4e673e0140664133389d525ac0a43dd9a86fa78ab6eb19",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "rust.json",
+          "sha256": "c01635ecb06ed2607bff1baf808e83d010868340c4df7def3174bc6a65384d50",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "request.json",
+          "sha256": "2e98dec523547f9785914e6f9f3ffb34385145ef7afc226c79fee44a48eafa46",
+          "bytes": 765
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "zig.json",
+          "sha256": "d7dc1018be9784a43d1dc1ae3de02767bf0cf0977a25b3d1f25eb6c24f9c43e0",
+          "bytes": 41551
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "rust.json",
+          "sha256": "3a764812af124e7bb6cf793b0e41261ae41eda7f49746890437ac6423dc3c22a",
+          "bytes": 41647
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "request.json",
+          "sha256": "af7e961a6c561185c24ad50c351befa351223f103444a7f15b3578bb3730de99",
+          "bytes": 790
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "zig.json",
+          "sha256": "500b98c46019c55bd8d907798a8687623d9545cbddec35f966b465f5b484298c",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "rust.json",
+          "sha256": "1c32febb3efde25b6345d9e04253a16bd1432ac0fbeb93b5c3f25913fa2fb144",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "request.json",
+          "sha256": "565d9d7090758d240684eeb7fa572264ca80b03181a8b8fbc30a6823f6de8036",
+          "bytes": 1097
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "zig.json",
+          "sha256": "f82dba2ad03f8d1d2d9ac4d8aa8a936f0991c4bd64a951045f6e4ef2be4fb8ab",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "rust.json",
+          "sha256": "d68fced3ed5cfa3fcb890521c70c978a637f60e0b691a7dff2b4615b3ef2e8d5",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        }
+      ]
+    },
+    {
+      "phase": "warmup",
+      "round": 0,
+      "version": "after",
+      "argv": [
+        "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+        "--zig-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/warmup-0-after",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/warmup-0-after.log",
+      "artifacts": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/warmup-0-after",
+      "exit_status": 1,
+      "elapsed_ns": 20298417,
+      "summary": {
+        "aborted": false,
+        "checked": 6,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 6,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "eae33b0b86ef0a28086910e60fb3de6aed38141c9c8c91822f7d08e95ff5dd12",
+      "all24_artifact_files_exact": true,
+      "files": [
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "request.json",
+          "sha256": "ebcbc15b3d1bd8120549de2b597f4fbdf6dc499ac63151038133cd16ec39044f",
+          "bytes": 742
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "zig.json",
+          "sha256": "bf5eb97bc2a9dca9e7f7bb198d1d95c6d6d4f8c172ad9a112d661c88395f5673",
+          "bytes": 24041
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "rust.json",
+          "sha256": "637075eec434f36e60c48aaeb79e23354ed4d9f56cd98143bbc372e21cb36a44",
+          "bytes": 24089
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "request.json",
+          "sha256": "c1452c4614382cd1fa9502cdaa327d970db56c229b439282470c6edf13d58512",
+          "bytes": 767
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "zig.json",
+          "sha256": "eaac6764887e5e3f2ac2cc38fedc3088c3e57cc197fb7a9491ed8f16ccf6a928",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "rust.json",
+          "sha256": "bdfc505affc6f649cb17f434739ff63eb08737dce40bfd65d247771a565fca4e",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "request.json",
+          "sha256": "6c20b344bbe5684564b337e969c39dd69e9f038c4ff0599d5fc8ca31fae3bc73",
+          "bytes": 972
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "zig.json",
+          "sha256": "afdaf5f0944b172aaa4e673e0140664133389d525ac0a43dd9a86fa78ab6eb19",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "rust.json",
+          "sha256": "c01635ecb06ed2607bff1baf808e83d010868340c4df7def3174bc6a65384d50",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "request.json",
+          "sha256": "2e98dec523547f9785914e6f9f3ffb34385145ef7afc226c79fee44a48eafa46",
+          "bytes": 765
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "zig.json",
+          "sha256": "d7dc1018be9784a43d1dc1ae3de02767bf0cf0977a25b3d1f25eb6c24f9c43e0",
+          "bytes": 41551
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "rust.json",
+          "sha256": "3a764812af124e7bb6cf793b0e41261ae41eda7f49746890437ac6423dc3c22a",
+          "bytes": 41647
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "request.json",
+          "sha256": "af7e961a6c561185c24ad50c351befa351223f103444a7f15b3578bb3730de99",
+          "bytes": 790
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "zig.json",
+          "sha256": "500b98c46019c55bd8d907798a8687623d9545cbddec35f966b465f5b484298c",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "rust.json",
+          "sha256": "1c32febb3efde25b6345d9e04253a16bd1432ac0fbeb93b5c3f25913fa2fb144",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "request.json",
+          "sha256": "565d9d7090758d240684eeb7fa572264ca80b03181a8b8fbc30a6823f6de8036",
+          "bytes": 1097
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "zig.json",
+          "sha256": "f82dba2ad03f8d1d2d9ac4d8aa8a936f0991c4bd64a951045f6e4ef2be4fb8ab",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "rust.json",
+          "sha256": "d68fced3ed5cfa3fcb890521c70c978a637f60e0b691a7dff2b4615b3ef2e8d5",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        }
+      ]
+    },
+    {
+      "phase": "timed",
+      "round": 1,
+      "version": "before",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+        "--zig-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-1-before",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-1-before.log",
+      "artifacts": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-1-before",
+      "exit_status": 1,
+      "elapsed_ns": 239161667,
+      "summary": {
+        "aborted": false,
+        "checked": 6,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 6,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "eae33b0b86ef0a28086910e60fb3de6aed38141c9c8c91822f7d08e95ff5dd12",
+      "all24_artifact_files_exact": true,
+      "files": [
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "request.json",
+          "sha256": "ebcbc15b3d1bd8120549de2b597f4fbdf6dc499ac63151038133cd16ec39044f",
+          "bytes": 742
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "zig.json",
+          "sha256": "bf5eb97bc2a9dca9e7f7bb198d1d95c6d6d4f8c172ad9a112d661c88395f5673",
+          "bytes": 24041
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "rust.json",
+          "sha256": "637075eec434f36e60c48aaeb79e23354ed4d9f56cd98143bbc372e21cb36a44",
+          "bytes": 24089
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "request.json",
+          "sha256": "c1452c4614382cd1fa9502cdaa327d970db56c229b439282470c6edf13d58512",
+          "bytes": 767
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "zig.json",
+          "sha256": "eaac6764887e5e3f2ac2cc38fedc3088c3e57cc197fb7a9491ed8f16ccf6a928",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "rust.json",
+          "sha256": "bdfc505affc6f649cb17f434739ff63eb08737dce40bfd65d247771a565fca4e",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "request.json",
+          "sha256": "6c20b344bbe5684564b337e969c39dd69e9f038c4ff0599d5fc8ca31fae3bc73",
+          "bytes": 972
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "zig.json",
+          "sha256": "afdaf5f0944b172aaa4e673e0140664133389d525ac0a43dd9a86fa78ab6eb19",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "rust.json",
+          "sha256": "c01635ecb06ed2607bff1baf808e83d010868340c4df7def3174bc6a65384d50",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "request.json",
+          "sha256": "2e98dec523547f9785914e6f9f3ffb34385145ef7afc226c79fee44a48eafa46",
+          "bytes": 765
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "zig.json",
+          "sha256": "d7dc1018be9784a43d1dc1ae3de02767bf0cf0977a25b3d1f25eb6c24f9c43e0",
+          "bytes": 41551
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "rust.json",
+          "sha256": "3a764812af124e7bb6cf793b0e41261ae41eda7f49746890437ac6423dc3c22a",
+          "bytes": 41647
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "request.json",
+          "sha256": "af7e961a6c561185c24ad50c351befa351223f103444a7f15b3578bb3730de99",
+          "bytes": 790
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "zig.json",
+          "sha256": "500b98c46019c55bd8d907798a8687623d9545cbddec35f966b465f5b484298c",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "rust.json",
+          "sha256": "1c32febb3efde25b6345d9e04253a16bd1432ac0fbeb93b5c3f25913fa2fb144",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "request.json",
+          "sha256": "565d9d7090758d240684eeb7fa572264ca80b03181a8b8fbc30a6823f6de8036",
+          "bytes": 1097
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "zig.json",
+          "sha256": "f82dba2ad03f8d1d2d9ac4d8aa8a936f0991c4bd64a951045f6e4ef2be4fb8ab",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "rust.json",
+          "sha256": "d68fced3ed5cfa3fcb890521c70c978a637f60e0b691a7dff2b4615b3ef2e8d5",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        }
+      ]
+    },
+    {
+      "phase": "timed",
+      "round": 1,
+      "version": "after",
+      "argv": [
+        "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+        "--zig-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-1-after",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-1-after.log",
+      "artifacts": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-1-after",
+      "exit_status": 1,
+      "elapsed_ns": 19955083,
+      "summary": {
+        "aborted": false,
+        "checked": 6,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 6,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "eae33b0b86ef0a28086910e60fb3de6aed38141c9c8c91822f7d08e95ff5dd12",
+      "all24_artifact_files_exact": true,
+      "files": [
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "request.json",
+          "sha256": "ebcbc15b3d1bd8120549de2b597f4fbdf6dc499ac63151038133cd16ec39044f",
+          "bytes": 742
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "zig.json",
+          "sha256": "bf5eb97bc2a9dca9e7f7bb198d1d95c6d6d4f8c172ad9a112d661c88395f5673",
+          "bytes": 24041
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "rust.json",
+          "sha256": "637075eec434f36e60c48aaeb79e23354ed4d9f56cd98143bbc372e21cb36a44",
+          "bytes": 24089
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "request.json",
+          "sha256": "c1452c4614382cd1fa9502cdaa327d970db56c229b439282470c6edf13d58512",
+          "bytes": 767
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "zig.json",
+          "sha256": "eaac6764887e5e3f2ac2cc38fedc3088c3e57cc197fb7a9491ed8f16ccf6a928",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "rust.json",
+          "sha256": "bdfc505affc6f649cb17f434739ff63eb08737dce40bfd65d247771a565fca4e",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "request.json",
+          "sha256": "6c20b344bbe5684564b337e969c39dd69e9f038c4ff0599d5fc8ca31fae3bc73",
+          "bytes": 972
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "zig.json",
+          "sha256": "afdaf5f0944b172aaa4e673e0140664133389d525ac0a43dd9a86fa78ab6eb19",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "rust.json",
+          "sha256": "c01635ecb06ed2607bff1baf808e83d010868340c4df7def3174bc6a65384d50",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "request.json",
+          "sha256": "2e98dec523547f9785914e6f9f3ffb34385145ef7afc226c79fee44a48eafa46",
+          "bytes": 765
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "zig.json",
+          "sha256": "d7dc1018be9784a43d1dc1ae3de02767bf0cf0977a25b3d1f25eb6c24f9c43e0",
+          "bytes": 41551
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "rust.json",
+          "sha256": "3a764812af124e7bb6cf793b0e41261ae41eda7f49746890437ac6423dc3c22a",
+          "bytes": 41647
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "request.json",
+          "sha256": "af7e961a6c561185c24ad50c351befa351223f103444a7f15b3578bb3730de99",
+          "bytes": 790
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "zig.json",
+          "sha256": "500b98c46019c55bd8d907798a8687623d9545cbddec35f966b465f5b484298c",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "rust.json",
+          "sha256": "1c32febb3efde25b6345d9e04253a16bd1432ac0fbeb93b5c3f25913fa2fb144",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "request.json",
+          "sha256": "565d9d7090758d240684eeb7fa572264ca80b03181a8b8fbc30a6823f6de8036",
+          "bytes": 1097
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "zig.json",
+          "sha256": "f82dba2ad03f8d1d2d9ac4d8aa8a936f0991c4bd64a951045f6e4ef2be4fb8ab",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "rust.json",
+          "sha256": "d68fced3ed5cfa3fcb890521c70c978a637f60e0b691a7dff2b4615b3ef2e8d5",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        }
+      ]
+    },
+    {
+      "phase": "timed",
+      "round": 2,
+      "version": "after",
+      "argv": [
+        "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+        "--zig-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-2-after",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-2-after.log",
+      "artifacts": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-2-after",
+      "exit_status": 1,
+      "elapsed_ns": 20220291,
+      "summary": {
+        "aborted": false,
+        "checked": 6,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 6,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "eae33b0b86ef0a28086910e60fb3de6aed38141c9c8c91822f7d08e95ff5dd12",
+      "all24_artifact_files_exact": true,
+      "files": [
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "request.json",
+          "sha256": "ebcbc15b3d1bd8120549de2b597f4fbdf6dc499ac63151038133cd16ec39044f",
+          "bytes": 742
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "zig.json",
+          "sha256": "bf5eb97bc2a9dca9e7f7bb198d1d95c6d6d4f8c172ad9a112d661c88395f5673",
+          "bytes": 24041
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "rust.json",
+          "sha256": "637075eec434f36e60c48aaeb79e23354ed4d9f56cd98143bbc372e21cb36a44",
+          "bytes": 24089
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "request.json",
+          "sha256": "c1452c4614382cd1fa9502cdaa327d970db56c229b439282470c6edf13d58512",
+          "bytes": 767
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "zig.json",
+          "sha256": "eaac6764887e5e3f2ac2cc38fedc3088c3e57cc197fb7a9491ed8f16ccf6a928",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "rust.json",
+          "sha256": "bdfc505affc6f649cb17f434739ff63eb08737dce40bfd65d247771a565fca4e",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "request.json",
+          "sha256": "6c20b344bbe5684564b337e969c39dd69e9f038c4ff0599d5fc8ca31fae3bc73",
+          "bytes": 972
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "zig.json",
+          "sha256": "afdaf5f0944b172aaa4e673e0140664133389d525ac0a43dd9a86fa78ab6eb19",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "rust.json",
+          "sha256": "c01635ecb06ed2607bff1baf808e83d010868340c4df7def3174bc6a65384d50",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "request.json",
+          "sha256": "2e98dec523547f9785914e6f9f3ffb34385145ef7afc226c79fee44a48eafa46",
+          "bytes": 765
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "zig.json",
+          "sha256": "d7dc1018be9784a43d1dc1ae3de02767bf0cf0977a25b3d1f25eb6c24f9c43e0",
+          "bytes": 41551
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "rust.json",
+          "sha256": "3a764812af124e7bb6cf793b0e41261ae41eda7f49746890437ac6423dc3c22a",
+          "bytes": 41647
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "request.json",
+          "sha256": "af7e961a6c561185c24ad50c351befa351223f103444a7f15b3578bb3730de99",
+          "bytes": 790
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "zig.json",
+          "sha256": "500b98c46019c55bd8d907798a8687623d9545cbddec35f966b465f5b484298c",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "rust.json",
+          "sha256": "1c32febb3efde25b6345d9e04253a16bd1432ac0fbeb93b5c3f25913fa2fb144",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "request.json",
+          "sha256": "565d9d7090758d240684eeb7fa572264ca80b03181a8b8fbc30a6823f6de8036",
+          "bytes": 1097
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "zig.json",
+          "sha256": "f82dba2ad03f8d1d2d9ac4d8aa8a936f0991c4bd64a951045f6e4ef2be4fb8ab",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "rust.json",
+          "sha256": "d68fced3ed5cfa3fcb890521c70c978a637f60e0b691a7dff2b4615b3ef2e8d5",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        }
+      ]
+    },
+    {
+      "phase": "timed",
+      "round": 2,
+      "version": "before",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+        "--zig-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-2-before",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-2-before.log",
+      "artifacts": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-2-before",
+      "exit_status": 1,
+      "elapsed_ns": 236291709,
+      "summary": {
+        "aborted": false,
+        "checked": 6,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 6,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "eae33b0b86ef0a28086910e60fb3de6aed38141c9c8c91822f7d08e95ff5dd12",
+      "all24_artifact_files_exact": true,
+      "files": [
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "request.json",
+          "sha256": "ebcbc15b3d1bd8120549de2b597f4fbdf6dc499ac63151038133cd16ec39044f",
+          "bytes": 742
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "zig.json",
+          "sha256": "bf5eb97bc2a9dca9e7f7bb198d1d95c6d6d4f8c172ad9a112d661c88395f5673",
+          "bytes": 24041
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "rust.json",
+          "sha256": "637075eec434f36e60c48aaeb79e23354ed4d9f56cd98143bbc372e21cb36a44",
+          "bytes": 24089
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "request.json",
+          "sha256": "c1452c4614382cd1fa9502cdaa327d970db56c229b439282470c6edf13d58512",
+          "bytes": 767
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "zig.json",
+          "sha256": "eaac6764887e5e3f2ac2cc38fedc3088c3e57cc197fb7a9491ed8f16ccf6a928",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "rust.json",
+          "sha256": "bdfc505affc6f649cb17f434739ff63eb08737dce40bfd65d247771a565fca4e",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "request.json",
+          "sha256": "6c20b344bbe5684564b337e969c39dd69e9f038c4ff0599d5fc8ca31fae3bc73",
+          "bytes": 972
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "zig.json",
+          "sha256": "afdaf5f0944b172aaa4e673e0140664133389d525ac0a43dd9a86fa78ab6eb19",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "rust.json",
+          "sha256": "c01635ecb06ed2607bff1baf808e83d010868340c4df7def3174bc6a65384d50",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "request.json",
+          "sha256": "2e98dec523547f9785914e6f9f3ffb34385145ef7afc226c79fee44a48eafa46",
+          "bytes": 765
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "zig.json",
+          "sha256": "d7dc1018be9784a43d1dc1ae3de02767bf0cf0977a25b3d1f25eb6c24f9c43e0",
+          "bytes": 41551
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "rust.json",
+          "sha256": "3a764812af124e7bb6cf793b0e41261ae41eda7f49746890437ac6423dc3c22a",
+          "bytes": 41647
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "request.json",
+          "sha256": "af7e961a6c561185c24ad50c351befa351223f103444a7f15b3578bb3730de99",
+          "bytes": 790
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "zig.json",
+          "sha256": "500b98c46019c55bd8d907798a8687623d9545cbddec35f966b465f5b484298c",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "rust.json",
+          "sha256": "1c32febb3efde25b6345d9e04253a16bd1432ac0fbeb93b5c3f25913fa2fb144",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "request.json",
+          "sha256": "565d9d7090758d240684eeb7fa572264ca80b03181a8b8fbc30a6823f6de8036",
+          "bytes": 1097
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "zig.json",
+          "sha256": "f82dba2ad03f8d1d2d9ac4d8aa8a936f0991c4bd64a951045f6e4ef2be4fb8ab",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "rust.json",
+          "sha256": "d68fced3ed5cfa3fcb890521c70c978a637f60e0b691a7dff2b4615b3ef2e8d5",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        }
+      ]
+    },
+    {
+      "phase": "timed",
+      "round": 3,
+      "version": "before",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+        "--zig-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-3-before",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-3-before.log",
+      "artifacts": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-3-before",
+      "exit_status": 1,
+      "elapsed_ns": 233952708,
+      "summary": {
+        "aborted": false,
+        "checked": 6,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 6,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "eae33b0b86ef0a28086910e60fb3de6aed38141c9c8c91822f7d08e95ff5dd12",
+      "all24_artifact_files_exact": true,
+      "files": [
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "request.json",
+          "sha256": "ebcbc15b3d1bd8120549de2b597f4fbdf6dc499ac63151038133cd16ec39044f",
+          "bytes": 742
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "zig.json",
+          "sha256": "bf5eb97bc2a9dca9e7f7bb198d1d95c6d6d4f8c172ad9a112d661c88395f5673",
+          "bytes": 24041
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "rust.json",
+          "sha256": "637075eec434f36e60c48aaeb79e23354ed4d9f56cd98143bbc372e21cb36a44",
+          "bytes": 24089
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "request.json",
+          "sha256": "c1452c4614382cd1fa9502cdaa327d970db56c229b439282470c6edf13d58512",
+          "bytes": 767
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "zig.json",
+          "sha256": "eaac6764887e5e3f2ac2cc38fedc3088c3e57cc197fb7a9491ed8f16ccf6a928",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "rust.json",
+          "sha256": "bdfc505affc6f649cb17f434739ff63eb08737dce40bfd65d247771a565fca4e",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "request.json",
+          "sha256": "6c20b344bbe5684564b337e969c39dd69e9f038c4ff0599d5fc8ca31fae3bc73",
+          "bytes": 972
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "zig.json",
+          "sha256": "afdaf5f0944b172aaa4e673e0140664133389d525ac0a43dd9a86fa78ab6eb19",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "rust.json",
+          "sha256": "c01635ecb06ed2607bff1baf808e83d010868340c4df7def3174bc6a65384d50",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "request.json",
+          "sha256": "2e98dec523547f9785914e6f9f3ffb34385145ef7afc226c79fee44a48eafa46",
+          "bytes": 765
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "zig.json",
+          "sha256": "d7dc1018be9784a43d1dc1ae3de02767bf0cf0977a25b3d1f25eb6c24f9c43e0",
+          "bytes": 41551
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "rust.json",
+          "sha256": "3a764812af124e7bb6cf793b0e41261ae41eda7f49746890437ac6423dc3c22a",
+          "bytes": 41647
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "request.json",
+          "sha256": "af7e961a6c561185c24ad50c351befa351223f103444a7f15b3578bb3730de99",
+          "bytes": 790
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "zig.json",
+          "sha256": "500b98c46019c55bd8d907798a8687623d9545cbddec35f966b465f5b484298c",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "rust.json",
+          "sha256": "1c32febb3efde25b6345d9e04253a16bd1432ac0fbeb93b5c3f25913fa2fb144",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "request.json",
+          "sha256": "565d9d7090758d240684eeb7fa572264ca80b03181a8b8fbc30a6823f6de8036",
+          "bytes": 1097
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "zig.json",
+          "sha256": "f82dba2ad03f8d1d2d9ac4d8aa8a936f0991c4bd64a951045f6e4ef2be4fb8ab",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "rust.json",
+          "sha256": "d68fced3ed5cfa3fcb890521c70c978a637f60e0b691a7dff2b4615b3ef2e8d5",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        }
+      ]
+    },
+    {
+      "phase": "timed",
+      "round": 3,
+      "version": "after",
+      "argv": [
+        "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+        "--zig-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-3-after",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-3-after.log",
+      "artifacts": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/timed-3-after",
+      "exit_status": 1,
+      "elapsed_ns": 19242542,
+      "summary": {
+        "aborted": false,
+        "checked": 6,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 6,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "eae33b0b86ef0a28086910e60fb3de6aed38141c9c8c91822f7d08e95ff5dd12",
+      "all24_artifact_files_exact": true,
+      "files": [
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "request.json",
+          "sha256": "ebcbc15b3d1bd8120549de2b597f4fbdf6dc499ac63151038133cd16ec39044f",
+          "bytes": 742
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "zig.json",
+          "sha256": "bf5eb97bc2a9dca9e7f7bb198d1d95c6d6d4f8c172ad9a112d661c88395f5673",
+          "bytes": 24041
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "rust.json",
+          "sha256": "637075eec434f36e60c48aaeb79e23354ed4d9f56cd98143bbc372e21cb36a44",
+          "bytes": 24089
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "request.json",
+          "sha256": "c1452c4614382cd1fa9502cdaa327d970db56c229b439282470c6edf13d58512",
+          "bytes": 767
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "zig.json",
+          "sha256": "eaac6764887e5e3f2ac2cc38fedc3088c3e57cc197fb7a9491ed8f16ccf6a928",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "rust.json",
+          "sha256": "bdfc505affc6f649cb17f434739ff63eb08737dce40bfd65d247771a565fca4e",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/scalar",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "request.json",
+          "sha256": "6c20b344bbe5684564b337e969c39dd69e9f038c4ff0599d5fc8ca31fae3bc73",
+          "bytes": 972
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "zig.json",
+          "sha256": "afdaf5f0944b172aaa4e673e0140664133389d525ac0a43dd9a86fa78ab6eb19",
+          "bytes": 24048
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "rust.json",
+          "sha256": "c01635ecb06ed2607bff1baf808e83d010868340c4df7def3174bc6a65384d50",
+          "bytes": 24096
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/False/chunks",
+          "file": "difference.txt",
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021",
+          "bytes": 4391
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "request.json",
+          "sha256": "2e98dec523547f9785914e6f9f3ffb34385145ef7afc226c79fee44a48eafa46",
+          "bytes": 765
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "zig.json",
+          "sha256": "d7dc1018be9784a43d1dc1ae3de02767bf0cf0977a25b3d1f25eb6c24f9c43e0",
+          "bytes": 41551
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "rust.json",
+          "sha256": "3a764812af124e7bb6cf793b0e41261ae41eda7f49746890437ac6423dc3c22a",
+          "bytes": 41647
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "request.json",
+          "sha256": "af7e961a6c561185c24ad50c351befa351223f103444a7f15b3578bb3730de99",
+          "bytes": 790
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "zig.json",
+          "sha256": "500b98c46019c55bd8d907798a8687623d9545cbddec35f966b465f5b484298c",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "rust.json",
+          "sha256": "1c32febb3efde25b6345d9e04253a16bd1432ac0fbeb93b5c3f25913fa2fb144",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/scalar",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "request.json",
+          "sha256": "565d9d7090758d240684eeb7fa572264ca80b03181a8b8fbc30a6823f6de8036",
+          "bytes": 1097
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "zig.json",
+          "sha256": "f82dba2ad03f8d1d2d9ac4d8aa8a936f0991c4bd64a951045f6e4ef2be4fb8ab",
+          "bytes": 41558
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "rust.json",
+          "sha256": "d68fced3ed5cfa3fcb890521c70c978a637f60e0b691a7dff2b4615b3ef2e8d5",
+          "bytes": 41654
+        },
+        {
+          "id": "pages/wide-cut/primary/1/wide/True/chunks",
+          "file": "difference.txt",
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6",
+          "bytes": 4895
+        }
+      ]
+    }
+  ],
+  "finished_utc": "2026-11-07T11:58:49.736810+00:00",
+  "completed": true,
+  "pairs": [
+    {
+      "round": 1,
+      "before": 239161667,
+      "after": 19955083,
+      "after_vs_before_percent": -91.65623686675507
+    },
+    {
+      "round": 2,
+      "after": 20220291,
+      "before": 236291709,
+      "after_vs_before_percent": -91.44265743153942
+    },
+    {
+      "round": 3,
+      "before": 233952708,
+      "after": 19242542,
+      "after_vs_before_percent": -91.77502916529609
+    }
+  ],
+  "median_elapsed_ns": {
+    "before": 236291709,
+    "after": 19955083
+  },
+  "median_after_vs_before_percent": -91.55489497094457,
+  "observations": "Bounded two-fixture batch only; do not extrapolate to terminal throughput or all workload sizes.",
+  "all192_saved_files_exact": true
+}

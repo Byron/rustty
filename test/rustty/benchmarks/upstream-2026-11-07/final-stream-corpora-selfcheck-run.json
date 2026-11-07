@@ -1,0 +1,17 @@
+{
+  "started": 1794047803.493711,
+  "binaries": {
+    "rust": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "sha256": "819376fbd18a180a9babba4e1fe5f0f355f5a2e29ab2aeb5c4f7e3bdf8c39237"
+    },
+    "zig": {
+      "path": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "sha256": "1bbb6960f2a3f36d8eccb410f59e9621f528cdc44ef21760246cc2d8b2e2b772"
+    }
+  },
+  "command": "python3 /private/tmp/rustty-reintegrate.leadij/check-final-stream-corpora.py",
+  "finished": 1794047817.596916,
+  "corpora": 22,
+  "checks": 44
+}

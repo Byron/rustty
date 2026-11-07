@@ -1,0 +1,5191 @@
+[
+  {
+    "hash": "7e7968826f02f846e04706729cdccc4b85b85258",
+    "title": "tmux: unescape %output and handle window-close",
+    "parents": [
+      "a412480131945f19ce0d7e37b74047526419fd63"
+    ],
+    "files": [
+      "src/terminal/tmux/control.zig",
+      "src/terminal/tmux/viewer.zig"
+    ]
+  },
+  {
+    "hash": "c2d93620efc6364b95641fa317d428b8a4e1f9ab",
+    "title": "tmux: do not unescape %output in the parser",
+    "parents": [
+      "7e7968826f02f846e04706729cdccc4b85b85258"
+    ],
+    "files": [
+      "src/terminal/tmux/control.zig"
+    ]
+  },
+  {
+    "hash": "dc6ab39fb1f31c6e0ffe2fadfc0b3e2d4d347442",
+    "title": "termio: handle tmux active_window action",
+    "parents": [
+      "c2d93620efc6364b95641fa317d428b8a4e1f9ab"
+    ],
+    "files": [
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "9a920818820f0885e9302b6831cdfe5a2aab67a4",
+    "title": "tmux: honor session id on active window changes",
+    "parents": [
+      "dc6ab39fb1f31c6e0ffe2fadfc0b3e2d4d347442"
+    ],
+    "files": [
+      "src/terminal/tmux/viewer.zig",
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "7e4cc4fae011dc3a133ce625d6cf6f0d546be64a",
+    "title": "tmux: reject oversized control ids without leaking",
+    "parents": [
+      "9a920818820f0885e9302b6831cdfe5a2aab67a4"
+    ],
+    "files": [
+      "src/terminal/tmux/control.zig",
+      "src/terminal/tmux/viewer.zig"
+    ]
+  },
+  {
+    "hash": "c16d204bf72fbaa6b0ef0855e9439d34ba347eea",
+    "title": "deps: update z2d to v0.13.2",
+    "parents": [
+      "68640f3049d5ae76d7d5eebb5bbdf713a3a98713"
+    ],
+    "files": [
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "flatpak/zig-packages.json"
+    ]
+  },
+  {
+    "hash": "44a4911e9124e64f5da85255e29c21cdfc3d3941",
+    "title": "terminal: implement DECIC, DECDC, DECBI, and DECFI",
+    "parents": [
+      "919dca5c848d43a489a4cb2e1feade016f0fa2db"
+    ],
+    "files": [
+      "src/terminal/Terminal.zig",
+      "src/terminal/stream.zig",
+      "src/terminal/stream_terminal.zig",
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "316ab91e49df9b2a87fd786a9650e0c3e270b6ef",
+    "title": "po: update code sources",
+    "parents": [
+      "46e9dc9a927b2e7e7cba79e6902c176127dbdf2c"
+    ],
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po"
+    ]
+  },
+  {
+    "hash": "bcc1b9faf3394aca0920b1bc57eef24c3dfdc60f",
+    "title": "i18n: don't localize the \"Ghostty\" command's title",
+    "parents": [
+      "316ab91e49df9b2a87fd786a9650e0c3e270b6ef"
+    ],
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/input/command.zig"
+    ]
+  },
+  {
+    "hash": "0cb81fe084684d8f81b99cf26c2015a37b11eaf1",
+    "title": "datastruct/split_tree: assert goto() is given a valid handle",
+    "parents": [
+      "6ba144158577d033ccb6ed4b574e4013957c9161"
+    ],
+    "files": [
+      "src/datastruct/split_tree.zig"
+    ]
+  },
+  {
+    "hash": "acd72a42f72da136606807322212886226322f89",
+    "title": "i18n: don't localize the \"Ghostty\" command's title (#14888)",
+    "parents": [
+      "6ba144158577d033ccb6ed4b574e4013957c9161",
+      "bcc1b9faf3394aca0920b1bc57eef24c3dfdc60f"
+    ],
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/input/command.zig"
+    ]
+  },
+  {
+    "hash": "057f14896c5a903511dbbc86206fa7acd11b3b8e",
+    "title": "deps: update z2d to v0.13.2 (#14869)",
+    "parents": [
+      "acd72a42f72da136606807322212886226322f89",
+      "c16d204bf72fbaa6b0ef0855e9439d34ba347eea"
+    ],
+    "files": [
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "flatpak/zig-packages.json"
+    ]
+  },
+  {
+    "hash": "86d97211ae167da14d38d8f30064f7802094b9c8",
+    "title": "terminal: implement DECIC, DECDC, DECBI, and DECFI (#14884)",
+    "parents": [
+      "057f14896c5a903511dbbc86206fa7acd11b3b8e",
+      "44a4911e9124e64f5da85255e29c21cdfc3d3941"
+    ],
+    "files": [
+      "src/terminal/Terminal.zig",
+      "src/terminal/stream.zig",
+      "src/terminal/stream_terminal.zig",
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "20ba6462d7de682a43839a469717f0cf3d5ceb5a",
+    "title": "datastruct/split_tree: assert goto() is given a valid handle (#14904)",
+    "parents": [
+      "86d97211ae167da14d38d8f30064f7802094b9c8",
+      "0cb81fe084684d8f81b99cf26c2015a37b11eaf1"
+    ],
+    "files": [
+      "src/datastruct/split_tree.zig"
+    ]
+  },
+  {
+    "hash": "40713449c609158017801c6dd39f465a281741a5",
+    "title": "i18n: command palette - Focus and Untitled translation support",
+    "parents": [
+      "20ba6462d7de682a43839a469717f0cf3d5ceb5a"
+    ],
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/apprt/gtk/class/command_palette.zig"
+    ]
+  },
+  {
+    "hash": "4c8ad9817e9e0fbb6060695ba50aa85e1174bf00",
+    "title": "config: fix formatting of long environment values",
+    "parents": [
+      "6ba144158577d033ccb6ed4b574e4013957c9161"
+    ],
+    "files": [
+      "src/config/RepeatableStringMap.zig"
+    ]
+  },
+  {
+    "hash": "9ee1031ba7c5a0436388072e3f11a199d2c0a602",
+    "title": "config: use allocator printing in long-value test",
+    "parents": [
+      "4c8ad9817e9e0fbb6060695ba50aa85e1174bf00"
+    ],
+    "files": [
+      "src/config/RepeatableStringMap.zig"
+    ]
+  },
+  {
+    "hash": "0b8b9984ee560456194262d190aa850224edb1f4",
+    "title": "config: fix formatting of long environment values (#14908)",
+    "parents": [
+      "20ba6462d7de682a43839a469717f0cf3d5ceb5a",
+      "9ee1031ba7c5a0436388072e3f11a199d2c0a602"
+    ],
+    "files": [
+      "src/config/RepeatableStringMap.zig"
+    ]
+  },
+  {
+    "hash": "5ee215000ebe4354cd388962bc372152d16dacc6",
+    "title": "nix: drop removed gnome-photos from VM excludes",
+    "parents": [
+      "20ba6462d7de682a43839a469717f0cf3d5ceb5a"
+    ],
+    "files": [
+      "nix/vm/common-gnome.nix"
+    ]
+  },
+  {
+    "hash": "f563ceda37c51e6e3b0212f5c6965ff3113628d0",
+    "title": "nix: apply GNOME Shell unsafe mode to the user unit",
+    "parents": [
+      "5ee215000ebe4354cd388962bc372152d16dacc6"
+    ],
+    "files": [
+      "nix/vm/common-gnome.nix"
+    ]
+  },
+  {
+    "hash": "aa16f9429caa2aa6fc9bc32983a0f7bb902551e3",
+    "title": "nix: drop the revision from the zig deps derivation name",
+    "parents": [
+      "0b8b9984ee560456194262d190aa850224edb1f4"
+    ],
+    "files": [
+      "nix/libghostty-vt.nix",
+      "nix/package.nix"
+    ]
+  },
+  {
+    "hash": "04c75975052a657081a1f568b0f36ec8c57a46b0",
+    "title": "ci: gate expensive jobs on a quick build instead of the full test suite",
+    "parents": [
+      "aa16f9429caa2aa6fc9bc32983a0f7bb902551e3"
+    ],
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "68b837766217cea65cfe802dc79d4103a732c38f",
+    "title": "ci: split build-nix into one job per target and architecture",
+    "parents": [
+      "04c75975052a657081a1f568b0f36ec8c57a46b0"
+    ],
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "ecc87922ecbde7cea6289dcd9e3dfbc38716c04f",
+    "title": "ci: build the source tarball without waiting on its tests",
+    "parents": [
+      "68b837766217cea65cfe802dc79d4103a732c38f"
+    ],
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "184824102aa269350132eed4242493c739d3e53c",
+    "title": "ci: run the full test suite once across the GTK and SIMD legs",
+    "parents": [
+      "ecc87922ecbde7cea6289dcd9e3dfbc38716c04f"
+    ],
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "c27ef4c1b109fb2b9947730c391f1a7d06eaa62f",
+    "title": "ci: improvements to speed things up, step one shorten critical paths for tests (#14911)",
+    "parents": [
+      "0b8b9984ee560456194262d190aa850224edb1f4",
+      "184824102aa269350132eed4242493c739d3e53c"
+    ],
+    "files": [
+      ".github/workflows/test.yml",
+      "nix/libghostty-vt.nix",
+      "nix/package.nix"
+    ]
+  },
+  {
+    "hash": "f761046d6b8a30ad49181ad330ae2f18532cb193",
+    "title": "formatter: restore a pending wrap at the right margin",
+    "parents": [
+      "c27ef4c1b109fb2b9947730c391f1a7d06eaa62f"
+    ],
+    "files": [
+      "src/terminal/formatter.zig"
+    ]
+  },
+  {
+    "hash": "7ee1074fbda91f0ed19ea34a6ba08a0c30bee2b2",
+    "title": "Update VOUCHED list (#14915)",
+    "parents": [
+      "c27ef4c1b109fb2b9947730c391f1a7d06eaa62f"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "4d7de0a483e40e2c1dc542315b2a87be96977df2",
+    "title": "fix(ssh): show authentication messages during terminfo setup",
+    "parents": [
+      "7ee1074fbda91f0ed19ea34a6ba08a0c30bee2b2"
+    ],
+    "files": [
+      "src/cli/ssh.zig"
+    ]
+  },
+  {
+    "hash": "b2c78c9bd9bc88a16d9c3769b0fb17ddde1b78b1",
+    "title": "nix: fix GNOME VM tests on main (#14910)",
+    "parents": [
+      "7ee1074fbda91f0ed19ea34a6ba08a0c30bee2b2",
+      "f563ceda37c51e6e3b0212f5c6965ff3113628d0"
+    ],
+    "files": [
+      "nix/vm/common-gnome.nix"
+    ]
+  },
+  {
+    "hash": "8c04d7c2e8c37a4044b1af4c58e529c714c83b20",
+    "title": "config: reject empty prefixed commands",
+    "parents": [
+      "b2c78c9bd9bc88a16d9c3769b0fb17ddde1b78b1"
+    ],
+    "files": [
+      "src/config/command.zig"
+    ]
+  },
+  {
+    "hash": "539a7f1ce770b12071ca146e9824b9d9e5a1b88f",
+    "title": "nix: use store paths for propagated GStreamer packages",
+    "parents": [
+      "b2c78c9bd9bc88a16d9c3769b0fb17ddde1b78b1"
+    ],
+    "files": [
+      "nix/package.nix"
+    ]
+  },
+  {
+    "hash": "df1c99c8a5ec32c73963e5dc3fad3c9df7a3d137",
+    "title": "Update VOUCHED list (#14930)",
+    "parents": [
+      "b2c78c9bd9bc88a16d9c3769b0fb17ddde1b78b1"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "93967b7f9478e94dcbb42125c8a90f34feb40d75",
+    "title": "i18n: command palette - Focus and Untitled translation support (#14055)",
+    "parents": [
+      "df1c99c8a5ec32c73963e5dc3fad3c9df7a3d137",
+      "40713449c609158017801c6dd39f465a281741a5"
+    ],
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/apprt/gtk/class/command_palette.zig"
+    ]
+  },
+  {
+    "hash": "108d503ac591d5a3b3a13a4bc11bbea8c09a42fb",
+    "title": "Update VOUCHED list (#14936)",
+    "parents": [
+      "93967b7f9478e94dcbb42125c8a90f34feb40d75"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "9781c0afc8225510e33127466f0815eb51086d7d",
+    "title": "formatter: restore a pending wrap at the right margin (#14918)",
+    "parents": [
+      "108d503ac591d5a3b3a13a4bc11bbea8c09a42fb",
+      "f761046d6b8a30ad49181ad330ae2f18532cb193"
+    ],
+    "files": [
+      "src/terminal/formatter.zig"
+    ]
+  },
+  {
+    "hash": "2ddcda8e80fdf53d2a6fdee9d36f4986d858d477",
+    "title": "tmux: test %exit with and without a reason",
+    "parents": [
+      "7e4cc4fae011dc3a133ce625d6cf6f0d546be64a"
+    ],
+    "files": [
+      "src/terminal/tmux/control.zig"
+    ]
+  },
+  {
+    "hash": "0a5a6a6e1a20928f4b097d51ec9fcf06de353024",
+    "title": "Merge remote-tracking branch 'origin/main' into tmux-pr4-protocol",
+    "parents": [
+      "2ddcda8e80fdf53d2a6fdee9d36f4986d858d477",
+      "9781c0afc8225510e33127466f0815eb51086d7d"
+    ],
+    "files": [
+      ".github/VOUCHED.td",
+      ".github/scripts/freebsd-vm/test-freebsd.sh",
+      ".github/scripts/freebsd-vm/vm.sh",
+      ".github/workflows/flatpak.yml",
+      ".github/workflows/nix.yml",
+      ".github/workflows/release-tag.yml",
+      ".github/workflows/release-tip.yml",
+      ".github/workflows/snap.yml",
+      ".github/workflows/test.yml",
+      ".github/workflows/update-colorschemes.yml",
+      ".github/workflows/vouch-check-issue.yml",
+      ".github/workflows/vouch-check-pr.yml",
+      ".github/workflows/vouch-manage-by-discussion.yml",
+      ".github/workflows/vouch-manage-by-issue.yml",
+      ".github/workflows/vouch-sync-codeowners.yml",
+      "AGENTS.md",
+      "CLAUDE.md",
+      "PACKAGING.md",
+      "build.zig",
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "dist/linux/com.mitchellh.ghostty.metainfo.xml.in",
+      "example/c-vt-build-info/build.zig",
+      "example/c-vt-build-info/build.zig.zon",
+      "example/c-vt-color-scheme/build.zig",
+      "example/c-vt-color-scheme/build.zig.zon",
+      "example/c-vt-colors/build.zig",
+      "example/c-vt-colors/build.zig.zon",
+      "example/c-vt-compression/README.md",
+      "example/c-vt-compression/build.zig",
+      "example/c-vt-compression/build.zig.zon",
+      "example/c-vt-compression/src/main.c",
+      "example/c-vt-effects/build.zig",
+      "example/c-vt-effects/build.zig.zon",
+      "example/c-vt-effects/src/main.c",
+      "example/c-vt-encode-focus/build.zig",
+      "example/c-vt-encode-focus/build.zig.zon",
+      "example/c-vt-encode-key/build.zig",
+      "example/c-vt-encode-key/build.zig.zon",
+      "example/c-vt-encode-mouse/build.zig",
+      "example/c-vt-encode-mouse/build.zig.zon",
+      "example/c-vt-formatter/build.zig",
+      "example/c-vt-formatter/build.zig.zon",
+      "example/c-vt-grid-ref-tracked/build.zig",
+      "example/c-vt-grid-ref-tracked/build.zig.zon",
+      "example/c-vt-grid-traverse/build.zig",
+      "example/c-vt-grid-traverse/build.zig.zon",
+      "example/c-vt-kitty-graphics/README.md",
+      "example/c-vt-kitty-graphics/build.zig",
+      "example/c-vt-kitty-graphics/build.zig.zon",
+      "example/c-vt-kitty-graphics/src/main.c",
+      "example/c-vt-modes/build.zig",
+      "example/c-vt-modes/build.zig.zon",
+      "example/c-vt-paste/build.zig",
+      "example/c-vt-paste/build.zig.zon",
+      "example/c-vt-render/build.zig",
+      "example/c-vt-render/build.zig.zon",
+      "example/c-vt-search/build.zig",
+      "example/c-vt-search/build.zig.zon",
+      "example/c-vt-selection-gesture/build.zig",
+      "example/c-vt-selection-gesture/build.zig.zon",
+      "example/c-vt-selection/build.zig",
+      "example/c-vt-selection/build.zig.zon",
+      "example/c-vt-sgr/build.zig",
+      "example/c-vt-sgr/build.zig.zon",
+      "example/c-vt-size-report/build.zig",
+      "example/c-vt-size-report/build.zig.zon",
+      "example/c-vt-snapshot/README.md",
+      "example/c-vt-snapshot/build.zig",
+      "example/c-vt-snapshot/build.zig.zon",
+      "example/c-vt-snapshot/src/main.c",
+      "example/c-vt-static/build.zig",
+      "example/c-vt-static/build.zig.zon",
+      "example/c-vt-stream/build.zig",
+      "example/c-vt-stream/build.zig.zon",
+      "example/c-vt/build.zig",
+      "example/c-vt/build.zig.zon",
+      "example/cpp-vt-stream/build.zig",
+      "example/cpp-vt-stream/build.zig.zon",
+      "example/zig-formatter/build.zig",
+      "example/zig-formatter/build.zig.zon",
+      "example/zig-vt-stream/build.zig",
+      "example/zig-vt-stream/build.zig.zon",
+      "example/zig-vt/build.zig",
+      "example/zig-vt/build.zig.zon",
+      "flake.lock",
+      "flake.nix",
+      "flatpak/com.mitchellh.ghostty-debug.yml",
+      "flatpak/com.mitchellh.ghostty.yml",
+      "flatpak/dependencies.yml",
+      "flatpak/zig-packages.json",
+      "include/ghostty.h",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "macos/Ghostty.sdef",
+      "macos/Sources/App/AppDelegate.swift",
+      "macos/Sources/Features/AppleScript/ScriptTab.swift",
+      "macos/Sources/Features/AppleScript/ScriptTerminal.swift",
+      "macos/Sources/Features/ClipboardConfirmation/ClipboardConfirmationController.swift",
+      "macos/Sources/Features/ClipboardConfirmation/ClipboardConfirmationView.swift",
+      "macos/Sources/Features/Splits/SplitTree.swift",
+      "macos/Sources/Features/Terminal/TerminalController.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TitlebarTabsTahoeTerminalWindow.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TransparentTitlebarTerminalWindow.swift",
+      "macos/Sources/Ghostty/Ghostty.Action.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "macos/Sources/Ghostty/Ghostty.ClipboardConfirmationRequest.swift",
+      "macos/Sources/Ghostty/Ghostty.Shell.swift",
+      "macos/Sources/Ghostty/Ghostty.Surface.swift",
+      "macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift",
+      "macos/Sources/Helpers/Extensions/NSAppleEventDescriptor+Extension.swift",
+      "macos/Sources/Helpers/UntrustedURL.swift",
+      "macos/Tests/Ghostty/ShellTests.swift",
+      "macos/Tests/NSPasteboardTests.swift",
+      "macos/Tests/Splits/SplitTreeTests.swift",
+      "nix/build-support/check-zig-cache.sh",
+      "nix/build-support/update-mirror.nu",
+      "nix/devShell.nix",
+      "nix/libghostty-vt.nix",
+      "nix/package.nix",
+      "nix/patches/zig-0.17-ios-process-replace.patch",
+      "nix/vm/common-gnome.nix",
+      "passthrough.glsl",
+      "pkg/afl++/build.zig",
+      "pkg/android-ndk/build.zig",
+      "pkg/apple-sdk/build.zig",
+      "pkg/apple-sdk/gen_libc.zig",
+      "pkg/apple-sdk/native_link.zig",
+      "pkg/dcimgui/build.zig",
+      "pkg/fontconfig/build.zig.zon",
+      "pkg/fontconfig/common.zig",
+      "pkg/fontconfig/config.zig",
+      "pkg/fontconfig/pattern.zig",
+      "pkg/fontconfig/value.zig",
+      "pkg/freetype/Library.zig",
+      "pkg/freetype/face.zig",
+      "pkg/glslang/build.zig",
+      "pkg/gtk4-layer-shell/src/main.zig",
+      "pkg/harfbuzz/blob.zig",
+      "pkg/harfbuzz/buffer.zig",
+      "pkg/harfbuzz/build.zig",
+      "pkg/highway/build.zig",
+      "pkg/highway/src/detect.zig",
+      "pkg/highway/src/detect/loongarch.zig",
+      "pkg/highway/src/detect/ppc.zig",
+      "pkg/highway/src/detect/riscv.zig",
+      "pkg/highway/src/detect/s390x.zig",
+      "pkg/highway/src/detect/x86.zig",
+      "pkg/libxml2/build.zig",
+      "pkg/macos/build.zig",
+      "pkg/macos/foundation/attributed_string.zig",
+      "pkg/macos/foundation/base.zig",
+      "pkg/macos/foundation/character_set.zig",
+      "pkg/macos/foundation/number.zig",
+      "pkg/macos/foundation/string.zig",
+      "pkg/macos/foundation/url.zig",
+      "pkg/macos/graphics/affine_transform.zig",
+      "pkg/macos/graphics/context.zig",
+      "pkg/macos/graphics/geometry.zig",
+      "pkg/macos/graphics/path.zig",
+      "pkg/macos/iosurface/iosurface.zig",
+      "pkg/macos/os/log.zig",
+      "pkg/macos/os/signpost.zig",
+      "pkg/macos/text/font.zig",
+      "pkg/macos/text/frame.zig",
+      "pkg/macos/text/framesetter.zig",
+      "pkg/macos/text/line.zig",
+      "pkg/oniguruma/build.zig",
+      "pkg/opengl/Buffer.zig",
+      "pkg/opengl/Framebuffer.zig",
+      "pkg/opengl/Renderbuffer.zig",
+      "pkg/opengl/Sampler.zig",
+      "pkg/opengl/Texture.zig",
+      "pkg/opengl/draw.zig",
+      "pkg/opengl/egl.zig",
+      "pkg/sentry/value.zig",
+      "pkg/spirv-cross/build.zig",
+      "pkg/translate-c/build.zig",
+      "pkg/translate-c/build.zig.zon",
+      "pkg/wuffs/src/main.zig",
+      "pkg/wuffs/src/zlib.zig",
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "snap/snapcraft.yaml",
+      "src/App.zig",
+      "src/Command.zig",
+      "src/Surface.zig",
+      "src/apprt/action.zig",
+      "src/apprt/embedded.zig",
+      "src/apprt/gtk.zig",
+      "src/apprt/gtk/Surface.zig",
+      "src/apprt/gtk/adw_version.zig",
+      "src/apprt/gtk/build/blueprint.zig",
+      "src/apprt/gtk/build/gresource.zig",
+      "src/apprt/gtk/build/info.zig",
+      "src/apprt/gtk/cgroup.zig",
+      "src/apprt/gtk/class.zig",
+      "src/apprt/gtk/class/Overrides.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/apprt/gtk/class/clipboard_confirmation_dialog.zig",
+      "src/apprt/gtk/class/close_confirmation_dialog.zig",
+      "src/apprt/gtk/class/command_palette.zig",
+      "src/apprt/gtk/class/config_errors_dialog.zig",
+      "src/apprt/gtk/class/debug_warning.zig",
+      "src/apprt/gtk/class/dialog.zig",
+      "src/apprt/gtk/class/global_shortcuts.zig",
+      "src/apprt/gtk/class/imgui_widget.zig",
+      "src/apprt/gtk/class/inspector_widget.zig",
+      "src/apprt/gtk/class/inspector_window.zig",
+      "src/apprt/gtk/class/key_state_overlay.zig",
+      "src/apprt/gtk/class/render_surface.zig",
+      "src/apprt/gtk/class/resize_overlay.zig",
+      "src/apprt/gtk/class/search_overlay.zig",
+      "src/apprt/gtk/class/split_tree.zig",
+      "src/apprt/gtk/class/surface.zig",
+      "src/apprt/gtk/class/surface_child_exited.zig",
+      "src/apprt/gtk/class/surface_scrolled_window.zig",
+      "src/apprt/gtk/class/tab.zig",
+      "src/apprt/gtk/class/title_dialog.zig",
+      "src/apprt/gtk/class/window.zig",
+      "src/apprt/gtk/css/style-dark.css",
+      "src/apprt/gtk/css/style-hc-dark.css",
+      "src/apprt/gtk/css/style-hc.css",
+      "src/apprt/gtk/css/style.css",
+      "src/apprt/gtk/desktop_notifications.zig",
+      "src/apprt/gtk/ext/slice.zig",
+      "src/apprt/gtk/gtk_version.zig",
+      "src/apprt/gtk/ipc/DBus.zig",
+      "src/apprt/gtk/portal.zig",
+      "src/apprt/gtk/portal/OpenURI.zig",
+      "src/apprt/gtk/scale.zig",
+      "src/apprt/gtk/ui/1.0/clipboard-confirmation-dialog.blp",
+      "src/apprt/gtk/ui/1.0/imgui-widget.blp",
+      "src/apprt/gtk/ui/1.0/inspector-widget.blp",
+      "src/apprt/gtk/ui/1.0/key-state-overlay.blp",
+      "src/apprt/gtk/ui/1.0/resize-overlay.blp",
+      "src/apprt/gtk/ui/1.0/search-overlay.blp",
+      "src/apprt/gtk/ui/1.0/split-tree-split.blp",
+      "src/apprt/gtk/ui/1.0/split-tree.blp",
+      "src/apprt/gtk/ui/1.0/surface-scrolled-window.blp",
+      "src/apprt/gtk/ui/1.0/surface.blp",
+      "src/apprt/gtk/ui/1.0/tab.blp",
+      "src/apprt/gtk/ui/1.2/close-confirmation-dialog.blp",
+      "src/apprt/gtk/ui/1.2/config-errors-dialog.blp",
+      "src/apprt/gtk/ui/1.2/debug-warning.blp",
+      "src/apprt/gtk/ui/1.2/key-state-overlay.blp",
+      "src/apprt/gtk/ui/1.2/resize-overlay.blp",
+      "src/apprt/gtk/ui/1.2/search-overlay.blp",
+      "src/apprt/gtk/ui/1.2/surface.blp",
+      "src/apprt/gtk/ui/1.4/clipboard-confirmation-dialog.blp",
+      "src/apprt/gtk/ui/1.4/inspector-window.blp",
+      "src/apprt/gtk/ui/1.4/window.blp",
+      "src/apprt/gtk/ui/1.5/clipboard-confirmation-dialog.blp",
+      "src/apprt/gtk/ui/1.5/close-confirmation-dialog.blp",
+      "src/apprt/gtk/ui/1.5/command-palette.blp",
+      "src/apprt/gtk/ui/1.5/config-errors-dialog.blp",
+      "src/apprt/gtk/ui/1.5/imgui-widget.blp",
+      "src/apprt/gtk/ui/1.5/inspector-widget.blp",
+      "src/apprt/gtk/ui/1.5/inspector-window.blp",
+      "src/apprt/gtk/ui/1.5/split-tree-split.blp",
+      "src/apprt/gtk/ui/1.5/split-tree.blp",
+      "src/apprt/gtk/ui/1.5/surface-scrolled-window.blp",
+      "src/apprt/gtk/ui/1.5/tab.blp",
+      "src/apprt/gtk/ui/1.5/window.blp",
+      "src/apprt/gtk/winproto.zig",
+      "src/apprt/gtk/winproto/wayland.zig",
+      "src/apprt/gtk/winproto/wayland/Globals.zig",
+      "src/apprt/gtk/winproto/wayland/Hotkeys.zig",
+      "src/apprt/gtk/winproto/x11.zig",
+      "src/apprt/ipc.zig",
+      "src/apprt/surface.zig",
+      "src/benchmark/Benchmark.zig",
+      "src/benchmark/CodepointWidth.zig",
+      "src/benchmark/OscParser.zig",
+      "src/benchmark/ScreenClone.zig",
+      "src/benchmark/TerminalFormatter.zig",
+      "src/benchmark/TerminalSnapshot.zig",
+      "src/benchmark/TerminalStream.zig",
+      "src/build/CombineArchivesStep.zig",
+      "src/build/Config.zig",
+      "src/build/GhosttyBench.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/GhosttyExe.zig",
+      "src/build/GhosttyFrameData.zig",
+      "src/build/GhosttyI18n.zig",
+      "src/build/GhosttyLib.zig",
+      "src/build/GhosttyLibVt.zig",
+      "src/build/GhosttyPkgConfig.zig",
+      "src/build/GhosttyResources.zig",
+      "src/build/GhosttyXCFramework.zig",
+      "src/build/GhosttyXcodebuild.zig",
+      "src/build/GhosttyZig.zig",
+      "src/build/GitVersion.zig",
+      "src/build/LibsystemOverrideStep.zig",
+      "src/build/SharedDeps.zig",
+      "src/build/XCFrameworkStep.zig",
+      "src/build/libghostty-vt.pc.in",
+      "src/build/libsystem_override.sh",
+      "src/build/mdgen/mdgen.zig",
+      "src/build/webgen/main_commands.zig",
+      "src/build/webgen/main_config.zig",
+      "src/build_config.zig",
+      "src/cli/CommaSplitter.zig",
+      "src/cli/action.zig",
+      "src/cli/args.zig",
+      "src/cli/boo.zig",
+      "src/cli/crash_report.zig",
+      "src/cli/diagnostics.zig",
+      "src/cli/edit_config.zig",
+      "src/cli/ghostty.zig",
+      "src/cli/help.zig",
+      "src/cli/list_colors.zig",
+      "src/cli/list_keybinds.zig",
+      "src/cli/list_themes.zig",
+      "src/cli/new_tab.zig",
+      "src/cli/new_window.zig",
+      "src/cli/show_face.zig",
+      "src/cli/ssh-cache/DiskCache.zig",
+      "src/cli/ssh.zig",
+      "src/cli/ssh_cache.zig",
+      "src/cli/tui.zig",
+      "src/cli/validate_config.zig",
+      "src/cli/version.zig",
+      "src/config/Config.zig",
+      "src/config/RepeatableStringMap.zig",
+      "src/config/c_get.zig",
+      "src/config/command.zig",
+      "src/config/conditional.zig",
+      "src/config/edit.zig",
+      "src/config/file_load.zig",
+      "src/config/formatter.zig",
+      "src/config/formatter_file.zig",
+      "src/config/io.zig",
+      "src/config/key.zig",
+      "src/config/path.zig",
+      "src/config/string.zig",
+      "src/config/theme.zig",
+      "src/crash/sentry.zig",
+      "src/crc32c.zig",
+      "src/datastruct/comparison.zig",
+      "src/datastruct/comptime_int_set.zig",
+      "src/datastruct/main.zig",
+      "src/datastruct/message_data.zig",
+      "src/datastruct/segmented_list.zig",
+      "src/datastruct/split_tree.zig",
+      "src/datastruct/untouched_pool.zig",
+      "src/datastruct/wasm_page_pool.zig",
+      "src/extra/bash.zig",
+      "src/extra/fish.zig",
+      "src/extra/pkg-config.zig",
+      "src/extra/sublime.zig",
+      "src/extra/vim.zig",
+      "src/extra/zsh.zig",
+      "src/fastprint.zig",
+      "src/font/Atlas.zig",
+      "src/font/CodepointResolver.zig",
+      "src/font/Collection.zig",
+      "src/font/DeferredFace.zig",
+      "src/font/Metrics.zig",
+      "src/font/SharedGrid.zig",
+      "src/font/SharedGridSet.zig",
+      "src/font/discovery.zig",
+      "src/font/face.zig",
+      "src/font/face/coretext.zig",
+      "src/font/face/freetype.zig",
+      "src/font/face/web_canvas.zig",
+      "src/font/glyf_rasterize_png_test.zig",
+      "src/font/nerd_font_attributes.zig",
+      "src/font/nerd_font_codegen.py",
+      "src/font/nerd_font_tables.zig",
+      "src/font/opentype/glyf.zig",
+      "src/font/opentype/sfnt.zig",
+      "src/font/shaper/coretext.zig",
+      "src/font/shaper/feature.zig",
+      "src/font/sprite.zig",
+      "src/font/sprite/Face.zig",
+      "src/font/sprite/canvas.zig",
+      "src/font/sprite/draw/block.zig",
+      "src/font/sprite/draw/branch.zig",
+      "src/font/sprite/draw/geometric_shapes.zig",
+      "src/font/sprite/draw/symbols_for_legacy_computing.zig",
+      "src/global.zig",
+      "src/helpgen.zig",
+      "src/input.zig",
+      "src/input/Binding.zig",
+      "src/input/KeymapDarwin.zig",
+      "src/input/command.zig",
+      "src/input/function_keys.zig",
+      "src/input/helpgen_actions.zig",
+      "src/input/key.zig",
+      "src/input/key_encode.zig",
+      "src/input/keycodes.zig",
+      "src/input/mouse.zig",
+      "src/input/mouse_encode.zig",
+      "src/input/paste.zig",
+      "src/inspector/widgets/key.zig",
+      "src/inspector/widgets/page.zig",
+      "src/inspector/widgets/pagelist.zig",
+      "src/inspector/widgets/screen.zig",
+      "src/inspector/widgets/surface.zig",
+      "src/inspector/widgets/terminal.zig",
+      "src/inspector/widgets/termio.zig",
+      "src/lib/TinyIo.zig",
+      "src/lib/allocator.zig",
+      "src/lib/c_abi.zig",
+      "src/lib/compat/reader.zig",
+      "src/lib/compat/testing.zig",
+      "src/lib/enum.zig",
+      "src/lib/main.zig",
+      "src/lib/packed.zig",
+      "src/lib/parse_int.zig",
+      "src/lib/struct.zig",
+      "src/lib/tinyio/posix.zig",
+      "src/lib/tinyio/test.zig",
+      "src/lib/tinyio/windows.zig",
+      "src/lib/union.zig",
+      "src/lib/windows_dll.zig",
+      "src/lib_vt.zig",
+      "src/main_c.zig",
+      "src/main_ghostty.zig",
+      "src/main_wasm.zig",
+      "src/os/TempDir.zig",
+      "src/os/cf_release_thread.zig",
+      "src/os/cgroup.zig",
+      "src/os/dbus.zig",
+      "src/os/desktop.zig",
+      "src/os/file.zig",
+      "src/os/flatpak.zig",
+      "src/os/homedir.zig",
+      "src/os/hostname.zig",
+      "src/os/i18n.zig",
+      "src/os/kernel_info.zig",
+      "src/os/locale.zig",
+      "src/os/mach.zig",
+      "src/os/macos.zig",
+      "src/os/main.zig",
+      "src/os/mouse.zig",
+      "src/os/open.zig",
+      "src/os/passwd.zig",
+      "src/os/path.zig",
+      "src/os/pipe.zig",
+      "src/os/resourcesdir.zig",
+      "src/os/stderr.zig",
+      "src/os/string_encoding.zig",
+      "src/os/systemd.zig",
+      "src/os/wasm/log.zig",
+      "src/os/wasm/target.zig",
+      "src/os/windows.zig",
+      "src/os/xdg.zig",
+      "src/pty.zig",
+      "src/quirks.zig",
+      "src/quirks_memset.zig",
+      "src/renderer.zig",
+      "src/renderer/DisplayLink.zig",
+      "src/renderer/Metal.zig",
+      "src/renderer/OpenGL.zig",
+      "src/renderer/Options.zig",
+      "src/renderer/State.zig",
+      "src/renderer/Thread.zig",
+      "src/renderer/WebGL.zig",
+      "src/renderer/backend.zig",
+      "src/renderer/generic.zig",
+      "src/renderer/image.zig",
+      "src/renderer/message.zig",
+      "src/renderer/metal/Device.zig",
+      "src/renderer/metal/Pipeline.zig",
+      "src/renderer/metal/RenderPass.zig",
+      "src/renderer/metal/Target.zig",
+      "src/renderer/metal/Texture.zig",
+      "src/renderer/metal/shaders.zig",
+      "src/renderer/opengl/Device.zig",
+      "src/renderer/opengl/Frame.zig",
+      "src/renderer/opengl/Pipeline.zig",
+      "src/renderer/opengl/Target.zig",
+      "src/renderer/opengl/shaders.zig",
+      "src/renderer/shadertoy.zig",
+      "src/shell-integration/README.md",
+      "src/shell-integration/bash/ghostty.bash",
+      "src/shell-integration/zsh/ghostty-integration",
+      "src/simd/base64_scalar.zig",
+      "src/simd/vt.zig",
+      "src/synthetic/Kitty.zig",
+      "src/synthetic/Utf8.zig",
+      "src/synthetic/cli.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/Parser.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/apc.zig",
+      "src/terminal/apc/glyph/Glossary.zig",
+      "src/terminal/apc/glyph/request.zig",
+      "src/terminal/apc/glyph/response.zig",
+      "src/terminal/build_options.zig",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/cell.zig",
+      "src/terminal/c/color.zig",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/io.zig",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/modes.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/mouse_event.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/paste.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/row.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/selection_gesture.zig",
+      "src/terminal/c/sgr.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/style.zig",
+      "src/terminal/c/sys.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/types.zig",
+      "src/terminal/charsets.zig",
+      "src/terminal/color.zig",
+      "src/terminal/compress/lz4_differential.zig",
+      "src/terminal/csi.zig",
+      "src/terminal/dcs.zig",
+      "src/terminal/device_attributes.zig",
+      "src/terminal/device_status.zig",
+      "src/terminal/formatter.zig",
+      "src/terminal/fraction.zig",
+      "src/terminal/hash_map.zig",
+      "src/terminal/kitty/clipboard_command.zig",
+      "src/terminal/kitty/clipboard_grants.zig",
+      "src/terminal/kitty/clipboard_response.zig",
+      "src/terminal/kitty/clipboard_write.zig",
+      "src/terminal/kitty/color.zig",
+      "src/terminal/kitty/dnd_drop.zig",
+      "src/terminal/kitty/dnd_response.zig",
+      "src/terminal/kitty/dnd_test.zig",
+      "src/terminal/kitty/graphics_animation.zig",
+      "src/terminal/kitty/graphics_command.zig",
+      "src/terminal/kitty/graphics_exec.zig",
+      "src/terminal/kitty/graphics_image.zig",
+      "src/terminal/kitty/graphics_pixel.zig",
+      "src/terminal/kitty/graphics_storage.zig",
+      "src/terminal/kitty/graphics_unicode.zig",
+      "src/terminal/kitty/testdata/image-png-zlib_deflate-50x76-2147483647-raw.data",
+      "src/terminal/lib.zig",
+      "src/terminal/main.zig",
+      "src/terminal/mem.zig",
+      "src/terminal/modes.zig",
+      "src/terminal/osc.zig",
+      "src/terminal/osc/parsers.zig",
+      "src/terminal/osc/parsers/change_window_title.zig",
+      "src/terminal/osc/parsers/color.zig",
+      "src/terminal/osc/parsers/context_signal.zig",
+      "src/terminal/osc/parsers/hierarchical_context.zig",
+      "src/terminal/osc/parsers/iterm2.zig",
+      "src/terminal/osc/parsers/kitty_desktop_notification.zig",
+      "src/terminal/osc/parsers/kitty_text_sizing.zig",
+      "src/terminal/osc/parsers/osc9.zig",
+      "src/terminal/osc/parsers/program_status.zig",
+      "src/terminal/osc/parsers/semantic_prompt.zig",
+      "src/terminal/osc/parsers/unknown.zig",
+      "src/terminal/page.zig",
+      "src/terminal/parse_table.zig",
+      "src/terminal/paste.zig",
+      "src/terminal/render.zig",
+      "src/terminal/search/Thread.zig",
+      "src/terminal/search/pagelist.zig",
+      "src/terminal/search/screen.zig",
+      "src/terminal/search/sliding_window.zig",
+      "src/terminal/search/terminal.zig",
+      "src/terminal/sgr.zig",
+      "src/terminal/size_report.zig",
+      "src/terminal/snapshot/checkpoint.zig",
+      "src/terminal/snapshot/continuation.zig",
+      "src/terminal/snapshot/fixture.zig",
+      "src/terminal/snapshot/grid.zig",
+      "src/terminal/snapshot/history.zig",
+      "src/terminal/snapshot/hyperlink.zig",
+      "src/terminal/snapshot/kitty.zig",
+      "src/terminal/snapshot/main.zig",
+      "src/terminal/snapshot/page.zig",
+      "src/terminal/snapshot/record.zig",
+      "src/terminal/snapshot/screen.zig",
+      "src/terminal/snapshot/snapshot.ksy",
+      "src/terminal/snapshot/snapshot.zig",
+      "src/terminal/snapshot/style.zig",
+      "src/terminal/snapshot/terminal.zig",
+      "src/terminal/snapshot/testdata/kitty-alternate-v1.hex",
+      "src/terminal/snapshot/testdata/kitty-animation-v1.hex",
+      "src/terminal/snapshot/testdata/kitty-history-v1.hex",
+      "src/terminal/snapshot/testdata/kitty-loading-v1.hex",
+      "src/terminal/snapshot/testdata/kitty-payload-in-history-v1.hex",
+      "src/terminal/snapshot/testdata/kitty-placed-v1.hex",
+      "src/terminal/snapshot/testdata/kitty-relative-v1.hex",
+      "src/terminal/snapshot/testdata/kitty-source-rect-v1.hex",
+      "src/terminal/snapshot/testdata/kitty-virtual-v1.hex",
+      "src/terminal/snapshot/testdata/unknown-records-v1.hex",
+      "src/terminal/snapshot/verify-kaitai.py",
+      "src/terminal/stream.zig",
+      "src/terminal/stream_continuation.zig",
+      "src/terminal/stream_terminal.zig",
+      "src/terminal/style.zig",
+      "src/terminal/tmux/control.zig",
+      "src/terminal/tmux/layout.zig",
+      "src/terminal/tmux/output.zig",
+      "src/terminal/tmux/viewer.zig",
+      "src/terminal/xt_checksum.zig",
+      "src/terminfo/Source.zig",
+      "src/termio/Exec.zig",
+      "src/termio/Termio.zig",
+      "src/termio/Thread.zig",
+      "src/termio/shell_integration.zig",
+      "src/termio/stream_handler.zig",
+      "src/tripwire.zig",
+      "src/unicode/grapheme.zig",
+      "test/clipboard-multipart.py",
+      "test/esctest/README.md",
+      "test/esctest/build.zig",
+      "test/esctest/build.zig.zon",
+      "test/esctest/src/main.zig",
+      "test/fuzz-libghostty/README.md",
+      "test/fuzz-libghostty/build.zig",
+      "test/fuzz-libghostty/build.zig.zon",
+      "typos.toml",
+      "vendor/glad/include/glad/glad_egl.h",
+      "vendor/glad/src/glad_egl.c"
+    ]
+  },
+  {
+    "hash": "cd00d09c64c34c3074b0b2c2f584fce6fbab2ca9",
+    "title": "tmux: ignore active_window in raw startup tests",
+    "parents": [
+      "0a5a6a6e1a20928f4b097d51ec9fcf06de353024"
+    ],
+    "files": [
+      "src/terminal/tmux/viewer.zig"
+    ]
+  },
+  {
+    "hash": "854e51422732c00088ceb79b09a61e504b89800d",
+    "title": "snap: bundle gstreamer plugins so audio bell works",
+    "parents": [
+      "9781c0afc8225510e33127466f0815eb51086d7d"
+    ],
+    "files": [
+      "snap/local/launcher",
+      "snap/snapcraft.yaml"
+    ]
+  },
+  {
+    "hash": "7c6e1011c237aaac3d19d094b3c4bdada3b21bc8",
+    "title": "Update VOUCHED list (#14943)",
+    "parents": [
+      "9781c0afc8225510e33127466f0815eb51086d7d"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "eec45a52dda2a3080023ef45d37797a091b486bd",
+    "title": "tmux: handle window-close and active window (#14273)",
+    "parents": [
+      "7c6e1011c237aaac3d19d094b3c4bdada3b21bc8",
+      "cd00d09c64c34c3074b0b2c2f584fce6fbab2ca9"
+    ],
+    "files": [
+      "src/terminal/tmux/control.zig",
+      "src/terminal/tmux/viewer.zig",
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "e1e05c1cd13efc4bc962f4a3fd8c4e310267b340",
+    "title": "nix: use store paths for propagated GStreamer packages (#14929)",
+    "parents": [
+      "eec45a52dda2a3080023ef45d37797a091b486bd",
+      "539a7f1ce770b12071ca146e9824b9d9e5a1b88f"
+    ],
+    "files": [
+      "nix/package.nix"
+    ]
+  },
+  {
+    "hash": "cf0ab14aed55315a53de668bc1bbcf4a13ce0ddd",
+    "title": "config: reject empty prefixed commands (#14921)",
+    "parents": [
+      "e1e05c1cd13efc4bc962f4a3fd8c4e310267b340",
+      "8c04d7c2e8c37a4044b1af4c58e529c714c83b20"
+    ],
+    "files": [
+      "src/config/command.zig"
+    ]
+  },
+  {
+    "hash": "51e7fe51db607773a651b161527beb10ce92a611",
+    "title": "terminal/tmux: parse %output without a regex",
+    "parents": [
+      "cf0ab14aed55315a53de668bc1bbcf4a13ce0ddd"
+    ],
+    "files": [
+      "src/terminal/tmux/control.zig"
+    ]
+  },
+  {
+    "hash": "8bb4f45846ecde0ab53a846ee1bca5533dca8c5f",
+    "title": "fuzz: fix replay crash detection and add osc target",
+    "parents": [
+      "cf0ab14aed55315a53de668bc1bbcf4a13ce0ddd"
+    ],
+    "files": [
+      "test/fuzz-libghostty/replay-crashes.nu"
+    ]
+  },
+  {
+    "hash": "ff23824213b8d7ab7a07dca6a7e0d68cad51b802",
+    "title": "snap: bundle gstreamer plugins so audio bell works (#12676)",
+    "parents": [
+      "cf0ab14aed55315a53de668bc1bbcf4a13ce0ddd",
+      "854e51422732c00088ceb79b09a61e504b89800d"
+    ],
+    "files": [
+      "snap/local/launcher",
+      "snap/snapcraft.yaml"
+    ]
+  },
+  {
+    "hash": "90ed851dea8a7f328ad937adc5521c809f2cd41d",
+    "title": "config: ignore repeated space in direct commands",
+    "parents": [
+      "ff23824213b8d7ab7a07dca6a7e0d68cad51b802"
+    ],
+    "files": [
+      "src/config/command.zig"
+    ]
+  },
+  {
+    "hash": "e2593c1496cbf9f34f13e53d2d83b80283c8f24f",
+    "title": "config: ignore repeated space in direct commands (#14950)",
+    "parents": [
+      "ff23824213b8d7ab7a07dca6a7e0d68cad51b802",
+      "90ed851dea8a7f328ad937adc5521c809f2cd41d"
+    ],
+    "files": [
+      "src/config/command.zig"
+    ]
+  },
+  {
+    "hash": "86c704afdde5a8ee67300d924d1c52b4d82b4ff4",
+    "title": "gtk: fix jumps when resizing splits via keybind",
+    "parents": [
+      "e2593c1496cbf9f34f13e53d2d83b80283c8f24f"
+    ],
+    "files": [
+      "src/apprt/gtk/class/split_tree.zig"
+    ]
+  },
+  {
+    "hash": "ca91d0a24e67b3eecdb23c943227cd2b3908747b",
+    "title": "gtk: fix jumps when resizing splits via keybind (#14951)",
+    "parents": [
+      "e2593c1496cbf9f34f13e53d2d83b80283c8f24f",
+      "86c704afdde5a8ee67300d924d1c52b4d82b4ff4"
+    ],
+    "files": [
+      "src/apprt/gtk/class/split_tree.zig"
+    ]
+  },
+  {
+    "hash": "32da5e47b26cad0dadb36c279ae9e020a2e60959",
+    "title": "snap: avoid trailing colon in LD_LIBRARY_PATH",
+    "parents": [
+      "e2593c1496cbf9f34f13e53d2d83b80283c8f24f"
+    ],
+    "files": [
+      "snap/local/launcher"
+    ]
+  },
+  {
+    "hash": "93404a48a9a8bf265bb1671e0e6d9985322f6682",
+    "title": "Update VOUCHED list (#14957)",
+    "parents": [
+      "ca91d0a24e67b3eecdb23c943227cd2b3908747b"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "1d23d02ae16f86d9c9a3792098cb906b94208bcc",
+    "title": "snap: avoid trailing colon in LD_LIBRARY_PATH (#14954)",
+    "parents": [
+      "93404a48a9a8bf265bb1671e0e6d9985322f6682",
+      "32da5e47b26cad0dadb36c279ae9e020a2e60959"
+    ],
+    "files": [
+      "snap/local/launcher"
+    ]
+  },
+  {
+    "hash": "9644c7571d43f988415b3ed38f40be76e5964dd4",
+    "title": "datastruct: fix clearing circular buffers with zero capacity",
+    "parents": [
+      "e2593c1496cbf9f34f13e53d2d83b80283c8f24f"
+    ],
+    "files": [
+      "src/datastruct/circ_buf.zig"
+    ]
+  },
+  {
+    "hash": "f040f0ab0ee30d77794b98d87e27fc9105ee6ab9",
+    "title": "datastruct: fix clearing circular buffers with zero capacity (#14958)",
+    "parents": [
+      "1d23d02ae16f86d9c9a3792098cb906b94208bcc",
+      "9644c7571d43f988415b3ed38f40be76e5964dd4"
+    ],
+    "files": [
+      "src/datastruct/circ_buf.zig"
+    ]
+  },
+  {
+    "hash": "44893148d009bd372f5f7e8d2edbd0340fc82b65",
+    "title": "cli: show SSH authentication messages during terminfo setup (#14916)",
+    "parents": [
+      "f040f0ab0ee30d77794b98d87e27fc9105ee6ab9",
+      "4d7de0a483e40e2c1dc542315b2a87be96977df2"
+    ],
+    "files": [
+      "src/cli/ssh.zig"
+    ]
+  },
+  {
+    "hash": "a0706b79b3d791873177b1fda4b155267769e8c5",
+    "title": "fuzz: fix replay crash detection and add osc target (#14896)",
+    "parents": [
+      "44893148d009bd372f5f7e8d2edbd0340fc82b65",
+      "8bb4f45846ecde0ab53a846ee1bca5533dca8c5f"
+    ],
+    "files": [
+      "test/fuzz-libghostty/replay-crashes.nu"
+    ]
+  },
+  {
+    "hash": "fbed180a5f181915c92a8f2f561903a6e4645b5a",
+    "title": "Update VOUCHED list (#14960)",
+    "parents": [
+      "a0706b79b3d791873177b1fda4b155267769e8c5"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "b01ca003ca76687072b1cac6f1e3dd1bd0e27fa5",
+    "title": "benchmark: add shaper-rows benchmark",
+    "parents": [
+      "fbed180a5f181915c92a8f2f561903a6e4645b5a"
+    ],
+    "files": [
+      "src/benchmark/ShaperRows.zig",
+      "src/benchmark/cli.zig",
+      "src/benchmark/main.zig"
+    ]
+  },
+  {
+    "hash": "0a672a914479354aa8599c75927485b22905c394",
+    "title": "Update VOUCHED list (#14968)",
+    "parents": [
+      "fbed180a5f181915c92a8f2f561903a6e4645b5a"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "c911f96ee8fedd4594b5b69f1128fcb03f560622",
+    "title": "Update VOUCHED list (#14969)",
+    "parents": [
+      "0a672a914479354aa8599c75927485b22905c394"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "ae0dc1b7136c2baddc3e067663aa041cd555cfda",
+    "title": "terminal/tmux: parse %output without a regex (#14947)",
+    "parents": [
+      "c911f96ee8fedd4594b5b69f1128fcb03f560622",
+      "51e7fe51db607773a651b161527beb10ce92a611"
+    ],
+    "files": [
+      "src/terminal/tmux/control.zig"
+    ]
+  },
+  {
+    "hash": "f7b25c8129d84d53cf0cda4ffa024a692aca019e",
+    "title": "termio: don't require RFC 1123 hostnames in OSC 7",
+    "parents": [
+      "0a672a914479354aa8599c75927485b22905c394"
+    ],
+    "files": [
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "ce920296c891d0f9e266cfb908057716304182ab",
+    "title": "terminal: skip the ED2 prompt scan when OSC 133 was never seen",
+    "parents": [
+      "ae0dc1b7136c2baddc3e067663aa041cd555cfda"
+    ],
+    "files": [
+      "src/synthetic/cli.zig",
+      "src/synthetic/cli/Erase.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/snapshot/screen.zig",
+      "src/terminal/snapshot/snapshot.zig"
+    ]
+  },
+  {
+    "hash": "9bfa8ee9a1d73f99208c1f056c4e4b5783402ead",
+    "title": "terminal: skip the ED2 prompt scan when OSC 133 was never seen (#14975)",
+    "parents": [
+      "ae0dc1b7136c2baddc3e067663aa041cd555cfda",
+      "ce920296c891d0f9e266cfb908057716304182ab"
+    ],
+    "files": [
+      "src/synthetic/cli.zig",
+      "src/synthetic/cli/Erase.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/snapshot/screen.zig",
+      "src/terminal/snapshot/snapshot.zig"
+    ]
+  },
+  {
+    "hash": "1461f068745a4b9524e197a38a876072a9a220f0",
+    "title": "benchmark: end a shaper frame after each shaper-rows pass",
+    "parents": [
+      "b01ca003ca76687072b1cac6f1e3dd1bd0e27fa5"
+    ],
+    "files": [
+      "src/benchmark/ShaperRows.zig"
+    ]
+  },
+  {
+    "hash": "3bd54e025cc3349ee76ab1af7ec1ff8f7353632b",
+    "title": "benchmark: add shaper-rows benchmark (#14965)",
+    "parents": [
+      "9bfa8ee9a1d73f99208c1f056c4e4b5783402ead",
+      "1461f068745a4b9524e197a38a876072a9a220f0"
+    ],
+    "files": [
+      "src/benchmark/ShaperRows.zig",
+      "src/benchmark/cli.zig",
+      "src/benchmark/main.zig"
+    ]
+  },
+  {
+    "hash": "c7be56a04696249a2c33abac88586338aba7fc7a",
+    "title": "fuzz: exercise hierarchical context in osc harness",
+    "parents": [
+      "9bfa8ee9a1d73f99208c1f056c4e4b5783402ead"
+    ],
+    "files": [
+      "pkg/afl++/build.zig",
+      "test/fuzz-libghostty/build.zig.zon",
+      "test/fuzz-libghostty/corpus/osc-cmin/12-osc3008-context",
+      "test/fuzz-libghostty/corpus/osc-initial/12-osc3008-context",
+      "test/fuzz-libghostty/src/fuzz_osc.zig"
+    ]
+  },
+  {
+    "hash": "83b57ac5ead868e133adb509f7ef0a4ffa3ffe01",
+    "title": "fuzz: exercise hierarchical context in osc harness (#14977)",
+    "parents": [
+      "3bd54e025cc3349ee76ab1af7ec1ff8f7353632b",
+      "c7be56a04696249a2c33abac88586338aba7fc7a"
+    ],
+    "files": [
+      "pkg/afl++/build.zig",
+      "test/fuzz-libghostty/build.zig.zon",
+      "test/fuzz-libghostty/corpus/osc-cmin/12-osc3008-context",
+      "test/fuzz-libghostty/corpus/osc-initial/12-osc3008-context",
+      "test/fuzz-libghostty/src/fuzz_osc.zig"
+    ]
+  },
+  {
+    "hash": "845736e1df59e637a614aee78009217c9b480988",
+    "title": "deps: Update iTerm2 color schemes",
+    "parents": [
+      "83b57ac5ead868e133adb509f7ef0a4ffa3ffe01"
+    ],
+    "files": [
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "flatpak/zig-packages.json"
+    ]
+  },
+  {
+    "hash": "c42f6fb4740102b678773f4bfdd4ef7613afe818",
+    "title": "Update VOUCHED list (#14983)",
+    "parents": [
+      "83b57ac5ead868e133adb509f7ef0a4ffa3ffe01"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "2fc8d02c253bc09ff7456c65e7f63dd6eebaf4de",
+    "title": "Update iTerm2 colorschemes (#14981)",
+    "parents": [
+      "c42f6fb4740102b678773f4bfdd4ef7613afe818",
+      "845736e1df59e637a614aee78009217c9b480988"
+    ],
+    "files": [
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "flatpak/zig-packages.json"
+    ]
+  },
+  {
+    "hash": "a3b5946a59b94bf097da1aac889cf95f9c704675",
+    "title": "terminal: new pages keep the capacity recent pages needed",
+    "parents": [
+      "2fc8d02c253bc09ff7456c65e7f63dd6eebaf4de"
+    ],
+    "files": [
+      "src/benchmark/TerminalStream.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/page.zig"
+    ]
+  },
+  {
+    "hash": "dc8f59943ce94b75ffadc45cc4f36eca6a7ed2ae",
+    "title": "terminal: new pages keep the capacity recent pages needed (#14985)",
+    "parents": [
+      "2fc8d02c253bc09ff7456c65e7f63dd6eebaf4de",
+      "a3b5946a59b94bf097da1aac889cf95f9c704675"
+    ],
+    "files": [
+      "src/benchmark/TerminalStream.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/page.zig"
+    ]
+  },
+  {
+    "hash": "5e7714e71cd41ac0095aefa2120838842dfeca48",
+    "title": "datastruct: prevent overflow in circular buffer arithmetic",
+    "parents": [
+      "ae0dc1b7136c2baddc3e067663aa041cd555cfda"
+    ],
+    "files": [
+      "src/datastruct/circ_buf.zig"
+    ]
+  },
+  {
+    "hash": "0aa2f7caf52988bbfa42290cd3afbfbf550c0ef6",
+    "title": "datastruct: use checked addition for buffer capacity",
+    "parents": [
+      "5e7714e71cd41ac0095aefa2120838842dfeca48"
+    ],
+    "files": [
+      "src/datastruct/circ_buf.zig"
+    ]
+  },
+  {
+    "hash": "c7eb3e8b96288e47e12f045056d270f8ba7f45f0",
+    "title": "datastruct: restore circular buffer explanations",
+    "parents": [
+      "0aa2f7caf52988bbfa42290cd3afbfbf550c0ef6"
+    ],
+    "files": [
+      "src/datastruct/circ_buf.zig"
+    ]
+  },
+  {
+    "hash": "a5b44039d10f25d2d0a5992137cd6517f49e72aa",
+    "title": "Update VOUCHED list (#14992)",
+    "parents": [
+      "dc8f59943ce94b75ffadc45cc4f36eca6a7ed2ae"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "54d162da5bea1d95399574495bde4ddb91df0784",
+    "title": "terminal: apply every attribute of an SGR sequence at once",
+    "parents": [
+      "dc8f59943ce94b75ffadc45cc4f36eca6a7ed2ae"
+    ],
+    "files": [
+      "src/synthetic/cli/Styled.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/stream.zig",
+      "src/terminal/stream_terminal.zig",
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "881fc68902a5d819fdac96bcb597a2d99feb9729",
+    "title": "terminal: skip clearing rows that are already blank",
+    "parents": [
+      "dc8f59943ce94b75ffadc45cc4f36eca6a7ed2ae"
+    ],
+    "files": [
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/page.zig"
+    ]
+  },
+  {
+    "hash": "a3e349f7a02709130d4cb83b24bac56a5d334d52",
+    "title": "i18n: update Bahasa Indonesia translation (#14991)",
+    "parents": [
+      "a5b44039d10f25d2d0a5992137cd6517f49e72aa"
+    ],
+    "files": [
+      "po/id.po"
+    ]
+  },
+  {
+    "hash": "2f967e3a6ab231188c29a97fb422e479a254e97c",
+    "title": "terminal: apply every attribute of an SGR sequence at once (#14995)",
+    "parents": [
+      "a3e349f7a02709130d4cb83b24bac56a5d334d52",
+      "54d162da5bea1d95399574495bde4ddb91df0784"
+    ],
+    "files": [
+      "src/synthetic/cli/Styled.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/stream.zig",
+      "src/terminal/stream_terminal.zig",
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "a7e8e4d15bd0f12ad2a1123bf157b338e526c23e",
+    "title": "datastruct: prevent overflow in circular buffer arithmetic (#14987)",
+    "parents": [
+      "2f967e3a6ab231188c29a97fb422e479a254e97c",
+      "c7eb3e8b96288e47e12f045056d270f8ba7f45f0"
+    ],
+    "files": [
+      "src/datastruct/circ_buf.zig"
+    ]
+  },
+  {
+    "hash": "fd29936f0914f5a303e1d67fd09201f981b7eff1",
+    "title": "macos: make Surface main actor-isolated",
+    "parents": [
+      "2f967e3a6ab231188c29a97fb422e479a254e97c"
+    ],
+    "files": [
+      "macos/Sources/Ghostty/Ghostty.Surface.swift"
+    ]
+  },
+  {
+    "hash": "6573de67e9990ebf0308f5cb07e4e40895d748ec",
+    "title": "Replace std.ArrayListUnmanaged and std.ArrayListAligned",
+    "parents": [
+      "a7e8e4d15bd0f12ad2a1123bf157b338e526c23e"
+    ],
+    "files": [
+      "src/App.zig",
+      "src/Surface.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/apprt/gtk/class/surface.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/GhosttyI18n.zig",
+      "src/build/SharedDeps.zig",
+      "src/build/combine_archives.zig",
+      "src/cli/list_fonts.zig",
+      "src/config/Config.zig",
+      "src/config/ErrorList.zig",
+      "src/config/command.zig",
+      "src/config/io.zig",
+      "src/font/shaper/coretext.zig",
+      "src/font/shaper/harfbuzz.zig",
+      "src/font/shaper/noop.zig",
+      "src/os/passwd.zig",
+      "src/renderer/cell.zig",
+      "src/renderer/generic.zig",
+      "src/renderer/image.zig",
+      "src/renderer/metal/buffer.zig",
+      "src/renderer/opengl/buffer.zig",
+      "src/renderer/shadertoy.zig",
+      "src/simd/base64.zig",
+      "src/terminal/kitty/clipboard_command.zig",
+      "src/terminal/kitty/clipboard_grants.zig",
+      "src/terminal/kitty/clipboard_write.zig",
+      "src/terminal/kitty/dnd_drop.zig",
+      "src/terminal/kitty/graphics_animation.zig",
+      "src/terminal/kitty/graphics_image.zig",
+      "src/terminal/kitty/graphics_storage.zig",
+      "src/terminal/render.zig",
+      "src/terminal/search/viewport.zig",
+      "src/terminal/stream.zig",
+      "src/terminal/stream_terminal.zig"
+    ]
+  },
+  {
+    "hash": "7cd6fa0215a1299c69c27fe543f48ecab45b775f",
+    "title": "Sync CODEOWNERS vouch list (#15002)",
+    "parents": [
+      "a7e8e4d15bd0f12ad2a1123bf157b338e526c23e"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "2178e635dffc71e0c679b143680665bf09857bb8",
+    "title": "terminal: mark reset rows blank and test the blank bit bookkeeping",
+    "parents": [
+      "881fc68902a5d819fdac96bcb597a2d99feb9729"
+    ],
+    "files": [
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/page.zig",
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "59093e3aadb1478e6642061059b1882cfa1b6cf3",
+    "title": "terminal: skip clearing rows that are already blank (#14997)",
+    "parents": [
+      "7cd6fa0215a1299c69c27fe543f48ecab45b775f",
+      "2178e635dffc71e0c679b143680665bf09857bb8"
+    ],
+    "files": [
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/page.zig",
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "ada6e3d722fde00e7171e2d4e93c7392052f2720",
+    "title": "Replace std.ArrayListUnmanaged and std.ArrayListAligned (#15001)",
+    "parents": [
+      "59093e3aadb1478e6642061059b1882cfa1b6cf3",
+      "6573de67e9990ebf0308f5cb07e4e40895d748ec"
+    ],
+    "files": [
+      "src/App.zig",
+      "src/Surface.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/apprt/gtk/class/surface.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/GhosttyI18n.zig",
+      "src/build/SharedDeps.zig",
+      "src/build/combine_archives.zig",
+      "src/cli/list_fonts.zig",
+      "src/config/Config.zig",
+      "src/config/ErrorList.zig",
+      "src/config/command.zig",
+      "src/config/io.zig",
+      "src/font/shaper/coretext.zig",
+      "src/font/shaper/harfbuzz.zig",
+      "src/font/shaper/noop.zig",
+      "src/os/passwd.zig",
+      "src/renderer/cell.zig",
+      "src/renderer/generic.zig",
+      "src/renderer/image.zig",
+      "src/renderer/metal/buffer.zig",
+      "src/renderer/opengl/buffer.zig",
+      "src/renderer/shadertoy.zig",
+      "src/simd/base64.zig",
+      "src/terminal/kitty/clipboard_command.zig",
+      "src/terminal/kitty/clipboard_grants.zig",
+      "src/terminal/kitty/clipboard_write.zig",
+      "src/terminal/kitty/dnd_drop.zig",
+      "src/terminal/kitty/graphics_animation.zig",
+      "src/terminal/kitty/graphics_image.zig",
+      "src/terminal/kitty/graphics_storage.zig",
+      "src/terminal/render.zig",
+      "src/terminal/search/viewport.zig",
+      "src/terminal/stream.zig",
+      "src/terminal/stream_terminal.zig"
+    ]
+  },
+  {
+    "hash": "5c6d43eeecaf4eff506a96d0f5310b5682c80c88",
+    "title": "macos: make Surface main actor-isolated (#14999)",
+    "parents": [
+      "ada6e3d722fde00e7171e2d4e93c7392052f2720",
+      "fd29936f0914f5a303e1d67fd09201f981b7eff1"
+    ],
+    "files": [
+      "macos/Sources/Ghostty/Ghostty.Surface.swift"
+    ]
+  },
+  {
+    "hash": "042b16b6146ada29877dfeeea9f286889e4adeb1",
+    "title": "termio: don't require RFC 1123 hostnames in OSC 7 (#14971)",
+    "parents": [
+      "5c6d43eeecaf4eff506a96d0f5310b5682c80c88",
+      "f7b25c8129d84d53cf0cda4ffa024a692aca019e"
+    ],
+    "files": [
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "0d4418ac20922475ebb40ef23a666898bbc91b67",
+    "title": "terminal: fix edge cases in carried page capacity",
+    "parents": [
+      "a5b44039d10f25d2d0a5992137cd6517f49e72aa"
+    ],
+    "files": [
+      "src/terminal/PageList.zig"
+    ]
+  },
+  {
+    "hash": "4747d7ff427480f75736dc207d14251b8eabd3c9",
+    "title": "terminal: fix edge cases in carried page capacity (#15005)",
+    "parents": [
+      "042b16b6146ada29877dfeeea9f286889e4adeb1",
+      "0d4418ac20922475ebb40ef23a666898bbc91b67"
+    ],
+    "files": [
+      "src/terminal/PageList.zig"
+    ]
+  },
+  {
+    "hash": "9113da029815076cefbbc1ea7b1f63e8082e09ea",
+    "title": "terminal: project hyperlink and string capacity when growing a page",
+    "parents": [
+      "4747d7ff427480f75736dc207d14251b8eabd3c9"
+    ],
+    "files": [
+      "src/terminal/PageList.zig"
+    ]
+  },
+  {
+    "hash": "f0d8cb776254f5dec58b353811398c60fff2fd86",
+    "title": "terminal: carried pages compare usage per row",
+    "parents": [
+      "4747d7ff427480f75736dc207d14251b8eabd3c9"
+    ],
+    "files": [
+      "src/terminal/PageList.zig"
+    ]
+  },
+  {
+    "hash": "431d003c44e857f7ce273e3e209c9daac8eee85e",
+    "title": "terminal: project hyperlink and string capacity when growing a page (#15012)",
+    "parents": [
+      "4747d7ff427480f75736dc207d14251b8eabd3c9",
+      "9113da029815076cefbbc1ea7b1f63e8082e09ea"
+    ],
+    "files": [
+      "src/terminal/PageList.zig"
+    ]
+  },
+  {
+    "hash": "7b267cd9ac7863b0bd72e808daa021381e72dc21",
+    "title": "terminal: carried pages compare usage per row (#15013)",
+    "parents": [
+      "431d003c44e857f7ce273e3e209c9daac8eee85e",
+      "f0d8cb776254f5dec58b353811398c60fff2fd86"
+    ],
+    "files": [
+      "src/terminal/PageList.zig"
+    ]
+  },
+  {
+    "hash": "379bdfabffe16b6a326c4289ad2bf9d712cce80a",
+    "title": "Update VOUCHED list (#15016)",
+    "parents": [
+      "7b267cd9ac7863b0bd72e808daa021381e72dc21"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "41557e2ccf7f27b7ed6665b163bd467d4fa8691e",
+    "title": "terminal: store Style as a packed u128",
+    "parents": [
+      "7b267cd9ac7863b0bd72e808daa021381e72dc21"
+    ],
+    "files": [
+      "src/inspector/widgets/style.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/style.zig",
+      "src/terminal/formatter.zig",
+      "src/terminal/kitty/graphics_unicode.zig",
+      "src/terminal/page.zig",
+      "src/terminal/render.zig",
+      "src/terminal/snapshot/page.zig",
+      "src/terminal/snapshot/screen.zig",
+      "src/terminal/snapshot/style.zig",
+      "src/terminal/stream_terminal.zig",
+      "src/terminal/style.zig"
+    ]
+  },
+  {
+    "hash": "73a2a1d06e9269b67257f4ab810f1a489f0d5b19",
+    "title": "terminal: move SGR attribute handling to Style",
+    "parents": [
+      "41557e2ccf7f27b7ed6665b163bd467d4fa8691e"
+    ],
+    "files": [
+      "src/terminal/Screen.zig",
+      "src/terminal/style.zig"
+    ]
+  },
+  {
+    "hash": "72bc97a9edf5df1080fa68fc8b38c45dc692c8ea",
+    "title": "terminal: simplify fillStyles to one vector store",
+    "parents": [
+      "73a2a1d06e9269b67257f4ab810f1a489f0d5b19"
+    ],
+    "files": [
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "68750a1be2b99227328a6b185ae72719dea0428f",
+    "title": "terminal: support mixed narrow/wide in print fast path",
+    "parents": [
+      "379bdfabffe16b6a326c4289ad2bf9d712cce80a"
+    ],
+    "files": [
+      "src/benchmark/GraphemeBreak.zig",
+      "src/benchmark/TerminalStream.zig",
+      "src/font/shaper/web_canvas.zig",
+      "src/synthetic/Utf8.zig",
+      "src/synthetic/cli/Utf8.zig",
+      "src/terminal/Terminal.zig",
+      "src/unicode/grapheme.zig"
+    ]
+  },
+  {
+    "hash": "825f31c5201e5f6144ac9267d459e64740e4c456",
+    "title": "Update VOUCHED list (#15022)",
+    "parents": [
+      "379bdfabffe16b6a326c4289ad2bf9d712cce80a"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "e2a3ba004d01ca1d0251c891544b97784a072c20",
+    "title": "terminal: support mixed narrow/wide in print fast path (#15021)",
+    "parents": [
+      "825f31c5201e5f6144ac9267d459e64740e4c456",
+      "68750a1be2b99227328a6b185ae72719dea0428f"
+    ],
+    "files": [
+      "src/benchmark/GraphemeBreak.zig",
+      "src/benchmark/TerminalStream.zig",
+      "src/font/shaper/web_canvas.zig",
+      "src/synthetic/Utf8.zig",
+      "src/synthetic/cli/Utf8.zig",
+      "src/terminal/Terminal.zig",
+      "src/unicode/grapheme.zig"
+    ]
+  },
+  {
+    "hash": "de16f08dcf7f3f4104e8722cb39a632a6a8a19f9",
+    "title": "terminal: assert canonical Style.Color bits, test hash and constructors",
+    "parents": [
+      "72bc97a9edf5df1080fa68fc8b38c45dc692c8ea"
+    ],
+    "files": [
+      "src/terminal/render.zig",
+      "src/terminal/style.zig"
+    ]
+  },
+  {
+    "hash": "d20d208c514661ca14b9935576d66655fa2a8be8",
+    "title": "terminal: size the hyperlink map independently of the hyperlink set",
+    "parents": [
+      "e2a3ba004d01ca1d0251c891544b97784a072c20"
+    ],
+    "files": [
+      "src/benchmark/HyperlinkMap.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/compress/Page.zig",
+      "src/terminal/page.zig",
+      "src/terminal/snapshot/grid.zig",
+      "src/terminal/snapshot/page.zig"
+    ]
+  },
+  {
+    "hash": "687f37acd90462d451acd5f79042822d5d0255fb",
+    "title": "terminal: pack Style into 128 bits and simplify style updates (#15023)",
+    "parents": [
+      "e2a3ba004d01ca1d0251c891544b97784a072c20",
+      "de16f08dcf7f3f4104e8722cb39a632a6a8a19f9"
+    ],
+    "files": [
+      "src/inspector/widgets/style.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/style.zig",
+      "src/terminal/formatter.zig",
+      "src/terminal/kitty/graphics_unicode.zig",
+      "src/terminal/page.zig",
+      "src/terminal/render.zig",
+      "src/terminal/snapshot/page.zig",
+      "src/terminal/snapshot/screen.zig",
+      "src/terminal/snapshot/style.zig",
+      "src/terminal/stream_terminal.zig",
+      "src/terminal/style.zig"
+    ]
+  },
+  {
+    "hash": "0edfc656fa3d55d2bbf4519420666b19e5b19dba",
+    "title": "macOS: fix tab bar frame on macOS 27 when it first appears.",
+    "parents": [
+      "687f37acd90462d451acd5f79042822d5d0255fb"
+    ],
+    "files": [
+      "macos/Sources/Features/Terminal/Window Styles/TitlebarTabsTahoeTerminalWindow.swift"
+    ]
+  },
+  {
+    "hash": "298f8ecb9cd30471da7bca9933335e496a5882d1",
+    "title": "terminal: size the hyperlink map independently of the hyperlink set (#15028)",
+    "parents": [
+      "687f37acd90462d451acd5f79042822d5d0255fb",
+      "d20d208c514661ca14b9935576d66655fa2a8be8"
+    ],
+    "files": [
+      "src/benchmark/HyperlinkMap.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/compress/Page.zig",
+      "src/terminal/page.zig",
+      "src/terminal/snapshot/grid.zig",
+      "src/terminal/snapshot/page.zig"
+    ]
+  },
+  {
+    "hash": "a74bd243c03301a00a480035734aa1febbab2ea1",
+    "title": "Fix broken tests using old syntax",
+    "parents": [
+      "298f8ecb9cd30471da7bca9933335e496a5882d1"
+    ],
+    "files": [
+      "src/terminal/PageList.zig"
+    ]
+  },
+  {
+    "hash": "faa346b068361c47826b653af5e4a526e5a4e957",
+    "title": "terminal: print uses the right margin after wrapping",
+    "parents": [
+      "a74bd243c03301a00a480035734aa1febbab2ea1"
+    ],
+    "files": [
+      "src/terminal/Terminal.zig"
+    ]
+  },
+  {
+    "hash": "22b84514411aab13ce71c09052a10c76380eaf4b",
+    "title": "terminal: re-read the style per row in the mixed-width print fast path",
+    "parents": [
+      "a74bd243c03301a00a480035734aa1febbab2ea1"
+    ],
+    "files": [
+      "src/terminal/Terminal.zig"
+    ]
+  },
+  {
+    "hash": "77f85cd67c4c434acc714bb1d1248107a3782a68",
+    "title": "terminal: print uses the right margin after wrapping (#15030)",
+    "parents": [
+      "a74bd243c03301a00a480035734aa1febbab2ea1",
+      "faa346b068361c47826b653af5e4a526e5a4e957"
+    ],
+    "files": [
+      "src/terminal/Terminal.zig"
+    ]
+  },
+  {
+    "hash": "e0acea2753f84ec31c26cdc1c8837fad99cd83b9",
+    "title": "terminal: re-read the style per row in the mixed-width print fast path (#15032)",
+    "parents": [
+      "77f85cd67c4c434acc714bb1d1248107a3782a68",
+      "22b84514411aab13ce71c09052a10c76380eaf4b"
+    ],
+    "files": [
+      "src/terminal/Terminal.zig"
+    ]
+  },
+  {
+    "hash": "4c92f80954b1d563c148d77a051394fd2d39de60",
+    "title": "terminal: print fast stays active while a hyperlink is open",
+    "parents": [
+      "e0acea2753f84ec31c26cdc1c8837fad99cd83b9"
+    ],
+    "files": [
+      "src/terminal/Terminal.zig",
+      "src/terminal/page.zig"
+    ]
+  },
+  {
+    "hash": "91973f2b29be42a2a8713406e18c56238b5f6c19",
+    "title": "terminal: print fast stays active while a hyperlink is open (#15034)",
+    "parents": [
+      "e0acea2753f84ec31c26cdc1c8837fad99cd83b9",
+      "4c92f80954b1d563c148d77a051394fd2d39de60"
+    ],
+    "files": [
+      "src/terminal/Terminal.zig",
+      "src/terminal/page.zig"
+    ]
+  },
+  {
+    "hash": "8484146c74ef4b075b68c9cf8767019b2b3c738c",
+    "title": "terminal: skip erasing and scanning rows that are already blank",
+    "parents": [
+      "91973f2b29be42a2a8713406e18c56238b5f6c19"
+    ],
+    "files": [
+      "src/synthetic/cli/Erase.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/page.zig"
+    ]
+  },
+  {
+    "hash": "a0c092868ded132033c85104e9ab3a266c52f2d4",
+    "title": "terminal: skip erasing and scanning rows that are already blank (#15035)",
+    "parents": [
+      "91973f2b29be42a2a8713406e18c56238b5f6c19",
+      "8484146c74ef4b075b68c9cf8767019b2b3c738c"
+    ],
+    "files": [
+      "src/synthetic/cli/Erase.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/page.zig"
+    ]
+  },
+  {
+    "hash": "0b1729e945978fca4bcd6165d8ac408bf675a7f2",
+    "title": "Update VOUCHED list (#15036)",
+    "parents": [
+      "a0c092868ded132033c85104e9ab3a266c52f2d4"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "3eb5af718b6ca4abf805006336c92e6d1f9a49a4",
+    "title": "i18n: Update Dutch translations",
+    "parents": [
+      "0b1729e945978fca4bcd6165d8ac408bf675a7f2"
+    ],
+    "files": [
+      "po/nl.po"
+    ]
+  },
+  {
+    "hash": "0e067ded703c4212248daf996f97c62f2f13114a",
+    "title": "core: declare pointer nullability in ghostty.h",
+    "parents": [
+      "0b1729e945978fca4bcd6165d8ac408bf675a7f2"
+    ],
+    "files": [
+      "include/ghostty.h",
+      "macos/Sources/Features/QuickTerminal/QuickTerminalController.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift",
+      "macos/Sources/Ghostty/Ghostty.Action.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "macos/Sources/Ghostty/Ghostty.Config.swift",
+      "macos/Sources/Ghostty/GhosttyPackage.swift",
+      "macos/Sources/Ghostty/Surface View/OSSurfaceView.swift",
+      "macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift",
+      "macos/Sources/Helpers/Extensions/Array+Extension.swift",
+      "macos/Tests/Ghostty/Surface View/SurfaceView+SearchStateTests.swift",
+      "src/apprt/embedded.zig"
+    ]
+  },
+  {
+    "hash": "a455842c28d587cd2ee2b75cc21fa021b1a47d09",
+    "title": "core: declare pointer nullability in ghostty.h (#15039)",
+    "parents": [
+      "0b1729e945978fca4bcd6165d8ac408bf675a7f2",
+      "0e067ded703c4212248daf996f97c62f2f13114a"
+    ],
+    "files": [
+      "include/ghostty.h",
+      "macos/Sources/Features/QuickTerminal/QuickTerminalController.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift",
+      "macos/Sources/Ghostty/Ghostty.Action.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "macos/Sources/Ghostty/Ghostty.Config.swift",
+      "macos/Sources/Ghostty/GhosttyPackage.swift",
+      "macos/Sources/Ghostty/Surface View/OSSurfaceView.swift",
+      "macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift",
+      "macos/Sources/Helpers/Extensions/Array+Extension.swift",
+      "macos/Tests/Ghostty/Surface View/SurfaceView+SearchStateTests.swift",
+      "src/apprt/embedded.zig"
+    ]
+  },
+  {
+    "hash": "b148bf728524ac17daec66692a8265d351c9c702",
+    "title": "macos: allow quitting with a clipboard confirmation open",
+    "parents": [
+      "a455842c28d587cd2ee2b75cc21fa021b1a47d09"
+    ],
+    "files": [
+      "macos/Sources/Features/ClipboardConfirmation/ClipboardConfirmationController.swift"
+    ]
+  },
+  {
+    "hash": "fa3b435cbfdc70c4e41ace87e1cde401f62e2aa5",
+    "title": "Update VOUCHED list (#15041)",
+    "parents": [
+      "a455842c28d587cd2ee2b75cc21fa021b1a47d09"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "25de649dde19bb96c7ad8ec4f7d28441a865da09",
+    "title": "terminal: write the blank row once when scrolling a region up",
+    "parents": [
+      "fa3b435cbfdc70c4e41ace87e1cde401f62e2aa5"
+    ],
+    "files": [
+      "src/terminal/Screen.zig"
+    ]
+  },
+  {
+    "hash": "18e645ea22a5ef4793a2008275eb6f98e5d039bb",
+    "title": "terminal: write the blank row once when scrolling a region up (#15042)",
+    "parents": [
+      "fa3b435cbfdc70c4e41ace87e1cde401f62e2aa5",
+      "25de649dde19bb96c7ad8ec4f7d28441a865da09"
+    ],
+    "files": [
+      "src/terminal/Screen.zig"
+    ]
+  },
+  {
+    "hash": "c12d42eaf877b996cc798f9dd54b2a79ba630db9",
+    "title": "terminal: print ASCII runs as u8 slices from input instead of u32",
+    "parents": [
+      "18e645ea22a5ef4793a2008275eb6f98e5d039bb"
+    ],
+    "files": [
+      "src/simd/vt.cpp",
+      "src/simd/vt.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/page.zig",
+      "src/terminal/stream.zig",
+      "src/terminal/stream_terminal.zig",
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "6676bbaec73a2a30eced56003dd7248e931de6fa",
+    "title": "Update VOUCHED list (#15045)",
+    "parents": [
+      "18e645ea22a5ef4793a2008275eb6f98e5d039bb"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "a227276b770c450ab0e5704a42a773c952e4991b",
+    "title": "terminal: clear the blank hint where a snapshot test writes cells",
+    "parents": [
+      "c12d42eaf877b996cc798f9dd54b2a79ba630db9"
+    ],
+    "files": [
+      "src/terminal/snapshot/screen.zig"
+    ]
+  },
+  {
+    "hash": "091beb99250bc4c1a255d3617b54630c115d0f27",
+    "title": "terminal: print ASCII runs as u8 slices from input instead of u32 (#15046)",
+    "parents": [
+      "6676bbaec73a2a30eced56003dd7248e931de6fa",
+      "a227276b770c450ab0e5704a42a773c952e4991b"
+    ],
+    "files": [
+      "src/simd/vt.cpp",
+      "src/simd/vt.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/page.zig",
+      "src/terminal/snapshot/screen.zig",
+      "src/terminal/stream.zig",
+      "src/terminal/stream_terminal.zig",
+      "src/termio/stream_handler.zig"
+    ]
+  },
+  {
+    "hash": "0d1d5e884b88a711f1ccf47387ab41e8fa28a755",
+    "title": "macos: allow quitting with a clipboard confirmation open (#15040)",
+    "parents": [
+      "091beb99250bc4c1a255d3617b54630c115d0f27",
+      "b148bf728524ac17daec66692a8265d351c9c702"
+    ],
+    "files": [
+      "macos/Sources/Features/ClipboardConfirmation/ClipboardConfirmationController.swift"
+    ]
+  },
+  {
+    "hash": "060ff6b52dcfde52112a8376c6cf3e26f4161edf",
+    "title": "i18n: update Japanese translation (#15025)",
+    "parents": [
+      "0d1d5e884b88a711f1ccf47387ab41e8fa28a755"
+    ],
+    "files": [
+      "po/ja.po"
+    ]
+  },
+  {
+    "hash": "fad1133619a98a1bb60e99baac2d5460dfb33985",
+    "title": "terminal: pass the style to fillStyles as a vector",
+    "parents": [
+      "060ff6b52dcfde52112a8376c6cf3e26f4161edf"
+    ],
+    "files": [
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "4a2d77ebb2d8d6973e1808bff1ca3e4f13b0a67b",
+    "title": "terminal: reserve style runs once per row in RowBuilder.scan",
+    "parents": [
+      "060ff6b52dcfde52112a8376c6cf3e26f4161edf"
+    ],
+    "files": [
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "7ea52a29c5a91fa9a832aa6205add0a4311862da",
+    "title": "terminal: pass the style to fillStyles as a vector (#15053)",
+    "parents": [
+      "060ff6b52dcfde52112a8376c6cf3e26f4161edf",
+      "fad1133619a98a1bb60e99baac2d5460dfb33985"
+    ],
+    "files": [
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "6fba0873efb7765e9d0f79de449063f3214b3d75",
+    "title": "terminal: reserve style runs once per row in RowBuilder.scan (#15054)",
+    "parents": [
+      "7ea52a29c5a91fa9a832aa6205add0a4311862da",
+      "4a2d77ebb2d8d6973e1808bff1ca3e4f13b0a67b"
+    ],
+    "files": [
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "2d1f9cf1095ea4d5c0888ddbc62e03bd14e11597",
+    "title": "os: reserve space for executable path terminator",
+    "parents": [
+      "6fba0873efb7765e9d0f79de449063f3214b3d75"
+    ],
+    "files": [
+      "src/os/path.zig"
+    ]
+  },
+  {
+    "hash": "fef7af4e19f6d8b0361c49e6190b81f3a64a999b",
+    "title": "os: reserve space for executable path terminator (#15058)",
+    "parents": [
+      "6fba0873efb7765e9d0f79de449063f3214b3d75",
+      "2d1f9cf1095ea4d5c0888ddbc62e03bd14e11597"
+    ],
+    "files": [
+      "src/os/path.zig"
+    ]
+  },
+  {
+    "hash": "c7f68a7f48c6a5b357689eb8c2328bc2dab5d8ed",
+    "title": "macOS: fix tab bar frame on macOS 27 when it first appears. (#15029)",
+    "parents": [
+      "fef7af4e19f6d8b0361c49e6190b81f3a64a999b",
+      "0edfc656fa3d55d2bbf4519420666b19e5b19dba"
+    ],
+    "files": [
+      "macos/Sources/Features/Terminal/Window Styles/TitlebarTabsTahoeTerminalWindow.swift"
+    ]
+  },
+  {
+    "hash": "5db83d7689bd7eaaaeb27198c9f870b04794cc8c",
+    "title": "libghostty-vt: reserved allocator vtable slots, revamp allocator docs",
+    "parents": [
+      "c7f68a7f48c6a5b357689eb8c2328bc2dab5d8ed"
+    ],
+    "files": [
+      "example/c-vt-allocator/README.md",
+      "example/c-vt-allocator/build.zig",
+      "example/c-vt-allocator/build.zig.zon",
+      "example/c-vt-allocator/src/main.c",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/sys.h",
+      "src/lib/allocator.zig"
+    ]
+  },
+  {
+    "hash": "ee02d019e8459ed4d09fac55753ad2363c5a8b01",
+    "title": "libghostty-vt: reserved allocator vtable slots, revamp allocator docs (#15068)",
+    "parents": [
+      "c7f68a7f48c6a5b357689eb8c2328bc2dab5d8ed",
+      "5db83d7689bd7eaaaeb27198c9f870b04794cc8c"
+    ],
+    "files": [
+      "example/c-vt-allocator/README.md",
+      "example/c-vt-allocator/build.zig",
+      "example/c-vt-allocator/build.zig.zon",
+      "example/c-vt-allocator/src/main.c",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/sys.h",
+      "src/lib/allocator.zig"
+    ]
+  },
+  {
+    "hash": "8f7fc00c3da2ac410d73256fc34ecce81ea49344",
+    "title": "libghostty-vt: test that the C headers match the Zig types",
+    "parents": [
+      "ee02d019e8459ed4d09fac55753ad2363c5a8b01"
+    ],
+    "files": [
+      "build.zig",
+      "src/build/GhosttyZig.zig",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/abi_test.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/types.zig",
+      "src/terminal/modes.zig"
+    ]
+  },
+  {
+    "hash": "def58d386bb1c626acd338f75ad2959b13d738b6",
+    "title": "cli: flush plain color list output",
+    "parents": [
+      "c7f68a7f48c6a5b357689eb8c2328bc2dab5d8ed"
+    ],
+    "files": [
+      "src/cli/list_colors.zig"
+    ]
+  },
+  {
+    "hash": "942e353465eb80b0bdb63bfb116d95fcb0d8edbf",
+    "title": "libghostty-vt: test that the C headers match the Zig types (#15071)",
+    "parents": [
+      "ee02d019e8459ed4d09fac55753ad2363c5a8b01",
+      "8f7fc00c3da2ac410d73256fc34ecce81ea49344"
+    ],
+    "files": [
+      "build.zig",
+      "src/build/GhosttyZig.zig",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/abi_test.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/types.zig",
+      "src/terminal/modes.zig"
+    ]
+  },
+  {
+    "hash": "1830cd2502274a2ba0a1c03341cde3e063f57019",
+    "title": "libghostty: derive shared library version metadata from lib_version",
+    "parents": [
+      "942e353465eb80b0bdb63bfb116d95fcb0d8edbf"
+    ],
+    "files": [
+      ".github/scripts/check-apple-libghostty-vt.nu",
+      ".github/workflows/release-tip.yml",
+      ".github/workflows/test.yml",
+      "CMakeLists.txt",
+      "dist/cmake/ghostty-vt-config.cmake.in",
+      "nix/libghostty-vt.nix",
+      "src/build/GhosttyLibVt.zig"
+    ]
+  },
+  {
+    "hash": "8edb49e386acbcaa2ab6141a8e5285c2a03f4f57",
+    "title": "libghostty: version the lib-vt tarball and vt- tags from lib_version",
+    "parents": [
+      "1830cd2502274a2ba0a1c03341cde3e063f57019"
+    ],
+    "files": [
+      ".github/workflows/release-tip.yml",
+      ".github/workflows/test.yml",
+      "CMakeLists.txt",
+      "build.zig",
+      "src/build/Config.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/GitVersion.zig"
+    ]
+  },
+  {
+    "hash": "184b01ab32c67b6accea14aa22ce8ed2c0ed7733",
+    "title": "libghostty: install a CMake package config and fix lib-vt packaging defaults",
+    "parents": [
+      "8edb49e386acbcaa2ab6141a8e5285c2a03f4f57"
+    ],
+    "files": [
+      ".github/workflows/release-tip.yml",
+      ".github/workflows/test.yml",
+      "CMakeLists.txt",
+      "build.zig",
+      "dist/cmake/README.md",
+      "dist/cmake/ghostty-vt-config.cmake.in",
+      "example/swift-vt-xcframework/README.md",
+      "nix/libghostty-vt.nix",
+      "src/build/Config.zig",
+      "src/build/GhosttyLibVt.zig",
+      "src/build/GhosttyZig.zig",
+      "src/build/configure_file.zig"
+    ]
+  },
+  {
+    "hash": "7b06c054155d26f789d79a6e3ee0dc4b6e76f924",
+    "title": "libghostty: record the final install paths in the lib-vt .pc and CMake files",
+    "parents": [
+      "184b01ab32c67b6accea14aa22ce8ed2c0ed7733"
+    ],
+    "files": [
+      ".github/workflows/test.yml",
+      "dist/cmake/README.md",
+      "src/build/GhosttyLibVt.zig",
+      "src/build/GhosttyPkgConfig.zig",
+      "src/build/InstallDirs.zig",
+      "src/build/cmake_package_config.zig",
+      "src/build/configure_file.zig",
+      "src/build/libghostty-vt.pc.in",
+      "src/extra/pkg-config.zig"
+    ]
+  },
+  {
+    "hash": "3a1457c34e41d98cac86582c2cbb5360b3ced2ff",
+    "title": "ci: make the lib-vt leak checks able to fail",
+    "parents": [
+      "7b06c054155d26f789d79a6e3ee0dc4b6e76f924"
+    ],
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "f5dcef0453e1dd65f080577e07c6d9163dab218f",
+    "title": "libghostty: add a version header and ghostty_version()",
+    "parents": [
+      "3a1457c34e41d98cac86582c2cbb5360b3ced2ff"
+    ],
+    "files": [
+      "build.zig",
+      "example/c-vt-build-info/README.md",
+      "example/c-vt-build-info/src/main.c",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/version.h",
+      "src/lib_vt.zig",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/version_h_test.zig"
+    ]
+  },
+  {
+    "hash": "ac1feec8338c4ef0ae8cd596fd43130577f3edf2",
+    "title": "libghostty: link the lib-vt dylib with Zig when Ghostty is a dependency",
+    "parents": [
+      "f5dcef0453e1dd65f080577e07c6d9163dab218f"
+    ],
+    "files": [
+      "build.zig",
+      "src/build/GhosttyLibVt.zig"
+    ]
+  },
+  {
+    "hash": "97a5653d323a730e4816936ed62520205f1007ae",
+    "title": "pkg/wuffs: give the tests their own module",
+    "parents": [
+      "ac1feec8338c4ef0ae8cd596fd43130577f3edf2"
+    ],
+    "files": [
+      "pkg/wuffs/build.zig"
+    ]
+  },
+  {
+    "hash": "5b500d1433b61bc612409f82d6c8e35110ede62c",
+    "title": "libghostty: generate the lib-vt dependency list and third-party manifest",
+    "parents": [
+      "97a5653d323a730e4816936ed62520205f1007ae"
+    ],
+    "files": [
+      ".gitattributes",
+      "build.zig",
+      "build.zig.zon",
+      "build.zig.zon.lib-vt.third-party.json",
+      "build.zig.zon.lib-vt.txt",
+      "nix/build-support/check-zig-cache.sh",
+      "nix/build-support/fetch-zig-cache.sh",
+      "nix/build-support/gen-lib-vt-deps.sh",
+      "pkg/highway/build.zig.zon",
+      "pkg/simdutf/build.zig.zon",
+      "pkg/translate-c/build.zig.zon",
+      "pkg/wuffs/build.zig.zon",
+      "pkg/zlib/build.zig.zon",
+      "src/build/LibVtPackages.zig",
+      "src/build/main.zig",
+      "typos.toml"
+    ]
+  },
+  {
+    "hash": "4f2139ab4d769e37bab77ea767e398782ac19021",
+    "title": "ci: build and test libghostty-vt offline from its dependency list",
+    "parents": [
+      "5b500d1433b61bc612409f82d6c8e35110ede62c"
+    ],
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "2eda578e784d2c46fd682f5fee55d4b3206448bf",
+    "title": "libghostty: ship simdutf's license texts and take its version from pkg/simdutf",
+    "parents": [
+      "4f2139ab4d769e37bab77ea767e398782ac19021"
+    ],
+    "files": [
+      "nix/build-support/gen-lib-vt-deps.sh",
+      "pkg/simdutf/build.zig.zon",
+      "pkg/simdutf/vendor/LICENSE-APACHE",
+      "pkg/simdutf/vendor/LICENSE-MIT",
+      "src/build/LibVtPackages.zig"
+    ]
+  },
+  {
+    "hash": "3de71293034969aaa09ad6f19ee53a9d23087403",
+    "title": "build: move the generated dependency files into deps/",
+    "parents": [
+      "2eda578e784d2c46fd682f5fee55d4b3206448bf"
+    ],
+    "files": [
+      ".gitattributes",
+      ".github/workflows/test.yml",
+      ".github/workflows/update-colorschemes.yml",
+      "build.zig.zon.json",
+      "build.zig.zon.lib-vt.third-party.json",
+      "build.zig.zon.lib-vt.txt",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "deps/README.md",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "flake.nix",
+      "nix/build-support/check-zig-cache.sh",
+      "nix/build-support/fetch-zig-cache.sh",
+      "nix/build-support/gen-lib-vt-deps.sh",
+      "nix/build-support/update-mirror.nu",
+      "nix/libghostty-vt.nix",
+      "nix/package.nix",
+      "src/build/LibVtPackages.zig",
+      "typos.toml"
+    ]
+  },
+  {
+    "hash": "9fc62a98cc765f2c341d317f2ee684ebb9584237",
+    "title": "libghostty: prepare libghostty-vt for tagged releases (#15069)",
+    "parents": [
+      "942e353465eb80b0bdb63bfb116d95fcb0d8edbf",
+      "3de71293034969aaa09ad6f19ee53a9d23087403"
+    ],
+    "files": [
+      ".gitattributes",
+      ".github/scripts/check-apple-libghostty-vt.nu",
+      ".github/workflows/release-tip.yml",
+      ".github/workflows/test.yml",
+      ".github/workflows/update-colorschemes.yml",
+      "CMakeLists.txt",
+      "build.zig",
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "deps/README.md",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "dist/cmake/README.md",
+      "dist/cmake/ghostty-vt-config.cmake.in",
+      "example/c-vt-build-info/README.md",
+      "example/c-vt-build-info/src/main.c",
+      "example/swift-vt-xcframework/README.md",
+      "flake.nix",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/version.h",
+      "nix/build-support/check-zig-cache.sh",
+      "nix/build-support/fetch-zig-cache.sh",
+      "nix/build-support/gen-lib-vt-deps.sh",
+      "nix/build-support/update-mirror.nu",
+      "nix/libghostty-vt.nix",
+      "nix/package.nix",
+      "pkg/highway/build.zig.zon",
+      "pkg/simdutf/build.zig.zon",
+      "pkg/simdutf/vendor/LICENSE-APACHE",
+      "pkg/simdutf/vendor/LICENSE-MIT",
+      "pkg/translate-c/build.zig.zon",
+      "pkg/wuffs/build.zig",
+      "pkg/wuffs/build.zig.zon",
+      "pkg/zlib/build.zig.zon",
+      "src/build/Config.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/GhosttyLibVt.zig",
+      "src/build/GhosttyPkgConfig.zig",
+      "src/build/GhosttyZig.zig",
+      "src/build/GitVersion.zig",
+      "src/build/InstallDirs.zig",
+      "src/build/LibVtPackages.zig",
+      "src/build/cmake_package_config.zig",
+      "src/build/configure_file.zig",
+      "src/build/libghostty-vt.pc.in",
+      "src/build/main.zig",
+      "src/extra/pkg-config.zig",
+      "src/lib_vt.zig",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/version_h_test.zig",
+      "typos.toml"
+    ]
+  },
+  {
+    "hash": "8c0c45c18a17fe8dc270b4c80ff31053c6f52a89",
+    "title": "libghostty-vt: return GHOSTTY_UNSUPPORTED for unknown keys",
+    "parents": [
+      "9fc62a98cc765f2c341d317f2ee684ebb9584237"
+    ],
+    "files": [
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/mouse/event.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/cell.zig",
+      "src/terminal/c/color_scheme.zig",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/grid_ref_tracked.zig",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/mouse_event.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/result.zig",
+      "src/terminal/c/row.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/selection_gesture.zig",
+      "src/terminal/c/size_report.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/sys.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/lib.zig",
+      "src/terminal/point.zig"
+    ]
+  },
+  {
+    "hash": "40066da055311c991b5c45be67313ef2b3661539",
+    "title": "libghostty-vt: return GHOSTTY_UNSUPPORTED for unknown keys (#15070)",
+    "parents": [
+      "9fc62a98cc765f2c341d317f2ee684ebb9584237",
+      "8c0c45c18a17fe8dc270b4c80ff31053c6f52a89"
+    ],
+    "files": [
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/mouse/event.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/cell.zig",
+      "src/terminal/c/color_scheme.zig",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/grid_ref_tracked.zig",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/mouse_event.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/result.zig",
+      "src/terminal/c/row.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/selection_gesture.zig",
+      "src/terminal/c/size_report.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/sys.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/lib.zig",
+      "src/terminal/point.zig"
+    ]
+  },
+  {
+    "hash": "02cf8a6a2fbac49a7cf661b5eebfe57b98f21b4b",
+    "title": "libghostty-vt: zero and freeze the structs used for callbacks",
+    "parents": [
+      "40066da055311c991b5c45be67313ef2b3661539"
+    ],
+    "files": [
+      "example/c-vt-size-report/src/main.c",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/size_report.zig",
+      "src/terminal/c/terminal.zig"
+    ]
+  },
+  {
+    "hash": "9e0d83ceea1a268bbe6c8abefa584782e8e5d321",
+    "title": "libghostty-vt: drop the size field from GridRef and Selection",
+    "parents": [
+      "40066da055311c991b5c45be67313ef2b3661539"
+    ],
+    "files": [
+      "example/c-vt-grid-ref-tracked/src/main.c",
+      "example/c-vt-grid-traverse/src/main.c",
+      "example/c-vt-render/src/main.c",
+      "example/c-vt-search/src/main.c",
+      "example/c-vt-selection-gesture/src/main.c",
+      "example/c-vt-selection/src/main.c",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/selection.h",
+      "src/terminal/c/grid_ref.zig",
+      "src/terminal/c/selection.zig"
+    ]
+  },
+  {
+    "hash": "a447ff7d86ecf6c2e52779c0768e476d15d9e914",
+    "title": "libghostty-vt: make GhosttyStyle a frozen 16-byte struct",
+    "parents": [
+      "9e0d83ceea1a268bbe6c8abefa584782e8e5d321"
+    ],
+    "files": [
+      "example/c-vt-grid-traverse/src/main.c",
+      "example/c-vt-render/src/main.c",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/types.h",
+      "src/terminal/c/style.zig",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "49fbdafd1df45dfc7e5e8034be03f3d0b89e50a2",
+    "title": "libghostty-vt: set formatter options by key",
+    "parents": [
+      "a447ff7d86ecf6c2e52779c0768e476d15d9e914"
+    ],
+    "files": [
+      "example/c-vt-cmake-cross/src/main.c",
+      "example/c-vt-cmake-static/src/main.c",
+      "example/c-vt-cmake/src/main.c",
+      "example/c-vt-formatter/src/main.c",
+      "example/c-vt-selection/src/main.c",
+      "example/c-vt-stream/src/main.c",
+      "example/cpp-vt-stream/src/main.cpp",
+      "example/swift-vt-xcframework/Sources/main.swift",
+      "example/wasm-vt/index.html",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/types.h",
+      "src/lib_vt.zig",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "742fc2f2e20f2a6f1a8db43b1268db3d85161360",
+    "title": "libghostty-vt: one sized-struct rule for every sized struct",
+    "parents": [
+      "49fbdafd1df45dfc7e5e8034be03f3d0b89e50a2"
+    ],
+    "files": [
+      "example/c-vt-selection-gesture/src/main.c",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "src/lib/main.zig",
+      "src/lib/struct.zig",
+      "src/lib_vt.zig",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/paste.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/types.zig",
+      "src/terminal/lib.zig"
+    ]
+  },
+  {
+    "hash": "29bf7aa9b4d5f8f464d9eb5d1809f9433759829d",
+    "title": "cli: flush plain color list output (#15073)",
+    "parents": [
+      "40066da055311c991b5c45be67313ef2b3661539",
+      "def58d386bb1c626acd338f75ad2959b13d738b6"
+    ],
+    "files": [
+      "src/cli/list_colors.zig"
+    ]
+  },
+  {
+    "hash": "86aef72a2c8e67c780867de2378b2fc4d6dcd9ca",
+    "title": "libghostty-vt: zero and freeze the structs used for callbacks (#15074)",
+    "parents": [
+      "29bf7aa9b4d5f8f464d9eb5d1809f9433759829d",
+      "02cf8a6a2fbac49a7cf661b5eebfe57b98f21b4b"
+    ],
+    "files": [
+      "example/c-vt-size-report/src/main.c",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/size_report.zig",
+      "src/terminal/c/terminal.zig"
+    ]
+  },
+  {
+    "hash": "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0",
+    "title": "libghostty-vt: frozen value structs and one sized-struct rule (#15075)",
+    "parents": [
+      "86aef72a2c8e67c780867de2378b2fc4d6dcd9ca",
+      "742fc2f2e20f2a6f1a8db43b1268db3d85161360"
+    ],
+    "files": [
+      "example/c-vt-cmake-cross/src/main.c",
+      "example/c-vt-cmake-static/src/main.c",
+      "example/c-vt-cmake/src/main.c",
+      "example/c-vt-formatter/src/main.c",
+      "example/c-vt-grid-ref-tracked/src/main.c",
+      "example/c-vt-grid-traverse/src/main.c",
+      "example/c-vt-render/src/main.c",
+      "example/c-vt-search/src/main.c",
+      "example/c-vt-selection-gesture/src/main.c",
+      "example/c-vt-selection/src/main.c",
+      "example/c-vt-stream/src/main.c",
+      "example/cpp-vt-stream/src/main.cpp",
+      "example/swift-vt-xcframework/Sources/main.swift",
+      "example/wasm-vt/index.html",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "src/lib/main.zig",
+      "src/lib/struct.zig",
+      "src/lib_vt.zig",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/grid_ref.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/paste.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/style.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/types.zig",
+      "src/terminal/lib.zig"
+    ]
+  },
+  {
+    "hash": "6581a593c68798cdd2c2cb77b7558747c65a0987",
+    "title": "ci: add a release workflow for libghostty-vt",
+    "parents": [
+      "86aef72a2c8e67c780867de2378b2fc4d6dcd9ca"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml"
+    ]
+  },
+  {
+    "hash": "1a2cf06dd1284f84bb28d87dbc3a055e97c93f42",
+    "title": "docs: add a packaging guide for libghostty-vt",
+    "parents": [
+      "6581a593c68798cdd2c2cb77b7558747c65a0987"
+    ],
+    "files": [
+      "PACKAGING-LIBGHOSTTY.md",
+      "PACKAGING.md",
+      "README.md",
+      "dist/cmake/README.md",
+      "include/ghostty/vt.h",
+      "src/build/GhosttyDist.zig"
+    ]
+  },
+  {
+    "hash": "281d34115fc300b4be121c01487550464d0eed9f",
+    "title": "build: don't install the man page placeholder for libghostty-vt",
+    "parents": [
+      "1a2cf06dd1284f84bb28d87dbc3a055e97c93f42"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/release-tip.yml",
+      "build.zig"
+    ]
+  },
+  {
+    "hash": "e95bed63330cc921f3cf2fe3d14e024396b09d43",
+    "title": "libghostty: release workflow and packaging guide for libghostty-vt (#15076)",
+    "parents": [
+      "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0",
+      "281d34115fc300b4be121c01487550464d0eed9f"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/release-tip.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "PACKAGING.md",
+      "README.md",
+      "build.zig",
+      "dist/cmake/README.md",
+      "include/ghostty/vt.h",
+      "src/build/GhosttyDist.zig"
+    ]
+  },
+  {
+    "hash": "5ce2325ec623dfa192826521ca85f0dc0cf649b3",
+    "title": "terminal: clear cursor pin garbage flag after resize",
+    "parents": [
+      "e95bed63330cc921f3cf2fe3d14e024396b09d43"
+    ],
+    "files": [
+      "src/terminal/Screen.zig"
+    ]
+  },
+  {
+    "hash": "44385f07c33972e75087bf2343ec287a79d5ce7b",
+    "title": "terminal/kitty: only target virtual placements from placeholders",
+    "parents": [
+      "e95bed63330cc921f3cf2fe3d14e024396b09d43"
+    ],
+    "files": [
+      "src/terminal/kitty/graphics_storage.zig"
+    ]
+  },
+  {
+    "hash": "657e82d1a34b3d01d53b04e4c040af364786cf53",
+    "title": "libghostty-vt: INVALID=0 key enums, one cursor style and image layer enum",
+    "parents": [
+      "e95bed63330cc921f3cf2fe3d14e024396b09d43"
+    ],
+    "files": [
+      "example/c-vt-kitty-graphics/README.md",
+      "example/c-vt-kitty-graphics/src/main.c",
+      "example/c-vt-render/src/main.c",
+      "example/wasm-key-encode/index.html",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/selection_gesture.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/sys.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "796f09a6f4bb1505e3b417c6d1db16cf74a14768",
+    "title": "libghostty-vt: consistent setter names, results, and NULL defaults",
+    "parents": [
+      "657e82d1a34b3d01d53b04e4c040af364786cf53"
+    ],
+    "files": [
+      "example/c-vt-encode-key/src/main.c",
+      "example/c-vt-encode-mouse/src/main.c",
+      "example/c-vt-search/src/main.c",
+      "example/c-vt-snapshot/src/main.c",
+      "example/c-vt-static/src/main.c",
+      "example/c-vt/src/main.c",
+      "example/wasm-key-encode/index.html",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/terminal.h",
+      "src/lib_vt.zig",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/sgr.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/terminal.zig"
+    ]
+  },
+  {
+    "hash": "9f09a053dbf2d3f533adfd5d812f08d70978bc51",
+    "title": "libghostty-vt: one shape for every function that fills a caller buffer",
+    "parents": [
+      "796f09a6f4bb1505e3b417c6d1db16cf74a14768"
+    ],
+    "files": [
+      "example/c-vt-color-scheme/src/main.c",
+      "example/c-vt-encode-focus/src/main.c",
+      "example/c-vt-encode-key/src/main.c",
+      "example/c-vt-encode-mouse/src/main.c",
+      "example/c-vt-kitty-graphics/src/main.c",
+      "example/c-vt-modes/src/main.c",
+      "example/c-vt-paste/src/main.c",
+      "example/c-vt-render/src/main.c",
+      "example/c-vt-size-report/src/main.c",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/types.h",
+      "src/terminal/c/grid_ref.zig",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/paste.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "6dc6cd92752b905e5d466bb319181319d2f38ee8",
+    "title": "libghostty-vt: continuation size query succeeds when nothing is pending",
+    "parents": [
+      "9f09a053dbf2d3f533adfd5d812f08d70978bc51"
+    ],
+    "files": [
+      "include/ghostty/vt/terminal.h",
+      "src/terminal/c/terminal.zig"
+    ]
+  },
+  {
+    "hash": "03bd7e76a0ea68fb2d5856b1bc3153135ebda91b",
+    "title": "libghostty-vt: consistent key enums, signatures, and buffer shapes (#15089)",
+    "parents": [
+      "e95bed63330cc921f3cf2fe3d14e024396b09d43",
+      "6dc6cd92752b905e5d466bb319181319d2f38ee8"
+    ],
+    "files": [
+      "example/c-vt-color-scheme/src/main.c",
+      "example/c-vt-encode-focus/src/main.c",
+      "example/c-vt-encode-key/src/main.c",
+      "example/c-vt-encode-mouse/src/main.c",
+      "example/c-vt-kitty-graphics/README.md",
+      "example/c-vt-kitty-graphics/src/main.c",
+      "example/c-vt-modes/src/main.c",
+      "example/c-vt-paste/src/main.c",
+      "example/c-vt-render/src/main.c",
+      "example/c-vt-search/src/main.c",
+      "example/c-vt-size-report/src/main.c",
+      "example/c-vt-snapshot/src/main.c",
+      "example/c-vt-static/src/main.c",
+      "example/c-vt/src/main.c",
+      "example/wasm-key-encode/index.html",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "src/lib_vt.zig",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/grid_ref.zig",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/paste.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/selection_gesture.zig",
+      "src/terminal/c/sgr.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/sys.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "e9b6108f3895543d24625630593b7987e794a48e",
+    "title": "libghostty-vt: version the ELF exports, add GHOSTTY_DEPRECATED",
+    "parents": [
+      "03bd7e76a0ea68fb2d5856b1bc3153135ebda91b"
+    ],
+    "files": [
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "include/ghostty/vt/types.h",
+      "src/build/GhosttyLibVt.zig",
+      "src/terminal/c/ghostty-vt.map"
+    ]
+  },
+  {
+    "hash": "18365c6fefd43ec6337b0e71c83d20c62b48c494",
+    "title": "libghostty-vt: key and mouse event accessors report NULL",
+    "parents": [
+      "e9b6108f3895543d24625630593b7987e794a48e"
+    ],
+    "files": [
+      "example/c-vt-encode-key/src/main.c",
+      "example/c-vt-encode-mouse/src/main.c",
+      "example/wasm-key-encode/index.html",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/mouse/event.h",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/mouse_event.zig"
+    ]
+  },
+  {
+    "hash": "5af2876e9a73c9422fed52f905ec5913fa417fb7",
+    "title": "libghostty-vt: export every symbol in every build",
+    "parents": [
+      "18365c6fefd43ec6337b0e71c83d20c62b48c494"
+    ],
+    "files": [
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "src/lib_vt.zig",
+      "src/terminal/build_options.zig",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/cell.zig",
+      "src/terminal/c/color.zig",
+      "src/terminal/c/focus.zig",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/grid_ref.zig",
+      "src/terminal/c/grid_ref_tracked.zig",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/mouse_event.zig",
+      "src/terminal/c/paste.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/row.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/selection_gesture.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/lib.zig"
+    ]
+  },
+  {
+    "hash": "ad89e75cc5278da9a7594eb3d2d58687397c00a8",
+    "title": "example: set the unshifted codepoint in c-vt-encode-key",
+    "parents": [
+      "5af2876e9a73c9422fed52f905ec5913fa417fb7"
+    ],
+    "files": [
+      "example/c-vt-encode-key/src/main.c"
+    ]
+  },
+  {
+    "hash": "ee5d0f668c8f7410bdba56fa20b379e080fba68f",
+    "title": "libghostty-vt: version the ELF exports, one symbol set for every build (#15091)",
+    "parents": [
+      "03bd7e76a0ea68fb2d5856b1bc3153135ebda91b",
+      "ad89e75cc5278da9a7594eb3d2d58687397c00a8"
+    ],
+    "files": [
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "example/c-vt-encode-key/src/main.c",
+      "example/c-vt-encode-mouse/src/main.c",
+      "example/wasm-key-encode/index.html",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/mouse/event.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "src/build/GhosttyLibVt.zig",
+      "src/lib_vt.zig",
+      "src/terminal/build_options.zig",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/cell.zig",
+      "src/terminal/c/color.zig",
+      "src/terminal/c/focus.zig",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/ghostty-vt.map",
+      "src/terminal/c/grid_ref.zig",
+      "src/terminal/c/grid_ref_tracked.zig",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/mouse_event.zig",
+      "src/terminal/c/paste.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/row.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/selection_gesture.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/lib.zig"
+    ]
+  },
+  {
+    "hash": "76329e5ad9731a74587bc6536ea308d33ad09149",
+    "title": "terminal: clear cursor pin garbage flag after resize (#15085)",
+    "parents": [
+      "ee5d0f668c8f7410bdba56fa20b379e080fba68f",
+      "5ce2325ec623dfa192826521ca85f0dc0cf649b3"
+    ],
+    "files": [
+      "src/terminal/Screen.zig"
+    ]
+  },
+  {
+    "hash": "383a6f6ae344998bc637025330ffab69aed0c0fe",
+    "title": "terminal/kitty: find the newest numbered image by transmission",
+    "parents": [
+      "76329e5ad9731a74587bc6536ea308d33ad09149"
+    ],
+    "files": [
+      "src/terminal/kitty/graphics_storage.zig"
+    ]
+  },
+  {
+    "hash": "9b4a0076d246cdb36d589be7dd3f14a6079e7d7f",
+    "title": "cli: explicitly install terminfo to ~/.terminfo on ssh remote host",
+    "parents": [
+      "76329e5ad9731a74587bc6536ea308d33ad09149"
+    ],
+    "files": [
+      "src/cli/ssh.zig"
+    ]
+  },
+  {
+    "hash": "081a5871ee93952a973005f10124d3105d4947cd",
+    "title": "i18n: Update Dutch translations (#15037)",
+    "parents": [
+      "76329e5ad9731a74587bc6536ea308d33ad09149",
+      "3eb5af718b6ca4abf805006336c92e6d1f9a49a4"
+    ],
+    "files": [
+      "po/nl.po"
+    ]
+  },
+  {
+    "hash": "8474e9421ed3d5ee10bc98d5b910f1b483cb24bf",
+    "title": "build: load only the packages libghostty-vt compiles",
+    "parents": [
+      "e95bed63330cc921f3cf2fe3d14e024396b09d43"
+    ],
+    "files": [
+      "build.zig",
+      "build.zig.zon",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "flatpak/zig-packages.json",
+      "pkg/wuffs/build.zig",
+      "src/build/LibVtPackages.zig",
+      "src/build/SharedDeps.zig"
+    ]
+  },
+  {
+    "hash": "fd5e90e8c5de3821a8b99558941dc790de5b817a",
+    "title": "libghostty: publish a dependency tarball for offline builds",
+    "parents": [
+      "8474e9421ed3d5ee10bc98d5b910f1b483cb24bf"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/dist_deps.zig"
+    ]
+  },
+  {
+    "hash": "34afe119fcf41989c9dce939894974a7551c16bb",
+    "title": "mirror deps",
+    "parents": [
+      "fd5e90e8c5de3821a8b99558941dc790de5b817a"
+    ],
+    "files": [
+      "build.zig.zon",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "flatpak/zig-packages.json"
+    ]
+  },
+  {
+    "hash": "5255e48b6ad831800fad495ec0f2879ed8c89ef0",
+    "title": "libghostty: publish a dependency tarball with each libghostty-vt release (#15095)",
+    "parents": [
+      "081a5871ee93952a973005f10124d3105d4947cd",
+      "34afe119fcf41989c9dce939894974a7551c16bb"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "build.zig.zon",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "flatpak/zig-packages.json",
+      "pkg/wuffs/build.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/LibVtPackages.zig",
+      "src/build/SharedDeps.zig",
+      "src/build/dist_deps.zig"
+    ]
+  },
+  {
+    "hash": "1da2e165bfc677cb3bd1cc32540941a6b0f8beb6",
+    "title": "ci: check the libghostty-vt ABI with abidiff",
+    "parents": [
+      "5255e48b6ad831800fad495ec0f2879ed8c89ef0"
+    ],
+    "files": [
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "nix/devShell.nix",
+      "test/abi/README.md",
+      "test/abi/check.sh",
+      "test/abi/libghostty-vt.suppr"
+    ]
+  },
+  {
+    "hash": "c757567e433fb51263afa2903ef67ae9f2acf9d2",
+    "title": "ci: build a Zig dependent with the macOS SDK and test the Windows install layout",
+    "parents": [
+      "1da2e165bfc677cb3bd1cc32540941a6b0f8beb6"
+    ],
+    "files": [
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md"
+    ]
+  },
+  {
+    "hash": "97f422fa2464c4770d1d4919d39cfb33da571b79",
+    "title": "terminal/kitty: find the newest numbered image by transmission (#15094)",
+    "parents": [
+      "5255e48b6ad831800fad495ec0f2879ed8c89ef0",
+      "383a6f6ae344998bc637025330ffab69aed0c0fe"
+    ],
+    "files": [
+      "src/terminal/kitty/graphics_storage.zig"
+    ]
+  },
+  {
+    "hash": "c412a31994e55e05c58c5c540dd2adf4b71f7f96",
+    "title": "terminal/kitty: only target virtual placements from placeholders (#15086)",
+    "parents": [
+      "97f422fa2464c4770d1d4919d39cfb33da571b79",
+      "44385f07c33972e75087bf2343ec287a79d5ce7b"
+    ],
+    "files": [
+      "src/terminal/kitty/graphics_storage.zig"
+    ]
+  },
+  {
+    "hash": "e607b9e9726d66a46f521f7a33f524b469501f9d",
+    "title": "ci: strip symbol versions in the ABI export list",
+    "parents": [
+      "c757567e433fb51263afa2903ef67ae9f2acf9d2"
+    ],
+    "files": [
+      "test/abi/check.sh"
+    ]
+  },
+  {
+    "hash": "6ba2c2b27065e2825745bbb78e7ad5f0b68e1690",
+    "title": "app: add window theme switching action",
+    "parents": [
+      "c412a31994e55e05c58c5c540dd2adf4b71f7f96"
+    ],
+    "files": [
+      "include/ghostty.h",
+      "macos/GhosttyUITests/GhosttyThemeTests.swift",
+      "macos/Sources/App/AppDelegate.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "src/App.zig",
+      "src/apprt/action.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/input/Binding.zig",
+      "src/input/command.zig"
+    ]
+  },
+  {
+    "hash": "4a59fd20afed05f3a4799c8d3d70aac4b431de01",
+    "title": "i18n: update window theme action catalogs",
+    "parents": [
+      "6ba2c2b27065e2825745bbb78e7ad5f0b68e1690"
+    ],
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po"
+    ]
+  },
+  {
+    "hash": "dce5a9464a25b946cc945ebd99c93441cd7a1e9c",
+    "title": "app: add config value to set_window_theme",
+    "parents": [
+      "4a59fd20afed05f3a4799c8d3d70aac4b431de01"
+    ],
+    "files": [
+      "include/ghostty.h",
+      "macos/GhosttyUITests/GhosttyThemeTests.swift",
+      "macos/Sources/App/AppDelegate.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/App.zig",
+      "src/apprt/action.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/input/Binding.zig",
+      "src/input/command.zig"
+    ]
+  },
+  {
+    "hash": "8b27b66f3b20f353743895be28f521eb72137c6f",
+    "title": "gtk: follow the system for conditional themes",
+    "parents": [
+      "dce5a9464a25b946cc945ebd99c93441cd7a1e9c"
+    ],
+    "files": [
+      "src/apprt/gtk/class/application.zig",
+      "src/config/Config.zig"
+    ]
+  },
+  {
+    "hash": "27eb594d2aaaa6755a688a5a23f83e2b4342e196",
+    "title": "libghostty: test ABI in CI (#15096)",
+    "parents": [
+      "c412a31994e55e05c58c5c540dd2adf4b71f7f96",
+      "e607b9e9726d66a46f521f7a33f524b469501f9d"
+    ],
+    "files": [
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "nix/devShell.nix",
+      "test/abi/README.md",
+      "test/abi/check.sh",
+      "test/abi/libghostty-vt.suppr"
+    ]
+  },
+  {
+    "hash": "6283611ddf8d6d4a55c323b897428bd83b6ad5cc",
+    "title": "cli: verify xterm-ghostty resolves after ssh install",
+    "parents": [
+      "9b4a0076d246cdb36d589be7dd3f14a6079e7d7f"
+    ],
+    "files": [
+      "src/cli/ssh.zig"
+    ]
+  },
+  {
+    "hash": "64c83cc2e1aadde92ddea0afdc8cdc87905e3e25",
+    "title": "libghostty-vt: freeze the callback payload structs",
+    "parents": [
+      "27eb594d2aaaa6755a688a5a23f83e2b4342e196"
+    ],
+    "files": [
+      "include/ghostty/vt/terminal.h",
+      "src/terminal/c/terminal.zig"
+    ]
+  },
+  {
+    "hash": "de2dfded37eb3dbf84e1aece3ac4062bfc542cf9",
+    "title": "libghostty-vt: type the keys and callbacks in the type manifest",
+    "parents": [
+      "64c83cc2e1aadde92ddea0afdc8cdc87905e3e25"
+    ],
+    "files": [
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "src/terminal/c/abi_test.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/types.schema.json",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "6b6d0eec6cdbe10c095079f93fc63a73931a09cc",
+    "title": "libghostty-vt: type the remaining key enums in the type manifest",
+    "parents": [
+      "de2dfded37eb3dbf84e1aece3ac4062bfc542cf9"
+    ],
+    "files": [
+      "include/ghostty/vt/types.h",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/selection_gesture.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "b54f31f825a2988841e0593c03f03e708dbb31be",
+    "title": "libghostty-vt: document threads and output buffers",
+    "parents": [
+      "6b6d0eec6cdbe10c095079f93fc63a73931a09cc"
+    ],
+    "files": [
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/sys.h"
+    ]
+  },
+  {
+    "hash": "12206bfb8dd18aa76f563c613b52c3cc89f182c3",
+    "title": "libghostty-vt: remove the selection format functions",
+    "parents": [
+      "b54f31f825a2988841e0593c03f03e708dbb31be"
+    ],
+    "files": [
+      "example/c-vt-selection-gesture/src/main.c",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/types.h",
+      "src/lib_vt.zig",
+      "src/terminal/build_options.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "fdedebade075d8189b7a68946eddf35dfb171e6d",
+    "title": "libghostty-vt: fail CI on ABI changes that aren't additions",
+    "parents": [
+      "12206bfb8dd18aa76f563c613b52c3cc89f182c3"
+    ],
+    "files": [
+      ".github/workflows/test.yml",
+      ".prettierignore",
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "pkg/highway/build.zig",
+      "pkg/highway/src/detect.zig",
+      "src/build/GhosttyLibVt.zig",
+      "src/build/SharedDeps.zig",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/abi/aarch64-macos.json",
+      "src/terminal/c/abi/check.zig",
+      "src/terminal/c/abi/symbols.txt",
+      "src/terminal/c/abi/wasm32-freestanding.json",
+      "src/terminal/c/abi/x86_64-linux-gnu.json",
+      "test/abi/README.md"
+    ]
+  },
+  {
+    "hash": "bbccbb5465d99d1b7441cd7ca1f6bee76e7c88bc",
+    "title": "app: add window theme switching action (#14208)",
+    "parents": [
+      "27eb594d2aaaa6755a688a5a23f83e2b4342e196",
+      "8b27b66f3b20f353743895be28f521eb72137c6f"
+    ],
+    "files": [
+      "include/ghostty.h",
+      "macos/GhosttyUITests/GhosttyThemeTests.swift",
+      "macos/Sources/App/AppDelegate.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/App.zig",
+      "src/apprt/action.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/config/Config.zig",
+      "src/input/Binding.zig",
+      "src/input/command.zig"
+    ]
+  },
+  {
+    "hash": "66af4c7458db7e19ae7adb44aa7054879be58b6b",
+    "title": "libghostty-vt: freeze callback payloads, type the manifest, gate more of the ABI in CI (#15098)",
+    "parents": [
+      "bbccbb5465d99d1b7441cd7ca1f6bee76e7c88bc",
+      "fdedebade075d8189b7a68946eddf35dfb171e6d"
+    ],
+    "files": [
+      ".github/workflows/test.yml",
+      ".prettierignore",
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "example/c-vt-selection-gesture/src/main.c",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "pkg/highway/build.zig",
+      "pkg/highway/src/detect.zig",
+      "src/build/GhosttyLibVt.zig",
+      "src/build/SharedDeps.zig",
+      "src/lib_vt.zig",
+      "src/terminal/build_options.zig",
+      "src/terminal/c/AGENTS.md",
+      "src/terminal/c/abi/aarch64-macos.json",
+      "src/terminal/c/abi/check.zig",
+      "src/terminal/c/abi/symbols.txt",
+      "src/terminal/c/abi/wasm32-freestanding.json",
+      "src/terminal/c/abi/x86_64-linux-gnu.json",
+      "src/terminal/c/abi_test.zig",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/search.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/selection_gesture.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/types.schema.json",
+      "src/terminal/c/types.zig",
+      "test/abi/README.md"
+    ]
+  },
+  {
+    "hash": "de4bc494a5d7bb5747bf8cc76b4a31bd033628e2",
+    "title": "i18n: updated Latvian translations",
+    "parents": [
+      "66af4c7458db7e19ae7adb44aa7054879be58b6b"
+    ],
+    "files": [
+      "po/lv.po"
+    ]
+  },
+  {
+    "hash": "6095e277a52fb98286a4660520fa189c51a87ec9",
+    "title": "pkg: build simdutf, highway, and wuffs with hidden visibility",
+    "parents": [
+      "66af4c7458db7e19ae7adb44aa7054879be58b6b"
+    ],
+    "files": [
+      "pkg/highway/build.zig",
+      "pkg/simdutf/build.zig",
+      "pkg/wuffs/build.zig"
+    ]
+  },
+  {
+    "hash": "c445f448a7b0e409e71264ca10b302305a62f696",
+    "title": "pkg: build simdutf, highway, and wuffs with hidden visibility (#15102)",
+    "parents": [
+      "66af4c7458db7e19ae7adb44aa7054879be58b6b",
+      "6095e277a52fb98286a4660520fa189c51a87ec9"
+    ],
+    "files": [
+      "pkg/highway/build.zig",
+      "pkg/simdutf/build.zig",
+      "pkg/wuffs/build.zig"
+    ]
+  },
+  {
+    "hash": "4441aabcafd673314b0667177905726680d9f8ba",
+    "title": "terminal/kitty: evict the oldest image by transmission",
+    "parents": [
+      "c445f448a7b0e409e71264ca10b302305a62f696"
+    ],
+    "files": [
+      "src/terminal/kitty/graphics_storage.zig"
+    ]
+  },
+  {
+    "hash": "8a5d14bd05f8eab80e00ff24a304092c549c9f9b",
+    "title": "i18n: updated Latvian translations (#15100)",
+    "parents": [
+      "c445f448a7b0e409e71264ca10b302305a62f696",
+      "de4bc494a5d7bb5747bf8cc76b4a31bd033628e2"
+    ],
+    "files": [
+      "po/lv.po"
+    ]
+  },
+  {
+    "hash": "db663e0755ef2efcc8dd4ba5c8b7f3f25b5914b0",
+    "title": "Update VOUCHED list (#15106)",
+    "parents": [
+      "8a5d14bd05f8eab80e00ff24a304092c549c9f9b"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "16f5674dc3eaeee9575d2b729255f2fe0993ece3",
+    "title": "Update VOUCHED list (#15107)",
+    "parents": [
+      "db663e0755ef2efcc8dd4ba5c8b7f3f25b5914b0"
+    ],
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "020a0a0998e084d457cf3d1604fb62de4647525f",
+    "title": "terminal: find style runs with one scan in RowBuilder.scan",
+    "parents": [
+      "16f5674dc3eaeee9575d2b729255f2fe0993ece3"
+    ],
+    "files": [
+      "src/terminal/page.zig",
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "2c76f29972dad21d3f2cc0efde2517a6fa8fed56",
+    "title": "cli: explicitly install terminfo to ~/.terminfo on ssh remote host (#15061)",
+    "parents": [
+      "16f5674dc3eaeee9575d2b729255f2fe0993ece3",
+      "6283611ddf8d6d4a55c323b897428bd83b6ad5cc"
+    ],
+    "files": [
+      "src/cli/ssh.zig"
+    ]
+  },
+  {
+    "hash": "de202be94a418b56136d8075eb4b768672ad9f18",
+    "title": "terminal: keep triple-click selection over blank lines",
+    "parents": [
+      "16f5674dc3eaeee9575d2b729255f2fe0993ece3"
+    ],
+    "files": [
+      "src/terminal/SelectionGesture.zig"
+    ]
+  },
+  {
+    "hash": "1fa19fa3e9f73e49bd231de4995a1ecfecda7afd",
+    "title": "terminal/kitty: evict the oldest image by transmission (#15103)",
+    "parents": [
+      "2c76f29972dad21d3f2cc0efde2517a6fa8fed56",
+      "4441aabcafd673314b0667177905726680d9f8ba"
+    ],
+    "files": [
+      "src/terminal/kitty/graphics_storage.zig"
+    ]
+  },
+  {
+    "hash": "53e55147bbbb0157672dac0228aa7744e881f1fa",
+    "title": "terminal: keep triple-click selection over blank lines (#15113)",
+    "parents": [
+      "1fa19fa3e9f73e49bd231de4995a1ecfecda7afd",
+      "de202be94a418b56136d8075eb4b768672ad9f18"
+    ],
+    "files": [
+      "src/terminal/SelectionGesture.zig"
+    ]
+  },
+  {
+    "hash": "3c3a8873ef0ea7843f1712a40b37c671f565f2a9",
+    "title": "doxygen: fix the configuration and keep the build free of warnings",
+    "parents": [
+      "53e55147bbbb0157672dac0228aa7744e881f1fa"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "Doxyfile",
+      "DoxygenLayout.xml",
+      "include/ghostty/vt/color.h"
+    ]
+  },
+  {
+    "hash": "56919d3ffd0981d52110b8d036dc3743b23ef6bb",
+    "title": "doxygen: register every C example and rename c-vt to c-vt-osc",
+    "parents": [
+      "3c3a8873ef0ea7843f1712a40b37c671f565f2a9"
+    ],
+    "files": [
+      "example/c-vt-osc/README.md",
+      "example/c-vt-osc/build.zig",
+      "example/c-vt-osc/build.zig.zon",
+      "example/c-vt-osc/src/main.c",
+      "example/c-vt-static/README.md",
+      "example/c-vt/README.md",
+      "example/c-vt/build.zig",
+      "example/c-vt/build.zig.zon",
+      "example/c-vt/src/main.c",
+      "include/ghostty/vt.h"
+    ]
+  },
+  {
+    "hash": "f21f40018791bd30fe0ecfc7d104dd556226faf7",
+    "title": "doxygen: nest the API reference and describe every topic",
+    "parents": [
+      "56919d3ffd0981d52110b8d036dc3743b23ef6bb"
+    ],
+    "files": [
+      "Doxyfile",
+      "dist/doxygen/pages/groups.dox",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/device.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/io.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/point.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "include/ghostty/vt/unicode.h",
+      "include/ghostty/vt/version.h",
+      "include/ghostty/vt/wasm.h"
+    ]
+  },
+  {
+    "hash": "5acbc10ebf84ccb7a9b2d7daf1784f2b3262d74d",
+    "title": "doxygen: move the API conventions out of the main page",
+    "parents": [
+      "f21f40018791bd30fe0ecfc7d104dd556226faf7"
+    ],
+    "files": [
+      "dist/doxygen/pages/conventions.md",
+      "dist/doxygen/pages/features.md",
+      "dist/doxygen/pages/memory.md",
+      "dist/doxygen/pages/sized-structs.md",
+      "dist/doxygen/pages/stability.md",
+      "dist/doxygen/pages/values.md",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h"
+    ]
+  },
+  {
+    "hash": "6f41fbaad44e8356abfef9881d10ef0d820ecd7d",
+    "title": "doxygen: write the Examples page and fix example names and READMEs",
+    "parents": [
+      "5acbc10ebf84ccb7a9b2d7daf1784f2b3262d74d"
+    ],
+    "files": [
+      "DoxygenLayout.xml",
+      "dist/doxygen/pages/examples.md",
+      "example/c-vt-build-info/README.md",
+      "example/c-vt-color-scheme/README.md",
+      "example/c-vt-colors/README.md",
+      "example/c-vt-effects/README.md",
+      "example/c-vt-encode-focus/README.md",
+      "example/c-vt-encode-key/README.md",
+      "example/c-vt-encode-key/build.zig.zon",
+      "example/c-vt-encode-mouse/README.md",
+      "example/c-vt-encode-mouse/build.zig.zon",
+      "example/c-vt-formatter/README.md",
+      "example/c-vt-grid-ref-tracked/README.md",
+      "example/c-vt-grid-traverse/README.md",
+      "example/c-vt-modes/README.md",
+      "example/c-vt-osc/README.md",
+      "example/c-vt-paste/README.md",
+      "example/c-vt-render/README.md",
+      "example/c-vt-search/README.md",
+      "example/c-vt-selection-gesture/README.md",
+      "example/c-vt-selection/README.md",
+      "example/c-vt-sgr/README.md",
+      "example/c-vt-size-report/README.md",
+      "example/c-vt-static/README.md",
+      "example/c-vt-stream/README.md",
+      "example/cpp-vt-stream/README.md",
+      "example/wasm-key-encode/README.md",
+      "example/wasm-sgr/README.md",
+      "example/wasm-vt/README.md",
+      "example/zig-formatter/README.md",
+      "example/zig-vt-stream/README.md",
+      "example/zig-vt/README.md",
+      "include/ghostty/vt.h"
+    ]
+  },
+  {
+    "hash": "3a73ef54201efa01760013c8bc6ece70075dfed7",
+    "title": "doxygen: move the terminal guides out of the reference pages",
+    "parents": [
+      "6f41fbaad44e8356abfef9881d10ef0d820ecd7d"
+    ],
+    "files": [
+      "Doxyfile",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/custom-sequences.md",
+      "dist/doxygen/pages/guides/effects.md",
+      "dist/doxygen/pages/guides/scrollback.md",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/terminal.h"
+    ]
+  },
+  {
+    "hash": "2bc37a0eea6a2e5da08367e62e0f2b2a2e385938",
+    "title": "doxygen: write the main page and Getting Started",
+    "parents": [
+      "3a73ef54201efa01760013c8bc6ece70075dfed7"
+    ],
+    "files": [
+      "Doxyfile",
+      "dist/doxygen/pages/examples.md",
+      "dist/doxygen/pages/getting-started.md",
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/main.md",
+      "example/c-vt-hello/README.md",
+      "example/c-vt-hello/build.zig",
+      "example/c-vt-hello/build.zig.zon",
+      "example/c-vt-hello/src/main.c",
+      "include/ghostty/vt.h"
+    ]
+  },
+  {
+    "hash": "7341454308f2b8a564a7540ffa6de2d7cd0d6c85",
+    "title": "doxygen: move the rendering and image guides out of the reference pages",
+    "parents": [
+      "2bc37a0eea6a2e5da08367e62e0f2b2a2e385938"
+    ],
+    "files": [
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/custom-sequences.md",
+      "dist/doxygen/pages/guides/effects.md",
+      "dist/doxygen/pages/guides/images.md",
+      "dist/doxygen/pages/guides/rendering.md",
+      "dist/doxygen/pages/guides/scrollback.md",
+      "example/c-vt-effects/src/main.c",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h"
+    ]
+  },
+  {
+    "hash": "51bff35a73097f105078f9566604c265b773ee1c",
+    "title": "doxygen: move the input, grid, selection, search and snapshot guides out of the reference pages",
+    "parents": [
+      "7341454308f2b8a564a7540ffa6de2d7cd0d6c85"
+    ],
+    "files": [
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/grid.md",
+      "dist/doxygen/pages/guides/input.md",
+      "dist/doxygen/pages/guides/search.md",
+      "dist/doxygen/pages/guides/selection.md",
+      "dist/doxygen/pages/guides/snapshots.md",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/grid_ref_tracked.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/point.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h"
+    ]
+  },
+  {
+    "hash": "9a0cb21428205711aa4982089109e919704b1aee",
+    "title": "doxygen: give every topic page the same short intro",
+    "parents": [
+      "51bff35a73097f105078f9566604c265b773ee1c"
+    ],
+    "files": [
+      "dist/doxygen/pages/examples.md",
+      "example/c-vt-cmake-cross/README.md",
+      "example/c-vt-cmake-static/README.md",
+      "example/c-vt-cmake/README.md",
+      "example/c-vt-snapshot/src/main.c",
+      "example/swift-vt-xcframework/README.md",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/io.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/point.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "include/ghostty/vt/unicode.h",
+      "include/ghostty/vt/version.h",
+      "include/ghostty/vt/wasm.h"
+    ]
+  },
+  {
+    "hash": "ba66391955118c3bddee80bccb08348f0fe149d9",
+    "title": "doxygen: wrap the markdown pages at 80 columns",
+    "parents": [
+      "9a0cb21428205711aa4982089109e919704b1aee"
+    ],
+    "files": [
+      "dist/doxygen/pages/conventions.md",
+      "dist/doxygen/pages/examples.md",
+      "dist/doxygen/pages/features.md",
+      "dist/doxygen/pages/getting-started.md",
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/custom-sequences.md",
+      "dist/doxygen/pages/guides/effects.md",
+      "dist/doxygen/pages/guides/grid.md",
+      "dist/doxygen/pages/guides/images.md",
+      "dist/doxygen/pages/guides/input.md",
+      "dist/doxygen/pages/guides/rendering.md",
+      "dist/doxygen/pages/guides/scrollback.md",
+      "dist/doxygen/pages/guides/search.md",
+      "dist/doxygen/pages/guides/selection.md",
+      "dist/doxygen/pages/guides/snapshots.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/memory.md",
+      "dist/doxygen/pages/sized-structs.md",
+      "dist/doxygen/pages/stability.md",
+      "dist/doxygen/pages/values.md"
+    ]
+  },
+  {
+    "hash": "d1ce0c46573472d6f961d8b04a03868640c4af93",
+    "title": "terminal: fix performance regression, apply some fixes",
+    "parents": [
+      "020a0a0998e084d457cf3d1604fb62de4647525f"
+    ],
+    "files": [
+      "src/terminal/page.zig",
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "171a4e0444959e1938084b5db803dd83c16591b6",
+    "title": "terminal: find style runs with one scan in RowBuilder.scan (#15111)",
+    "parents": [
+      "53e55147bbbb0157672dac0228aa7744e881f1fa",
+      "d1ce0c46573472d6f961d8b04a03868640c4af93"
+    ],
+    "files": [
+      "src/terminal/page.zig",
+      "src/terminal/render.zig"
+    ]
+  },
+  {
+    "hash": "d2ce23a87c9521931851219885e1ac3ab5733fa5",
+    "title": "doxgyen: update some docs",
+    "parents": [
+      "ba66391955118c3bddee80bccb08348f0fe149d9"
+    ],
+    "files": [
+      "dist/doxygen/pages/features.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/stability.md",
+      "example/c-vt-build-info/src/main.c",
+      "example/c-vt-hello/src/main.c"
+    ]
+  },
+  {
+    "hash": "2f8d9e1f99b18c80bfebbeb1e44ca647db46dec0",
+    "title": "doxygen: update concepts",
+    "parents": [
+      "d2ce23a87c9521931851219885e1ac3ab5733fa5"
+    ],
+    "files": [
+      "dist/doxygen/pages/conventions.md",
+      "dist/doxygen/pages/examples.md",
+      "dist/doxygen/pages/getting-started.md",
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/memory.md",
+      "dist/doxygen/pages/sized-structs.md",
+      "dist/doxygen/pages/values.md",
+      "example/c-vt-stream/src/main.c",
+      "include/ghostty/vt.h"
+    ]
+  },
+  {
+    "hash": "477bfd2941c73b8eef96395ee898b0c21f069f18",
+    "title": "libghostty-vt: rewritten Doxygen docs (#15120)",
+    "parents": [
+      "171a4e0444959e1938084b5db803dd83c16591b6",
+      "2f8d9e1f99b18c80bfebbeb1e44ca647db46dec0"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "Doxyfile",
+      "DoxygenLayout.xml",
+      "dist/doxygen/pages/conventions.md",
+      "dist/doxygen/pages/examples.md",
+      "dist/doxygen/pages/features.md",
+      "dist/doxygen/pages/getting-started.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/groups.dox",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/custom-sequences.md",
+      "dist/doxygen/pages/guides/effects.md",
+      "dist/doxygen/pages/guides/grid.md",
+      "dist/doxygen/pages/guides/images.md",
+      "dist/doxygen/pages/guides/input.md",
+      "dist/doxygen/pages/guides/rendering.md",
+      "dist/doxygen/pages/guides/scrollback.md",
+      "dist/doxygen/pages/guides/search.md",
+      "dist/doxygen/pages/guides/selection.md",
+      "dist/doxygen/pages/guides/snapshots.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/memory.md",
+      "dist/doxygen/pages/sized-structs.md",
+      "dist/doxygen/pages/stability.md",
+      "dist/doxygen/pages/values.md",
+      "example/c-vt-build-info/README.md",
+      "example/c-vt-build-info/src/main.c",
+      "example/c-vt-cmake-cross/README.md",
+      "example/c-vt-cmake-static/README.md",
+      "example/c-vt-cmake/README.md",
+      "example/c-vt-color-scheme/README.md",
+      "example/c-vt-colors/README.md",
+      "example/c-vt-effects/README.md",
+      "example/c-vt-effects/src/main.c",
+      "example/c-vt-encode-focus/README.md",
+      "example/c-vt-encode-key/README.md",
+      "example/c-vt-encode-key/build.zig.zon",
+      "example/c-vt-encode-mouse/README.md",
+      "example/c-vt-encode-mouse/build.zig.zon",
+      "example/c-vt-formatter/README.md",
+      "example/c-vt-grid-ref-tracked/README.md",
+      "example/c-vt-grid-traverse/README.md",
+      "example/c-vt-hello/README.md",
+      "example/c-vt-hello/build.zig",
+      "example/c-vt-hello/build.zig.zon",
+      "example/c-vt-hello/src/main.c",
+      "example/c-vt-modes/README.md",
+      "example/c-vt-osc/README.md",
+      "example/c-vt-osc/build.zig",
+      "example/c-vt-osc/build.zig.zon",
+      "example/c-vt-osc/src/main.c",
+      "example/c-vt-paste/README.md",
+      "example/c-vt-render/README.md",
+      "example/c-vt-search/README.md",
+      "example/c-vt-selection-gesture/README.md",
+      "example/c-vt-selection/README.md",
+      "example/c-vt-sgr/README.md",
+      "example/c-vt-size-report/README.md",
+      "example/c-vt-snapshot/src/main.c",
+      "example/c-vt-static/README.md",
+      "example/c-vt-stream/README.md",
+      "example/c-vt-stream/src/main.c",
+      "example/c-vt/README.md",
+      "example/c-vt/build.zig",
+      "example/c-vt/build.zig.zon",
+      "example/c-vt/src/main.c",
+      "example/cpp-vt-stream/README.md",
+      "example/swift-vt-xcframework/README.md",
+      "example/wasm-key-encode/README.md",
+      "example/wasm-sgr/README.md",
+      "example/wasm-vt/README.md",
+      "example/zig-formatter/README.md",
+      "example/zig-vt-stream/README.md",
+      "example/zig-vt/README.md",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/device.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/grid_ref_tracked.h",
+      "include/ghostty/vt/io.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/point.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "include/ghostty/vt/unicode.h",
+      "include/ghostty/vt/version.h",
+      "include/ghostty/vt/wasm.h"
+    ]
+  },
+  {
+    "hash": "d03983f02cbffc51b2d661facadab50dc2a209be",
+    "title": "terminal: RefCountedSet reuses dead IDs instead of rehashing",
+    "parents": [
+      "477bfd2941c73b8eef96395ee898b0c21f069f18"
+    ],
+    "files": [
+      "src/benchmark/TerminalStream.zig",
+      "src/synthetic/cli.zig",
+      "src/synthetic/cli/Hyperlink.zig",
+      "src/terminal/page.zig",
+      "src/terminal/ref_counted_set.zig"
+    ]
+  },
+  {
+    "hash": "636c1d780568db5c5fe299b7105fcf6b4c74c068",
+    "title": "terminal: RefCountedSet only reaps dead items it may displace",
+    "parents": [
+      "d03983f02cbffc51b2d661facadab50dc2a209be"
+    ],
+    "files": [
+      "src/terminal/ref_counted_set.zig"
+    ]
+  },
+  {
+    "hash": "738d8f7f5b574b2348e0ba635a0f00a0d51c35fe",
+    "title": "terminal: RefCountedSet checks table membership, not a sentinel bucket",
+    "parents": [
+      "636c1d780568db5c5fe299b7105fcf6b4c74c068"
+    ],
+    "files": [
+      "src/terminal/ref_counted_set.zig"
+    ]
+  },
+  {
+    "hash": "38f4a710e3e6a218342915bf9d29eab10281a702",
+    "title": "terminal: RefCountedSet.releaseMultiple asserts n > 0",
+    "parents": [
+      "738d8f7f5b574b2348e0ba635a0f00a0d51c35fe"
+    ],
+    "files": [
+      "src/terminal/ref_counted_set.zig"
+    ]
+  },
+  {
+    "hash": "31a52992f12710f0382661a481fce46a966a7ea1",
+    "title": "terminal: RefCountedSet reclaims the dead ID insert passed over",
+    "parents": [
+      "38f4a710e3e6a218342915bf9d29eab10281a702"
+    ],
+    "files": [
+      "src/terminal/ref_counted_set.zig"
+    ]
+  },
+  {
+    "hash": "aef8b7b38d281784108f1ab1f03d6ecb9c5246d3",
+    "title": "terminal: tighten the RefCountedSet dead ID reuse tests",
+    "parents": [
+      "31a52992f12710f0382661a481fce46a966a7ea1"
+    ],
+    "files": [
+      "src/terminal/page.zig",
+      "src/terminal/ref_counted_set.zig"
+    ]
+  },
+  {
+    "hash": "5d3f653329fc62f04625f1952d88282d93df8b29",
+    "title": "terminal: update RefCountedSet docs for dead ID reuse",
+    "parents": [
+      "aef8b7b38d281784108f1ab1f03d6ecb9c5246d3"
+    ],
+    "files": [
+      "src/terminal/PageList.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/ref_counted_set.zig"
+    ]
+  },
+  {
+    "hash": "4d6fb32631d20fbd2203be0fdd5ba8109a00519b",
+    "title": "libghostty-vt: deploy docs from GHA, move to Vercel, prep release site",
+    "parents": [
+      "477bfd2941c73b8eef96395ee898b0c21f069f18"
+    ],
+    "files": [
+      ".github/scripts/lib-docs-site.sh",
+      ".github/workflows/lib-docs.yml",
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "dist/doxygen/site/release/robots.txt",
+      "dist/doxygen/site/release/vercel.json",
+      "dist/doxygen/site/tip/robots.txt",
+      "dist/doxygen/site/tip/vercel.json",
+      "src/build/docker/lib-c-docs/Dockerfile",
+      "src/build/docker/lib-c-docs/entrypoint.sh"
+    ]
+  },
+  {
+    "hash": "8b3b025bdbbeac42fe066d2235af5ae5e6744e44",
+    "title": "libghostty-vt: deploy docs from GHA, move to Vercel, prep release site (#15123)",
+    "parents": [
+      "477bfd2941c73b8eef96395ee898b0c21f069f18",
+      "4d6fb32631d20fbd2203be0fdd5ba8109a00519b"
+    ],
+    "files": [
+      ".github/scripts/lib-docs-site.sh",
+      ".github/workflows/lib-docs.yml",
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "dist/doxygen/site/release/robots.txt",
+      "dist/doxygen/site/release/vercel.json",
+      "dist/doxygen/site/tip/robots.txt",
+      "dist/doxygen/site/tip/vercel.json",
+      "src/build/docker/lib-c-docs/Dockerfile",
+      "src/build/docker/lib-c-docs/entrypoint.sh"
+    ]
+  },
+  {
+    "hash": "b5d9c93da1b045593a88c846ac8fed0f3835f2f3",
+    "title": "terminal: RefCountedSet reuses dead IDs instead of rehashing (#15121)",
+    "parents": [
+      "8b3b025bdbbeac42fe066d2235af5ae5e6744e44",
+      "5d3f653329fc62f04625f1952d88282d93df8b29"
+    ],
+    "files": [
+      "src/benchmark/TerminalStream.zig",
+      "src/synthetic/cli.zig",
+      "src/synthetic/cli/Hyperlink.zig",
+      "src/terminal/PageList.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/page.zig",
+      "src/terminal/ref_counted_set.zig"
+    ]
+  },
+  {
+    "hash": "660a0a2bb1ed76f95a549601764ba62b36881e64",
+    "title": "libghostty: add a test to ensure terminal modes are defined",
+    "parents": [
+      "b5d9c93da1b045593a88c846ac8fed0f3835f2f3"
+    ],
+    "files": [
+      "build.zig",
+      "include/ghostty/vt/modes.h",
+      "src/build/c_deps.zig",
+      "src/lib/enum.zig",
+      "src/lib/std_enums.zig",
+      "src/terminal/modes.zig"
+    ]
+  },
+  {
+    "hash": "9c773327e23b1ef88fd6a1a8abe1323d20054e41",
+    "title": "libghostty: translate ghostty/vt.h for the ABI tests through c_deps",
+    "parents": [
+      "660a0a2bb1ed76f95a549601764ba62b36881e64"
+    ],
+    "files": [
+      "build.zig",
+      "src/build/GhosttyZig.zig",
+      "src/build/c_deps.zig",
+      "src/lib/enum.zig",
+      "src/terminal/c/abi_test.zig"
+    ]
+  },
+  {
+    "hash": "f80e4d5c6bfc8f03a17af4bd1d6f0eeb211332b3",
+    "title": "libghostty: rename the mode macros to match the Zig mode names",
+    "parents": [
+      "9c773327e23b1ef88fd6a1a8abe1323d20054e41"
+    ],
+    "files": [
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/input.md",
+      "dist/doxygen/pages/guides/rendering.md",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/terminal.h"
+    ]
+  },
+  {
+    "hash": "f6cb4cf1276c3cb1a027468ddeb1a976a822ccfa",
+    "title": "libghostty: add a test to ensure terminal modes are defined (#12230)",
+    "parents": [
+      "b5d9c93da1b045593a88c846ac8fed0f3835f2f3",
+      "f80e4d5c6bfc8f03a17af4bd1d6f0eeb211332b3"
+    ],
+    "files": [
+      "build.zig",
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/input.md",
+      "dist/doxygen/pages/guides/rendering.md",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/terminal.h",
+      "src/build/GhosttyZig.zig",
+      "src/build/c_deps.zig",
+      "src/lib/enum.zig",
+      "src/lib/std_enums.zig",
+      "src/terminal/c/abi_test.zig",
+      "src/terminal/modes.zig"
+    ]
+  },
+  {
+    "hash": "0b7f9c156fd9daeb4361c234884c6afc68611566",
+    "title": "libghostty-vt: some final C ABI cleanups",
+    "parents": [
+      "f6cb4cf1276c3cb1a027468ddeb1a976a822ccfa"
+    ],
+    "files": [
+      "dist/doxygen/pages/conventions.md",
+      "example/c-vt-kitty-graphics/src/main.c",
+      "example/c-vt-osc/src/main.c",
+      "example/c-vt-selection/src/main.c",
+      "example/c-vt-static/src/main.c",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/mouse/event.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/wasm.h",
+      "src/lib/allocator.zig",
+      "src/lib/windows_dll.zig",
+      "src/terminal/c/abi/aarch64-macos.json",
+      "src/terminal/c/abi/wasm32-freestanding.json",
+      "src/terminal/c/abi/x86_64-linux-gnu.json",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/cell.zig",
+      "src/terminal/c/color.zig",
+      "src/terminal/c/color_scheme.zig",
+      "src/terminal/c/focus.zig",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/grid_ref.zig",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/modes.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/mouse_event.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/paste.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/row.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/sgr.zig",
+      "src/terminal/c/size_report.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/style.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "e852b903f439e552b9debddd684d89fea1d433b6",
+    "title": "libghostty-vt: some final C ABI cleanups (#15125)",
+    "parents": [
+      "f6cb4cf1276c3cb1a027468ddeb1a976a822ccfa",
+      "0b7f9c156fd9daeb4361c234884c6afc68611566"
+    ],
+    "files": [
+      "dist/doxygen/pages/conventions.md",
+      "example/c-vt-kitty-graphics/src/main.c",
+      "example/c-vt-osc/src/main.c",
+      "example/c-vt-selection/src/main.c",
+      "example/c-vt-static/src/main.c",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/mouse/event.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/wasm.h",
+      "src/lib/allocator.zig",
+      "src/lib/windows_dll.zig",
+      "src/terminal/c/abi/aarch64-macos.json",
+      "src/terminal/c/abi/wasm32-freestanding.json",
+      "src/terminal/c/abi/x86_64-linux-gnu.json",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/cell.zig",
+      "src/terminal/c/color.zig",
+      "src/terminal/c/color_scheme.zig",
+      "src/terminal/c/focus.zig",
+      "src/terminal/c/formatter.zig",
+      "src/terminal/c/grid_ref.zig",
+      "src/terminal/c/key_encode.zig",
+      "src/terminal/c/key_event.zig",
+      "src/terminal/c/kitty_graphics.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/modes.zig",
+      "src/terminal/c/mouse_encode.zig",
+      "src/terminal/c/mouse_event.zig",
+      "src/terminal/c/osc.zig",
+      "src/terminal/c/paste.zig",
+      "src/terminal/c/render.zig",
+      "src/terminal/c/row.zig",
+      "src/terminal/c/selection.zig",
+      "src/terminal/c/sgr.zig",
+      "src/terminal/c/size_report.zig",
+      "src/terminal/c/snapshot.zig",
+      "src/terminal/c/style.zig",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/types.zig"
+    ]
+  },
+  {
+    "hash": "a859f491075226a883506434aaefb8c552ceba61",
+    "title": "libghostty-vt: prepare for 1.0.0",
+    "parents": [
+      "e852b903f439e552b9debddd684d89fea1d433b6"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "dist/cmake/README.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/guides/snapshots.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/stability.md",
+      "example/c-vt-build-info/src/main.c",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/version.h",
+      "nix/libghostty-vt.nix",
+      "src/build/GhosttyLibVt.zig",
+      "src/terminal/c/ghostty-vt.map",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/version_h_test.zig",
+      "src/terminal/c/version_test.zig",
+      "test/abi/README.md",
+      "test/abi/check.sh"
+    ]
+  },
+  {
+    "hash": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+    "title": "libghostty-vt: prepare for 1.0.0 (#15126)",
+    "parents": [
+      "e852b903f439e552b9debddd684d89fea1d433b6",
+      "a859f491075226a883506434aaefb8c552ceba61"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "dist/cmake/README.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/guides/snapshots.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/stability.md",
+      "example/c-vt-build-info/src/main.c",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/version.h",
+      "nix/libghostty-vt.nix",
+      "src/build/GhosttyLibVt.zig",
+      "src/terminal/c/ghostty-vt.map",
+      "src/terminal/c/terminal.zig",
+      "src/terminal/c/version_h_test.zig",
+      "src/terminal/c/version_test.zig",
+      "test/abi/README.md",
+      "test/abi/check.sh"
+    ]
+  },
+  {
+    "hash": "ea675302b71a2413b16c77bb12659605bf736be2",
+    "title": "libghostty-vt: start 1.1.0-dev, add the ABI baseline and version gate",
+    "parents": [
+      "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "README.md",
+      "build.zig",
+      "include/ghostty/vt/version.h",
+      "nix/libghostty-vt.nix",
+      "src/terminal/c/ghostty-vt.map",
+      "test/abi/README.md",
+      "test/abi/baseline.abi",
+      "test/abi/baseline.txt",
+      "test/abi/check.sh"
+    ]
+  },
+  {
+    "hash": "5acdbf154369928eb228d2263cbe612d165f7569",
+    "title": "libghostty-vt: start 1.1.0-dev, add the ABI baseline and version gate (#15128)",
+    "parents": [
+      "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+      "ea675302b71a2413b16c77bb12659605bf736be2"
+    ],
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "README.md",
+      "build.zig",
+      "include/ghostty/vt/version.h",
+      "nix/libghostty-vt.nix",
+      "src/terminal/c/ghostty-vt.map",
+      "test/abi/README.md",
+      "test/abi/baseline.abi",
+      "test/abi/baseline.txt",
+      "test/abi/check.sh"
+    ]
+  }
+]

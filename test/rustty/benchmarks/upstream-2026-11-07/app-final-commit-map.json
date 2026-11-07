@@ -1,0 +1,2394 @@
+[
+  {
+    "hash": "c16d204bf72fbaa6b0ef0855e9439d34ba347eea",
+    "title": "deps: update z2d to v0.13.2",
+    "area": "z2d dependency",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Zig z2d0.13.2 dependency pin/mirror is inherited. Rustty renderers use rustty-render(-wgpu/-software), with no z2d link.",
+    "files": [
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "flatpak/zig-packages.json"
+    ]
+  },
+  {
+    "hash": "316ab91e49df9b2a87fd786a9650e0c3e270b6ef",
+    "title": "po: update code sources",
+    "area": "Ghostty localization",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po"
+    ]
+  },
+  {
+    "hash": "bcc1b9faf3394aca0920b1bc57eef24c3dfdc60f",
+    "title": "i18n: don't localize the \"Ghostty\" command's title",
+    "area": "Ghostty localization",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/input/command.zig"
+    ]
+  },
+  {
+    "hash": "0cb81fe084684d8f81b99cf26c2015a37b11eaf1",
+    "title": "datastruct/split_tree: assert goto() is given a valid handle",
+    "area": "Split navigation precondition",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "Rustty workspace Split uses a recursive tree and pane IDs rather than unchecked Zig indexed handles. Existing workspace navigation/missing-focus checks cover the analogous precondition.",
+    "files": [
+      "src/datastruct/split_tree.zig"
+    ]
+  },
+  {
+    "hash": "acd72a42f72da136606807322212886226322f89",
+    "title": "i18n: don't localize the \"Ghostty\" command's title (#14888)",
+    "area": "Ghostty localization",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/input/command.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "057f14896c5a903511dbbc86206fa7acd11b3b8e",
+    "title": "deps: update z2d to v0.13.2 (#14869)",
+    "area": "z2d dependency",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Zig z2d0.13.2 dependency pin/mirror is inherited. Rustty renderers use rustty-render(-wgpu/-software), with no z2d link.",
+    "files": [
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "flatpak/zig-packages.json"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "20ba6462d7de682a43839a469717f0cf3d5ceb5a",
+    "title": "datastruct/split_tree: assert goto() is given a valid handle (#14904)",
+    "area": "Split navigation precondition",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "Rustty workspace Split uses a recursive tree and pane IDs rather than unchecked Zig indexed handles. Existing workspace navigation/missing-focus checks cover the analogous precondition.",
+    "files": [
+      "src/datastruct/split_tree.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "40713449c609158017801c6dd39f465a281741a5",
+    "title": "i18n: command palette - Focus and Untitled translation support",
+    "area": "Ghostty localization",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/apprt/gtk/class/command_palette.zig"
+    ]
+  },
+  {
+    "hash": "4c8ad9817e9e0fbb6060695ba50aa85e1174bf00",
+    "title": "config: fix formatting of long environment values",
+    "area": "Long environment formatting",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty repeatable-map config formatter fix is inherited. Rustty Config.environment is BTreeMap<String,String>, has no256-byte limit, and has no full show-config exporter to port.",
+    "files": [
+      "src/config/RepeatableStringMap.zig"
+    ]
+  },
+  {
+    "hash": "9ee1031ba7c5a0436388072e3f11a199d2c0a602",
+    "title": "config: use allocator printing in long-value test",
+    "area": "Long environment formatting",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty repeatable-map config formatter fix is inherited. Rustty Config.environment is BTreeMap<String,String>, has no256-byte limit, and has no full show-config exporter to port.",
+    "files": [
+      "src/config/RepeatableStringMap.zig"
+    ]
+  },
+  {
+    "hash": "0b8b9984ee560456194262d190aa850224edb1f4",
+    "title": "config: fix formatting of long environment values (#14908)",
+    "area": "Long environment formatting",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty repeatable-map config formatter fix is inherited. Rustty Config.environment is BTreeMap<String,String>, has no256-byte limit, and has no full show-config exporter to port.",
+    "files": [
+      "src/config/RepeatableStringMap.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "5ee215000ebe4354cd388962bc372152d16dacc6",
+    "title": "nix: drop removed gnome-photos from VM excludes",
+    "area": "Ghostty Nix",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "GNOME VM, GStreamer store paths and Nix build changes are inherited. Rustty ships independent macOS/Windows Nu/PowerShell bundles; no GNOME/Nix distribution consumer.",
+    "files": [
+      "nix/vm/common-gnome.nix"
+    ]
+  },
+  {
+    "hash": "f563ceda37c51e6e3b0212f5c6965ff3113628d0",
+    "title": "nix: apply GNOME Shell unsafe mode to the user unit",
+    "area": "Ghostty Nix",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "GNOME VM, GStreamer store paths and Nix build changes are inherited. Rustty ships independent macOS/Windows Nu/PowerShell bundles; no GNOME/Nix distribution consumer.",
+    "files": [
+      "nix/vm/common-gnome.nix"
+    ]
+  },
+  {
+    "hash": "aa16f9429caa2aa6fc9bc32983a0f7bb902551e3",
+    "title": "nix: drop the revision from the zig deps derivation name",
+    "area": "Ghostty Nix",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "GNOME VM, GStreamer store paths and Nix build changes are inherited. Rustty ships independent macOS/Windows Nu/PowerShell bundles; no GNOME/Nix distribution consumer.",
+    "files": [
+      "nix/libghostty-vt.nix",
+      "nix/package.nix"
+    ]
+  },
+  {
+    "hash": "04c75975052a657081a1f568b0f36ec8c57a46b0",
+    "title": "ci: gate expensive jobs on a quick build instead of the full test suite",
+    "area": "Ghostty CI scheduling",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty quick build gate, Nix target jobs and source-tarball/test scheduling are inherited; Rustty Cargo workspace workflows do not consume those scheduling assumptions.",
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "68b837766217cea65cfe802dc79d4103a732c38f",
+    "title": "ci: split build-nix into one job per target and architecture",
+    "area": "Ghostty CI scheduling",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty quick build gate, Nix target jobs and source-tarball/test scheduling are inherited; Rustty Cargo workspace workflows do not consume those scheduling assumptions.",
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "ecc87922ecbde7cea6289dcd9e3dfbc38716c04f",
+    "title": "ci: build the source tarball without waiting on its tests",
+    "area": "Ghostty CI scheduling",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty quick build gate, Nix target jobs and source-tarball/test scheduling are inherited; Rustty Cargo workspace workflows do not consume those scheduling assumptions.",
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "184824102aa269350132eed4242493c739d3e53c",
+    "title": "ci: run the full test suite once across the GTK and SIMD legs",
+    "area": "Ghostty CI scheduling",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty quick build gate, Nix target jobs and source-tarball/test scheduling are inherited; Rustty Cargo workspace workflows do not consume those scheduling assumptions.",
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "c27ef4c1b109fb2b9947730c391f1a7d06eaa62f",
+    "title": "ci: improvements to speed things up, step one shorten critical paths for tests (#14911)",
+    "area": "Ghostty CI scheduling",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty quick build gate, Nix target jobs and source-tarball/test scheduling are inherited; Rustty Cargo workspace workflows do not consume those scheduling assumptions.",
+    "files": [
+      ".github/workflows/test.yml",
+      "nix/libghostty-vt.nix",
+      "nix/package.nix"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "7ee1074fbda91f0ed19ea34a6ba08a0c30bee2b2",
+    "title": "Update VOUCHED list (#14915)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "4d7de0a483e40e2c1dc542315b2a87be96977df2",
+    "title": "fix(ssh): show authentication messages during terminfo setup",
+    "area": "SSH setup",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty +ssh terminfo authentication/install/verification changes are inherited. Rustty tmuxx transports do not run this remote installer; bounded stderr/native SSH helpers are separate existing transport behavior, not full +ssh UI parity.",
+    "files": [
+      "src/cli/ssh.zig"
+    ]
+  },
+  {
+    "hash": "b2c78c9bd9bc88a16d9c3769b0fb17ddde1b78b1",
+    "title": "nix: fix GNOME VM tests on main (#14910)",
+    "area": "Ghostty Nix",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "GNOME VM, GStreamer store paths and Nix build changes are inherited. Rustty ships independent macOS/Windows Nu/PowerShell bundles; no GNOME/Nix distribution consumer.",
+    "files": [
+      "nix/vm/common-gnome.nix"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "8c04d7c2e8c37a4044b1af4c58e529c714c83b20",
+    "title": "config: reject empty prefixed commands",
+    "area": "Empty prefixed commands",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "Rustty Command::parse already rejects empty direct:/shell:, whitespace-only tails and NUL before launch. Spacing port adds explicit regression coverage.",
+    "files": [
+      "src/config/command.zig"
+    ],
+    "validation": "Explicit empty-prefixed regression included in5a49523/upvquxw; config suite72passed."
+  },
+  {
+    "hash": "539a7f1ce770b12071ca146e9824b9d9e5a1b88f",
+    "title": "nix: use store paths for propagated GStreamer packages",
+    "area": "Ghostty Nix",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "GNOME VM, GStreamer store paths and Nix build changes are inherited. Rustty ships independent macOS/Windows Nu/PowerShell bundles; no GNOME/Nix distribution consumer.",
+    "files": [
+      "nix/package.nix"
+    ]
+  },
+  {
+    "hash": "df1c99c8a5ec32c73963e5dc3fad3c9df7a3d137",
+    "title": "Update VOUCHED list (#14930)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "93967b7f9478e94dcbb42125c8a90f34feb40d75",
+    "title": "i18n: command palette - Focus and Untitled translation support (#14055)",
+    "area": "Ghostty localization",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/apprt/gtk/class/command_palette.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "108d503ac591d5a3b3a13a4bc11bbea8c09a42fb",
+    "title": "Update VOUCHED list (#14936)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "854e51422732c00088ceb79b09a61e504b89800d",
+    "title": "snap: bundle gstreamer plugins so audio bell works",
+    "area": "Ghostty Snap",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Snap GStreamer audio plugins and environment/LD_LIBRARY_PATH fixes are inherited. Rustty has no Snap packaging target.",
+    "files": [
+      "snap/local/launcher",
+      "snap/snapcraft.yaml"
+    ]
+  },
+  {
+    "hash": "7c6e1011c237aaac3d19d094b3c4bdada3b21bc8",
+    "title": "Update VOUCHED list (#14943)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "e1e05c1cd13efc4bc962f4a3fd8c4e310267b340",
+    "title": "nix: use store paths for propagated GStreamer packages (#14929)",
+    "area": "Ghostty Nix",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "GNOME VM, GStreamer store paths and Nix build changes are inherited. Rustty ships independent macOS/Windows Nu/PowerShell bundles; no GNOME/Nix distribution consumer.",
+    "files": [
+      "nix/package.nix"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "cf0ab14aed55315a53de668bc1bbcf4a13ce0ddd",
+    "title": "config: reject empty prefixed commands (#14921)",
+    "area": "Empty prefixed commands",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "Rustty Command::parse already rejects empty direct:/shell:, whitespace-only tails and NUL before launch. Spacing port adds explicit regression coverage.",
+    "files": [
+      "src/config/command.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta.",
+    "validation": "Explicit empty-prefixed regression included in5a49523/upvquxw; config suite72passed."
+  },
+  {
+    "hash": "8bb4f45846ecde0ab53a846ee1bca5533dca8c5f",
+    "title": "fuzz: fix replay crash detection and add osc target",
+    "area": "Fuzz harness",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Zig AFL replay/OSC harness changes are inherited. Rustty shared OSC request generator consumes changed seed corpus; parent handles frozen checksum/fixture refresh. OSC3008 production parser was unchanged; missing Rust hierarchical metadata is an older unsupported surface.",
+    "files": [
+      "test/fuzz-libghostty/replay-crashes.nu"
+    ]
+  },
+  {
+    "hash": "ff23824213b8d7ab7a07dca6a7e0d68cad51b802",
+    "title": "snap: bundle gstreamer plugins so audio bell works (#12676)",
+    "area": "Ghostty Snap",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Snap GStreamer audio plugins and environment/LD_LIBRARY_PATH fixes are inherited. Rustty has no Snap packaging target.",
+    "files": [
+      "snap/local/launcher",
+      "snap/snapcraft.yaml"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "90ed851dea8a7f328ad937adc5521c809f2cd41d",
+    "title": "config: ignore repeated space in direct commands",
+    "area": "Direct command spacing",
+    "merge": false,
+    "disposition": "ported",
+    "evidence": "Command::parse filters empty literal-space-separated direct argv elements; tabs remain literal and shell commands unchanged. Config/initial-command/process consumers and regressions covered.",
+    "files": [
+      "src/config/command.zig"
+    ],
+    "port_commit": "5a49523",
+    "port_change_id": "upvquxw",
+    "validation": "72config tests on1.95; regression failed before fix."
+  },
+  {
+    "hash": "e2593c1496cbf9f34f13e53d2d83b80283c8f24f",
+    "title": "config: ignore repeated space in direct commands (#14950)",
+    "area": "Direct command spacing",
+    "merge": true,
+    "disposition": "ported",
+    "evidence": "Command::parse filters empty literal-space-separated direct argv elements; tabs remain literal and shell commands unchanged. Config/initial-command/process consumers and regressions covered.",
+    "files": [
+      "src/config/command.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta.",
+    "port_commit": "5a49523",
+    "port_change_id": "upvquxw",
+    "validation": "72config tests on1.95; regression failed before fix."
+  },
+  {
+    "hash": "86c704afdde5a8ee67300d924d1c52b4d82b4ff4",
+    "title": "gtk: fix jumps when resizing splits via keybind",
+    "area": "GTK split resize",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "Rustty Split::resize_with_minimum computes/clamps float geometry and visible divider minima, with no GtkPaned G_MAXINT unallocated sentinel. Existing constrained divider/keyboard resize regression covers this path.",
+    "files": [
+      "src/apprt/gtk/class/split_tree.zig"
+    ]
+  },
+  {
+    "hash": "ca91d0a24e67b3eecdb23c943227cd2b3908747b",
+    "title": "gtk: fix jumps when resizing splits via keybind (#14951)",
+    "area": "GTK split resize",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "Rustty Split::resize_with_minimum computes/clamps float geometry and visible divider minima, with no GtkPaned G_MAXINT unallocated sentinel. Existing constrained divider/keyboard resize regression covers this path.",
+    "files": [
+      "src/apprt/gtk/class/split_tree.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "32da5e47b26cad0dadb36c279ae9e020a2e60959",
+    "title": "snap: avoid trailing colon in LD_LIBRARY_PATH",
+    "area": "Ghostty Snap",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Snap GStreamer audio plugins and environment/LD_LIBRARY_PATH fixes are inherited. Rustty has no Snap packaging target.",
+    "files": [
+      "snap/local/launcher"
+    ]
+  },
+  {
+    "hash": "93404a48a9a8bf265bb1671e0e6d9985322f6682",
+    "title": "Update VOUCHED list (#14957)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "1d23d02ae16f86d9c9a3792098cb906b94208bcc",
+    "title": "snap: avoid trailing colon in LD_LIBRARY_PATH (#14954)",
+    "area": "Ghostty Snap",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Snap GStreamer audio plugins and environment/LD_LIBRARY_PATH fixes are inherited. Rustty has no Snap packaging target.",
+    "files": [
+      "snap/local/launcher"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "44893148d009bd372f5f7e8d2edbd0340fc82b65",
+    "title": "cli: show SSH authentication messages during terminfo setup (#14916)",
+    "area": "SSH setup",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty +ssh terminfo authentication/install/verification changes are inherited. Rustty tmuxx transports do not run this remote installer; bounded stderr/native SSH helpers are separate existing transport behavior, not full +ssh UI parity.",
+    "files": [
+      "src/cli/ssh.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "a0706b79b3d791873177b1fda4b155267769e8c5",
+    "title": "fuzz: fix replay crash detection and add osc target (#14896)",
+    "area": "Fuzz harness",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Zig AFL replay/OSC harness changes are inherited. Rustty shared OSC request generator consumes changed seed corpus; parent handles frozen checksum/fixture refresh. OSC3008 production parser was unchanged; missing Rust hierarchical metadata is an older unsupported surface.",
+    "files": [
+      "test/fuzz-libghostty/replay-crashes.nu"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "fbed180a5f181915c92a8f2f561903a6e4645b5a",
+    "title": "Update VOUCHED list (#14960)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "0a672a914479354aa8599c75927485b22905c394",
+    "title": "Update VOUCHED list (#14968)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "c911f96ee8fedd4594b5b69f1128fcb03f560622",
+    "title": "Update VOUCHED list (#14969)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "f7b25c8129d84d53cf0cda4ffa024a692aca019e",
+    "title": "termio: don't require RFC 1123 hostnames in OSC 7",
+    "area": "OSC 7 hostnames",
+    "merge": false,
+    "disposition": "ported",
+    "evidence": "Rustty already admits non-RFC1123 names; tmuxx admission and ShellInfo now percent-decode authority before local-host/UNC interpretation, preserving malformed/NUL/foreign-host guards and raw kitty paths.",
+    "files": [
+      "src/termio/stream_handler.zig"
+    ],
+    "port_commit": "16e2217",
+    "port_change_id": "ytlxxys",
+    "validation": "6admission+5shell tests; regression failed before fix; Windows x86_64-msvc test-target check."
+  },
+  {
+    "hash": "c7be56a04696249a2c33abac88586338aba7fc7a",
+    "title": "fuzz: exercise hierarchical context in osc harness",
+    "area": "Fuzz harness",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Zig AFL replay/OSC harness changes are inherited. Rustty shared OSC request generator consumes changed seed corpus; parent handles frozen checksum/fixture refresh. OSC3008 production parser was unchanged; missing Rust hierarchical metadata is an older unsupported surface.",
+    "files": [
+      "pkg/afl++/build.zig",
+      "test/fuzz-libghostty/build.zig.zon",
+      "test/fuzz-libghostty/corpus/osc-cmin/12-osc3008-context",
+      "test/fuzz-libghostty/corpus/osc-initial/12-osc3008-context",
+      "test/fuzz-libghostty/src/fuzz_osc.zig"
+    ]
+  },
+  {
+    "hash": "83b57ac5ead868e133adb509f7ef0a4ffa3ffe01",
+    "title": "fuzz: exercise hierarchical context in osc harness (#14977)",
+    "area": "Fuzz harness",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Zig AFL replay/OSC harness changes are inherited. Rustty shared OSC request generator consumes changed seed corpus; parent handles frozen checksum/fixture refresh. OSC3008 production parser was unchanged; missing Rust hierarchical metadata is an older unsupported surface.",
+    "files": [
+      "pkg/afl++/build.zig",
+      "test/fuzz-libghostty/build.zig.zon",
+      "test/fuzz-libghostty/corpus/osc-cmin/12-osc3008-context",
+      "test/fuzz-libghostty/corpus/osc-initial/12-osc3008-context",
+      "test/fuzz-libghostty/src/fuzz_osc.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "845736e1df59e637a614aee78009217c9b480988",
+    "title": "deps: Update iTerm2 color schemes",
+    "area": "Theme resources",
+    "merge": false,
+    "disposition": "ported",
+    "evidence": "Independent Rustty theme copy refreshed from verified27cbbb5 archive:861 themes,42added/5changed, source-exact bytes, unchangedMIT license; both bundle scripts already copy themes/licenses.",
+    "files": [
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "flatpak/zig-packages.json"
+    ],
+    "port_commit": "7aaac22",
+    "port_change_id": "spppnxx",
+    "validation": "Archive SHA256+Zig package hash; all861 exact byte/inventory/license matches and actual ConfigLoader zero diagnostics."
+  },
+  {
+    "hash": "c42f6fb4740102b678773f4bfdd4ef7613afe818",
+    "title": "Update VOUCHED list (#14983)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "2fc8d02c253bc09ff7456c65e7f63dd6eebaf4de",
+    "title": "Update iTerm2 colorschemes (#14981)",
+    "area": "Theme resources",
+    "merge": true,
+    "disposition": "ported",
+    "evidence": "Independent Rustty theme copy refreshed from verified27cbbb5 archive:861 themes,42added/5changed, source-exact bytes, unchangedMIT license; both bundle scripts already copy themes/licenses.",
+    "files": [
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "flatpak/zig-packages.json"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta.",
+    "port_commit": "7aaac22",
+    "port_change_id": "spppnxx",
+    "validation": "Archive SHA256+Zig package hash; all861 exact byte/inventory/license matches and actual ConfigLoader zero diagnostics."
+  },
+  {
+    "hash": "a5b44039d10f25d2d0a5992137cd6517f49e72aa",
+    "title": "Update VOUCHED list (#14992)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "a3e349f7a02709130d4cb83b24bac56a5d334d52",
+    "title": "i18n: update Bahasa Indonesia translation (#14991)",
+    "area": "Ghostty localization",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/id.po"
+    ]
+  },
+  {
+    "hash": "fd29936f0914f5a303e1d67fd09201f981b7eff1",
+    "title": "macos: make Surface main actor-isolated",
+    "area": "Mac main-actor isolation",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "Rustty native services use MainThreadMarker and main-thread App/window state, with owned terminal worker effects. No Swift Sendable Surface wrapper exists.",
+    "files": [
+      "macos/Sources/Ghostty/Ghostty.Surface.swift"
+    ]
+  },
+  {
+    "hash": "7cd6fa0215a1299c69c27fe543f48ecab45b775f",
+    "title": "Sync CODEOWNERS vouch list (#15002)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "5c6d43eeecaf4eff506a96d0f5310b5682c80c88",
+    "title": "macos: make Surface main actor-isolated (#14999)",
+    "area": "Mac main-actor isolation",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "Rustty native services use MainThreadMarker and main-thread App/window state, with owned terminal worker effects. No Swift Sendable Surface wrapper exists.",
+    "files": [
+      "macos/Sources/Ghostty/Ghostty.Surface.swift"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "042b16b6146ada29877dfeeea9f286889e4adeb1",
+    "title": "termio: don't require RFC 1123 hostnames in OSC 7 (#14971)",
+    "area": "OSC 7 hostnames",
+    "merge": true,
+    "disposition": "ported",
+    "evidence": "Rustty already admits non-RFC1123 names; tmuxx admission and ShellInfo now percent-decode authority before local-host/UNC interpretation, preserving malformed/NUL/foreign-host guards and raw kitty paths.",
+    "files": [
+      "src/termio/stream_handler.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta.",
+    "port_commit": "16e2217",
+    "port_change_id": "ytlxxys",
+    "validation": "6admission+5shell tests; regression failed before fix; Windows x86_64-msvc test-target check."
+  },
+  {
+    "hash": "379bdfabffe16b6a326c4289ad2bf9d712cce80a",
+    "title": "Update VOUCHED list (#15016)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "825f31c5201e5f6144ac9267d459e64740e4c456",
+    "title": "Update VOUCHED list (#15022)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "0edfc656fa3d55d2bbf4519420666b19e5b19dba",
+    "title": "macOS: fix tab bar frame on macOS 27 when it first appears.",
+    "area": "Mac tab frame",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Rustty explicitly disables NSWindow native tabbing and draws its own tabs. No NSTabBarNewTabButton/native-tab view constraints to adjust.",
+    "files": [
+      "macos/Sources/Features/Terminal/Window Styles/TitlebarTabsTahoeTerminalWindow.swift"
+    ]
+  },
+  {
+    "hash": "0b1729e945978fca4bcd6165d8ac408bf675a7f2",
+    "title": "Update VOUCHED list (#15036)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "3eb5af718b6ca4abf805006336c92e6d1f9a49a4",
+    "title": "i18n: Update Dutch translations",
+    "area": "Ghostty localization",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/nl.po"
+    ]
+  },
+  {
+    "hash": "0e067ded703c4212248daf996f97c62f2f13114a",
+    "title": "core: declare pointer nullability in ghostty.h",
+    "area": "App pointer nullability",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty embedded App C/Swift nullability annotations inherited. Rustty does not link that App ABI; Rust APIs/native guards use owned values, slices and Option.",
+    "files": [
+      "include/ghostty.h",
+      "macos/Sources/Features/QuickTerminal/QuickTerminalController.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift",
+      "macos/Sources/Ghostty/Ghostty.Action.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "macos/Sources/Ghostty/Ghostty.Config.swift",
+      "macos/Sources/Ghostty/GhosttyPackage.swift",
+      "macos/Sources/Ghostty/Surface View/OSSurfaceView.swift",
+      "macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift",
+      "macos/Sources/Helpers/Extensions/Array+Extension.swift",
+      "macos/Tests/Ghostty/Surface View/SurfaceView+SearchStateTests.swift",
+      "src/apprt/embedded.zig"
+    ]
+  },
+  {
+    "hash": "a455842c28d587cd2ee2b75cc21fa021b1a47d09",
+    "title": "core: declare pointer nullability in ghostty.h (#15039)",
+    "area": "App pointer nullability",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty embedded App C/Swift nullability annotations inherited. Rustty does not link that App ABI; Rust APIs/native guards use owned values, slices and Option.",
+    "files": [
+      "include/ghostty.h",
+      "macos/Sources/Features/QuickTerminal/QuickTerminalController.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift",
+      "macos/Sources/Ghostty/Ghostty.Action.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "macos/Sources/Ghostty/Ghostty.Config.swift",
+      "macos/Sources/Ghostty/GhosttyPackage.swift",
+      "macos/Sources/Ghostty/Surface View/OSSurfaceView.swift",
+      "macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift",
+      "macos/Sources/Helpers/Extensions/Array+Extension.swift",
+      "macos/Tests/Ghostty/Surface View/SurfaceView+SearchStateTests.swift",
+      "src/apprt/embedded.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "b148bf728524ac17daec66692a8265d351c9c702",
+    "title": "macos: allow quitting with a clipboard confirmation open",
+    "area": "Mac clipboard quit",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "Rustty clipboard consent is an egui window inside existing Winit host, not an AppKit modal sheet; it cannot set preventsApplicationTerminationWhenModal. App handles quit while consent remains pending.",
+    "files": [
+      "macos/Sources/Features/ClipboardConfirmation/ClipboardConfirmationController.swift"
+    ]
+  },
+  {
+    "hash": "fa3b435cbfdc70c4e41ace87e1cde401f62e2aa5",
+    "title": "Update VOUCHED list (#15041)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "6676bbaec73a2a30eced56003dd7248e931de6fa",
+    "title": "Update VOUCHED list (#15045)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "0d1d5e884b88a711f1ccf47387ab41e8fa28a755",
+    "title": "macos: allow quitting with a clipboard confirmation open (#15040)",
+    "area": "Mac clipboard quit",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "Rustty clipboard consent is an egui window inside existing Winit host, not an AppKit modal sheet; it cannot set preventsApplicationTerminationWhenModal. App handles quit while consent remains pending.",
+    "files": [
+      "macos/Sources/Features/ClipboardConfirmation/ClipboardConfirmationController.swift"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "060ff6b52dcfde52112a8376c6cf3e26f4161edf",
+    "title": "i18n: update Japanese translation (#15025)",
+    "area": "Ghostty localization",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/ja.po"
+    ]
+  },
+  {
+    "hash": "2d1f9cf1095ea4d5c0888ddbc62e03bd14e11597",
+    "title": "os: reserve space for executable path terminator",
+    "area": "Executable path terminator",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "Rustty shell resolution uses PathBuf/OsString and platform process APIs, not a manually NUL-terminated fixed path buffer.",
+    "files": [
+      "src/os/path.zig"
+    ]
+  },
+  {
+    "hash": "fef7af4e19f6d8b0361c49e6190b81f3a64a999b",
+    "title": "os: reserve space for executable path terminator (#15058)",
+    "area": "Executable path terminator",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "Rustty shell resolution uses PathBuf/OsString and platform process APIs, not a manually NUL-terminated fixed path buffer.",
+    "files": [
+      "src/os/path.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "c7f68a7f48c6a5b357689eb8c2328bc2dab5d8ed",
+    "title": "macOS: fix tab bar frame on macOS 27 when it first appears. (#15029)",
+    "area": "Mac tab frame",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Rustty explicitly disables NSWindow native tabbing and draws its own tabs. No NSTabBarNewTabButton/native-tab view constraints to adjust.",
+    "files": [
+      "macos/Sources/Features/Terminal/Window Styles/TitlebarTabsTahoeTerminalWindow.swift"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "def58d386bb1c626acd338f75ad2959b13d738b6",
+    "title": "cli: flush plain color list output",
+    "area": "Plain color list flush",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty +list-colors buffered writer flush fix inherited. Rustty does not expose that CLI command/writer.",
+    "files": [
+      "src/cli/list_colors.zig"
+    ]
+  },
+  {
+    "hash": "1830cd2502274a2ba0a1c03341cde3e063f57019",
+    "title": "libghostty: derive shared library version metadata from lib_version",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/scripts/check-apple-libghostty-vt.nu",
+      ".github/workflows/release-tip.yml",
+      ".github/workflows/test.yml",
+      "CMakeLists.txt",
+      "dist/cmake/ghostty-vt-config.cmake.in",
+      "nix/libghostty-vt.nix",
+      "src/build/GhosttyLibVt.zig"
+    ]
+  },
+  {
+    "hash": "8edb49e386acbcaa2ab6141a8e5285c2a03f4f57",
+    "title": "libghostty: version the lib-vt tarball and vt- tags from lib_version",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/release-tip.yml",
+      ".github/workflows/test.yml",
+      "CMakeLists.txt",
+      "build.zig",
+      "src/build/Config.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/GitVersion.zig"
+    ]
+  },
+  {
+    "hash": "184b01ab32c67b6accea14aa22ce8ed2c0ed7733",
+    "title": "libghostty: install a CMake package config and fix lib-vt packaging defaults",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/release-tip.yml",
+      ".github/workflows/test.yml",
+      "CMakeLists.txt",
+      "build.zig",
+      "dist/cmake/README.md",
+      "dist/cmake/ghostty-vt-config.cmake.in",
+      "example/swift-vt-xcframework/README.md",
+      "nix/libghostty-vt.nix",
+      "src/build/Config.zig",
+      "src/build/GhosttyLibVt.zig",
+      "src/build/GhosttyZig.zig",
+      "src/build/configure_file.zig"
+    ]
+  },
+  {
+    "hash": "7b06c054155d26f789d79a6e3ee0dc4b6e76f924",
+    "title": "libghostty: record the final install paths in the lib-vt .pc and CMake files",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/test.yml",
+      "dist/cmake/README.md",
+      "src/build/GhosttyLibVt.zig",
+      "src/build/GhosttyPkgConfig.zig",
+      "src/build/InstallDirs.zig",
+      "src/build/cmake_package_config.zig",
+      "src/build/configure_file.zig",
+      "src/build/libghostty-vt.pc.in",
+      "src/extra/pkg-config.zig"
+    ]
+  },
+  {
+    "hash": "3a1457c34e41d98cac86582c2cbb5360b3ced2ff",
+    "title": "ci: make the lib-vt leak checks able to fail",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "ac1feec8338c4ef0ae8cd596fd43130577f3edf2",
+    "title": "libghostty: link the lib-vt dylib with Zig when Ghostty is a dependency",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      "build.zig",
+      "src/build/GhosttyLibVt.zig"
+    ]
+  },
+  {
+    "hash": "97a5653d323a730e4816936ed62520205f1007ae",
+    "title": "pkg/wuffs: give the tests their own module",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      "pkg/wuffs/build.zig"
+    ]
+  },
+  {
+    "hash": "5b500d1433b61bc612409f82d6c8e35110ede62c",
+    "title": "libghostty: generate the lib-vt dependency list and third-party manifest",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".gitattributes",
+      "build.zig",
+      "build.zig.zon",
+      "build.zig.zon.lib-vt.third-party.json",
+      "build.zig.zon.lib-vt.txt",
+      "nix/build-support/check-zig-cache.sh",
+      "nix/build-support/fetch-zig-cache.sh",
+      "nix/build-support/gen-lib-vt-deps.sh",
+      "pkg/highway/build.zig.zon",
+      "pkg/simdutf/build.zig.zon",
+      "pkg/translate-c/build.zig.zon",
+      "pkg/wuffs/build.zig.zon",
+      "pkg/zlib/build.zig.zon",
+      "src/build/LibVtPackages.zig",
+      "src/build/main.zig",
+      "typos.toml"
+    ]
+  },
+  {
+    "hash": "4f2139ab4d769e37bab77ea767e398782ac19021",
+    "title": "ci: build and test libghostty-vt offline from its dependency list",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/test.yml"
+    ]
+  },
+  {
+    "hash": "2eda578e784d2c46fd682f5fee55d4b3206448bf",
+    "title": "libghostty: ship simdutf's license texts and take its version from pkg/simdutf",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      "nix/build-support/gen-lib-vt-deps.sh",
+      "pkg/simdutf/build.zig.zon",
+      "pkg/simdutf/vendor/LICENSE-APACHE",
+      "pkg/simdutf/vendor/LICENSE-MIT",
+      "src/build/LibVtPackages.zig"
+    ]
+  },
+  {
+    "hash": "3de71293034969aaa09ad6f19ee53a9d23087403",
+    "title": "build: move the generated dependency files into deps/",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".gitattributes",
+      ".github/workflows/test.yml",
+      ".github/workflows/update-colorschemes.yml",
+      "build.zig.zon.json",
+      "build.zig.zon.lib-vt.third-party.json",
+      "build.zig.zon.lib-vt.txt",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "deps/README.md",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "flake.nix",
+      "nix/build-support/check-zig-cache.sh",
+      "nix/build-support/fetch-zig-cache.sh",
+      "nix/build-support/gen-lib-vt-deps.sh",
+      "nix/build-support/update-mirror.nu",
+      "nix/libghostty-vt.nix",
+      "nix/package.nix",
+      "src/build/LibVtPackages.zig",
+      "typos.toml"
+    ]
+  },
+  {
+    "hash": "9fc62a98cc765f2c341d317f2ee684ebb9584237",
+    "title": "libghostty: prepare libghostty-vt for tagged releases (#15069)",
+    "area": "Lib-vt release packaging",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".gitattributes",
+      ".github/scripts/check-apple-libghostty-vt.nu",
+      ".github/workflows/release-tip.yml",
+      ".github/workflows/test.yml",
+      ".github/workflows/update-colorschemes.yml",
+      "CMakeLists.txt",
+      "build.zig",
+      "build.zig.zon",
+      "build.zig.zon.json",
+      "build.zig.zon.nix",
+      "build.zig.zon.txt",
+      "deps/README.md",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "dist/cmake/README.md",
+      "dist/cmake/ghostty-vt-config.cmake.in",
+      "example/c-vt-build-info/README.md",
+      "example/c-vt-build-info/src/main.c",
+      "example/swift-vt-xcframework/README.md",
+      "flake.nix",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/version.h",
+      "nix/build-support/check-zig-cache.sh",
+      "nix/build-support/fetch-zig-cache.sh",
+      "nix/build-support/gen-lib-vt-deps.sh",
+      "nix/build-support/update-mirror.nu",
+      "nix/libghostty-vt.nix",
+      "nix/package.nix",
+      "pkg/highway/build.zig.zon",
+      "pkg/simdutf/build.zig.zon",
+      "pkg/simdutf/vendor/LICENSE-APACHE",
+      "pkg/simdutf/vendor/LICENSE-MIT",
+      "pkg/translate-c/build.zig.zon",
+      "pkg/wuffs/build.zig",
+      "pkg/wuffs/build.zig.zon",
+      "pkg/zlib/build.zig.zon",
+      "src/build/Config.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/GhosttyLibVt.zig",
+      "src/build/GhosttyPkgConfig.zig",
+      "src/build/GhosttyZig.zig",
+      "src/build/GitVersion.zig",
+      "src/build/InstallDirs.zig",
+      "src/build/LibVtPackages.zig",
+      "src/build/cmake_package_config.zig",
+      "src/build/configure_file.zig",
+      "src/build/libghostty-vt.pc.in",
+      "src/build/main.zig",
+      "src/extra/pkg-config.zig",
+      "src/lib_vt.zig",
+      "src/terminal/c/build_info.zig",
+      "src/terminal/c/main.zig",
+      "src/terminal/c/version_h_test.zig",
+      "typos.toml"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "29bf7aa9b4d5f8f464d9eb5d1809f9433759829d",
+    "title": "cli: flush plain color list output (#15073)",
+    "area": "Plain color list flush",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty +list-colors buffered writer flush fix inherited. Rustty does not expose that CLI command/writer.",
+    "files": [
+      "src/cli/list_colors.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "6581a593c68798cdd2c2cb77b7558747c65a0987",
+    "title": "ci: add a release workflow for libghostty-vt",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/release-lib-vt.yml"
+    ]
+  },
+  {
+    "hash": "1a2cf06dd1284f84bb28d87dbc3a055e97c93f42",
+    "title": "docs: add a packaging guide for libghostty-vt",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      "PACKAGING-LIBGHOSTTY.md",
+      "PACKAGING.md",
+      "README.md",
+      "dist/cmake/README.md",
+      "include/ghostty/vt.h",
+      "src/build/GhosttyDist.zig"
+    ]
+  },
+  {
+    "hash": "281d34115fc300b4be121c01487550464d0eed9f",
+    "title": "build: don't install the man page placeholder for libghostty-vt",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/release-tip.yml",
+      "build.zig"
+    ]
+  },
+  {
+    "hash": "e95bed63330cc921f3cf2fe3d14e024396b09d43",
+    "title": "libghostty: release workflow and packaging guide for libghostty-vt (#15076)",
+    "area": "Lib-vt release packaging",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/release-tip.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "PACKAGING.md",
+      "README.md",
+      "build.zig",
+      "dist/cmake/README.md",
+      "include/ghostty/vt.h",
+      "src/build/GhosttyDist.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "9b4a0076d246cdb36d589be7dd3f14a6079e7d7f",
+    "title": "cli: explicitly install terminfo to ~/.terminfo on ssh remote host",
+    "area": "SSH setup",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty +ssh terminfo authentication/install/verification changes are inherited. Rustty tmuxx transports do not run this remote installer; bounded stderr/native SSH helpers are separate existing transport behavior, not full +ssh UI parity.",
+    "files": [
+      "src/cli/ssh.zig"
+    ]
+  },
+  {
+    "hash": "081a5871ee93952a973005f10124d3105d4947cd",
+    "title": "i18n: Update Dutch translations (#15037)",
+    "area": "Ghostty localization",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/nl.po"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "8474e9421ed3d5ee10bc98d5b910f1b483cb24bf",
+    "title": "build: load only the packages libghostty-vt compiles",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      "build.zig",
+      "build.zig.zon",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "flatpak/zig-packages.json",
+      "pkg/wuffs/build.zig",
+      "src/build/LibVtPackages.zig",
+      "src/build/SharedDeps.zig"
+    ]
+  },
+  {
+    "hash": "fd5e90e8c5de3821a8b99558941dc790de5b817a",
+    "title": "libghostty: publish a dependency tarball for offline builds",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/dist_deps.zig"
+    ]
+  },
+  {
+    "hash": "34afe119fcf41989c9dce939894974a7551c16bb",
+    "title": "mirror deps",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      "build.zig.zon",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "flatpak/zig-packages.json"
+    ]
+  },
+  {
+    "hash": "5255e48b6ad831800fad495ec0f2879ed8c89ef0",
+    "title": "libghostty: publish a dependency tarball with each libghostty-vt release (#15095)",
+    "area": "Lib-vt release packaging",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "build.zig",
+      "build.zig.zon",
+      "deps/libghostty-vt-third-party.json",
+      "deps/libghostty-vt.txt",
+      "deps/packages.json",
+      "deps/packages.nix",
+      "deps/packages.txt",
+      "flatpak/zig-packages.json",
+      "pkg/wuffs/build.zig",
+      "src/build/GhosttyDist.zig",
+      "src/build/LibVtPackages.zig",
+      "src/build/SharedDeps.zig",
+      "src/build/dist_deps.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "1da2e165bfc677cb3bd1cc32540941a6b0f8beb6",
+    "title": "ci: check the libghostty-vt ABI with abidiff",
+    "area": "Lib-vt ABI CI",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty C ABI sentinel/compatibility/reference build CI inherited. Rustty Cargo interfaces do not publish the Ghostty C ABI; parent audits runtime and native adapters separately.",
+    "files": [
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "nix/devShell.nix",
+      "test/abi/README.md",
+      "test/abi/check.sh",
+      "test/abi/libghostty-vt.suppr"
+    ]
+  },
+  {
+    "hash": "c757567e433fb51263afa2903ef67ae9f2acf9d2",
+    "title": "ci: build a Zig dependent with the macOS SDK and test the Windows install layout",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Read full lib_version/CMake/pkg-config/InstallDirs/offline dependencies/release workflow and examples diffs. Shared native reference build inherits packaging fixes; Rustty uses Cargo/independent bundles, does not link or publish libghostty-vt artifacts. Parent separately adapts ABI/native tools.",
+    "files": [
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md"
+    ]
+  },
+  {
+    "hash": "e607b9e9726d66a46f521f7a33f524b469501f9d",
+    "title": "ci: strip symbol versions in the ABI export list",
+    "area": "Lib-vt ABI CI",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty C ABI sentinel/compatibility/reference build CI inherited. Rustty Cargo interfaces do not publish the Ghostty C ABI; parent audits runtime and native adapters separately.",
+    "files": [
+      "test/abi/check.sh"
+    ]
+  },
+  {
+    "hash": "6ba2c2b27065e2825745bbb78e7ad5f0b68e1690",
+    "title": "app: add window theme switching action",
+    "area": "Window appearance action",
+    "merge": false,
+    "disposition": "ported",
+    "evidence": "Session set_window_theme config/system/light/dark action implemented through parser/palette/App/native menus+chrome/egui/conditional palettes/color reports/scoped themes/current+new windows. True OS state and listeners remain independent of override; reload preserves override, config resets latest state.",
+    "files": [
+      "include/ghostty.h",
+      "macos/GhosttyUITests/GhosttyThemeTests.swift",
+      "macos/Sources/App/AppDelegate.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "src/App.zig",
+      "src/apprt/action.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/input/Binding.zig",
+      "src/input/command.zig"
+    ],
+    "port_commit": "6aced98",
+    "port_change_id": "tpnlmqr",
+    "validation": "73config+144app+5appearance+1input tests; hidden native_panel;54check offscreen smoke; Windows test-target compile; macOS app no-deps strictClippy."
+  },
+  {
+    "hash": "4a59fd20afed05f3a4799c8d3d70aac4b431de01",
+    "title": "i18n: update window theme action catalogs",
+    "area": "Window appearance action",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty window-action gettext catalogs inherited; Rustty four English command-palette entries ship with6aced98/tpnlmqr and do not load these catalogs.",
+    "files": [
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po"
+    ],
+    "port_commit": "6aced98",
+    "port_change_id": "tpnlmqr",
+    "validation": "73config+144app+5appearance+1input tests; hidden native_panel;54check offscreen smoke; Windows test-target compile; macOS app no-deps strictClippy."
+  },
+  {
+    "hash": "dce5a9464a25b946cc945ebd99c93441cd7a1e9c",
+    "title": "app: add config value to set_window_theme",
+    "area": "Window appearance action",
+    "merge": false,
+    "disposition": "ported",
+    "evidence": "Session set_window_theme config/system/light/dark action implemented through parser/palette/App/native menus+chrome/egui/conditional palettes/color reports/scoped themes/current+new windows. True OS state and listeners remain independent of override; reload preserves override, config resets latest state.",
+    "files": [
+      "include/ghostty.h",
+      "macos/GhosttyUITests/GhosttyThemeTests.swift",
+      "macos/Sources/App/AppDelegate.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/App.zig",
+      "src/apprt/action.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/input/Binding.zig",
+      "src/input/command.zig"
+    ],
+    "port_commit": "6aced98",
+    "port_change_id": "tpnlmqr",
+    "validation": "73config+144app+5appearance+1input tests; hidden native_panel;54check offscreen smoke; Windows test-target compile; macOS app no-deps strictClippy."
+  },
+  {
+    "hash": "8b27b66f3b20f353743895be28f521eb72137c6f",
+    "title": "gtk: follow the system for conditional themes",
+    "area": "Window appearance action",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "Rustty ConfigLoader already maps Auto plus differing light/dark theme variants to System, preventing background/OS feedback;73config tests passed and new Appearance resolver preserves this rule.",
+    "files": [
+      "src/apprt/gtk/class/application.zig",
+      "src/config/Config.zig"
+    ],
+    "port_commit": "6aced98",
+    "port_change_id": "tpnlmqr",
+    "validation": "73config+144app+5appearance+1input tests; hidden native_panel;54check offscreen smoke; Windows test-target compile; macOS app no-deps strictClippy."
+  },
+  {
+    "hash": "27eb594d2aaaa6755a688a5a23f83e2b4342e196",
+    "title": "libghostty: test ABI in CI (#15096)",
+    "area": "Lib-vt ABI CI",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty C ABI sentinel/compatibility/reference build CI inherited. Rustty Cargo interfaces do not publish the Ghostty C ABI; parent audits runtime and native adapters separately.",
+    "files": [
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "nix/devShell.nix",
+      "test/abi/README.md",
+      "test/abi/check.sh",
+      "test/abi/libghostty-vt.suppr"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "6283611ddf8d6d4a55c323b897428bd83b6ad5cc",
+    "title": "cli: verify xterm-ghostty resolves after ssh install",
+    "area": "SSH setup",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty +ssh terminfo authentication/install/verification changes are inherited. Rustty tmuxx transports do not run this remote installer; bounded stderr/native SSH helpers are separate existing transport behavior, not full +ssh UI parity.",
+    "files": [
+      "src/cli/ssh.zig"
+    ]
+  },
+  {
+    "hash": "bbccbb5465d99d1b7441cd7ca1f6bee76e7c88bc",
+    "title": "app: add window theme switching action (#14208)",
+    "area": "Window appearance action",
+    "merge": true,
+    "disposition": "ported",
+    "evidence": "Session set_window_theme config/system/light/dark action implemented through parser/palette/App/native menus+chrome/egui/conditional palettes/color reports/scoped themes/current+new windows. True OS state and listeners remain independent of override; reload preserves override, config resets latest state.",
+    "files": [
+      "include/ghostty.h",
+      "macos/GhosttyUITests/GhosttyThemeTests.swift",
+      "macos/Sources/App/AppDelegate.swift",
+      "macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift",
+      "macos/Sources/Ghostty/Ghostty.App.swift",
+      "po/be.po",
+      "po/bg.po",
+      "po/ca.po",
+      "po/com.mitchellh.ghostty.pot",
+      "po/da.po",
+      "po/de.po",
+      "po/es_AR.po",
+      "po/es_BO.po",
+      "po/es_ES.po",
+      "po/eu.po",
+      "po/fr.po",
+      "po/ga.po",
+      "po/he.po",
+      "po/hr.po",
+      "po/hu.po",
+      "po/id.po",
+      "po/it.po",
+      "po/ja.po",
+      "po/kk.po",
+      "po/ko_KR.po",
+      "po/lt.po",
+      "po/lv.po",
+      "po/mk.po",
+      "po/nb.po",
+      "po/nl.po",
+      "po/pl.po",
+      "po/pt_BR.po",
+      "po/ru.po",
+      "po/sr.po",
+      "po/sr@latin.po",
+      "po/tr.po",
+      "po/uk.po",
+      "po/vi.po",
+      "po/zh_CN.po",
+      "po/zh_TW.po",
+      "src/App.zig",
+      "src/apprt/action.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/config/Config.zig",
+      "src/input/Binding.zig",
+      "src/input/command.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta.",
+    "port_commit": "6aced98",
+    "port_change_id": "tpnlmqr",
+    "validation": "73config+144app+5appearance+1input tests; hidden native_panel;54check offscreen smoke; Windows test-target compile; macOS app no-deps strictClippy."
+  },
+  {
+    "hash": "de4bc494a5d7bb5747bf8cc76b4a31bd033628e2",
+    "title": "i18n: updated Latvian translations",
+    "area": "Ghostty localization",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/lv.po"
+    ]
+  },
+  {
+    "hash": "6095e277a52fb98286a4660520fa189c51a87ec9",
+    "title": "pkg: build simdutf, highway, and wuffs with hidden visibility",
+    "area": "Native dependency exports",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "simdutf/highway/wuffs hidden symbol visibility inherited for native libghostty builds. Rustty does not link these C++/Zig package libraries; native reference tools inherit changed exports.",
+    "files": [
+      "pkg/highway/build.zig",
+      "pkg/simdutf/build.zig",
+      "pkg/wuffs/build.zig"
+    ]
+  },
+  {
+    "hash": "c445f448a7b0e409e71264ca10b302305a62f696",
+    "title": "pkg: build simdutf, highway, and wuffs with hidden visibility (#15102)",
+    "area": "Native dependency exports",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "simdutf/highway/wuffs hidden symbol visibility inherited for native libghostty builds. Rustty does not link these C++/Zig package libraries; native reference tools inherit changed exports.",
+    "files": [
+      "pkg/highway/build.zig",
+      "pkg/simdutf/build.zig",
+      "pkg/wuffs/build.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "8a5d14bd05f8eab80e00ff24a304092c549c9f9b",
+    "title": "i18n: updated Latvian translations (#15100)",
+    "area": "Ghostty localization",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty po catalogs and GTK translated labels are inherited. Rustty egui command_palette/outliner strings do not load gettext catalogs.",
+    "files": [
+      "po/lv.po"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "db663e0755ef2efcc8dd4ba5c8b7f3f25b5914b0",
+    "title": "Update VOUCHED list (#15106)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "16f5674dc3eaeee9575d2b729255f2fe0993ece3",
+    "title": "Update VOUCHED list (#15107)",
+    "area": "Contributor metadata",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "VOUCHED/CODEOWNERS contributor metadata inherited; no Rust runtime consumer.",
+    "files": [
+      ".github/VOUCHED.td"
+    ]
+  },
+  {
+    "hash": "2c76f29972dad21d3f2cc0efde2517a6fa8fed56",
+    "title": "cli: explicitly install terminfo to ~/.terminfo on ssh remote host (#15061)",
+    "area": "SSH setup",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Ghostty +ssh terminfo authentication/install/verification changes are inherited. Rustty tmuxx transports do not run this remote installer; bounded stderr/native SSH helpers are separate existing transport behavior, not full +ssh UI parity.",
+    "files": [
+      "src/cli/ssh.zig"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "3c3a8873ef0ea7843f1712a40b37c671f565f2a9",
+    "title": "doxygen: fix the configuration and keep the build free of warnings",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "Doxyfile",
+      "DoxygenLayout.xml",
+      "include/ghostty/vt/color.h"
+    ]
+  },
+  {
+    "hash": "56919d3ffd0981d52110b8d036dc3743b23ef6bb",
+    "title": "doxygen: register every C example and rename c-vt to c-vt-osc",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "example/c-vt-osc/README.md",
+      "example/c-vt-osc/build.zig",
+      "example/c-vt-osc/build.zig.zon",
+      "example/c-vt-osc/src/main.c",
+      "example/c-vt-static/README.md",
+      "example/c-vt/README.md",
+      "example/c-vt/build.zig",
+      "example/c-vt/build.zig.zon",
+      "example/c-vt/src/main.c",
+      "include/ghostty/vt.h"
+    ]
+  },
+  {
+    "hash": "f21f40018791bd30fe0ecfc7d104dd556226faf7",
+    "title": "doxygen: nest the API reference and describe every topic",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "Doxyfile",
+      "dist/doxygen/pages/groups.dox",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/device.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/io.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/point.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "include/ghostty/vt/unicode.h",
+      "include/ghostty/vt/version.h",
+      "include/ghostty/vt/wasm.h"
+    ]
+  },
+  {
+    "hash": "5acbc10ebf84ccb7a9b2d7daf1784f2b3262d74d",
+    "title": "doxygen: move the API conventions out of the main page",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "dist/doxygen/pages/conventions.md",
+      "dist/doxygen/pages/features.md",
+      "dist/doxygen/pages/memory.md",
+      "dist/doxygen/pages/sized-structs.md",
+      "dist/doxygen/pages/stability.md",
+      "dist/doxygen/pages/values.md",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h"
+    ]
+  },
+  {
+    "hash": "6f41fbaad44e8356abfef9881d10ef0d820ecd7d",
+    "title": "doxygen: write the Examples page and fix example names and READMEs",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "DoxygenLayout.xml",
+      "dist/doxygen/pages/examples.md",
+      "example/c-vt-build-info/README.md",
+      "example/c-vt-color-scheme/README.md",
+      "example/c-vt-colors/README.md",
+      "example/c-vt-effects/README.md",
+      "example/c-vt-encode-focus/README.md",
+      "example/c-vt-encode-key/README.md",
+      "example/c-vt-encode-key/build.zig.zon",
+      "example/c-vt-encode-mouse/README.md",
+      "example/c-vt-encode-mouse/build.zig.zon",
+      "example/c-vt-formatter/README.md",
+      "example/c-vt-grid-ref-tracked/README.md",
+      "example/c-vt-grid-traverse/README.md",
+      "example/c-vt-modes/README.md",
+      "example/c-vt-osc/README.md",
+      "example/c-vt-paste/README.md",
+      "example/c-vt-render/README.md",
+      "example/c-vt-search/README.md",
+      "example/c-vt-selection-gesture/README.md",
+      "example/c-vt-selection/README.md",
+      "example/c-vt-sgr/README.md",
+      "example/c-vt-size-report/README.md",
+      "example/c-vt-static/README.md",
+      "example/c-vt-stream/README.md",
+      "example/cpp-vt-stream/README.md",
+      "example/wasm-key-encode/README.md",
+      "example/wasm-sgr/README.md",
+      "example/wasm-vt/README.md",
+      "example/zig-formatter/README.md",
+      "example/zig-vt-stream/README.md",
+      "example/zig-vt/README.md",
+      "include/ghostty/vt.h"
+    ]
+  },
+  {
+    "hash": "3a73ef54201efa01760013c8bc6ece70075dfed7",
+    "title": "doxygen: move the terminal guides out of the reference pages",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "Doxyfile",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/custom-sequences.md",
+      "dist/doxygen/pages/guides/effects.md",
+      "dist/doxygen/pages/guides/scrollback.md",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/terminal.h"
+    ]
+  },
+  {
+    "hash": "2bc37a0eea6a2e5da08367e62e0f2b2a2e385938",
+    "title": "doxygen: write the main page and Getting Started",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "Doxyfile",
+      "dist/doxygen/pages/examples.md",
+      "dist/doxygen/pages/getting-started.md",
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/main.md",
+      "example/c-vt-hello/README.md",
+      "example/c-vt-hello/build.zig",
+      "example/c-vt-hello/build.zig.zon",
+      "example/c-vt-hello/src/main.c",
+      "include/ghostty/vt.h"
+    ]
+  },
+  {
+    "hash": "7341454308f2b8a564a7540ffa6de2d7cd0d6c85",
+    "title": "doxygen: move the rendering and image guides out of the reference pages",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/custom-sequences.md",
+      "dist/doxygen/pages/guides/effects.md",
+      "dist/doxygen/pages/guides/images.md",
+      "dist/doxygen/pages/guides/rendering.md",
+      "dist/doxygen/pages/guides/scrollback.md",
+      "example/c-vt-effects/src/main.c",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h"
+    ]
+  },
+  {
+    "hash": "51bff35a73097f105078f9566604c265b773ee1c",
+    "title": "doxygen: move the input, grid, selection, search and snapshot guides out of the reference pages",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/grid.md",
+      "dist/doxygen/pages/guides/input.md",
+      "dist/doxygen/pages/guides/search.md",
+      "dist/doxygen/pages/guides/selection.md",
+      "dist/doxygen/pages/guides/snapshots.md",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/grid_ref_tracked.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/point.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h"
+    ]
+  },
+  {
+    "hash": "9a0cb21428205711aa4982089109e919704b1aee",
+    "title": "doxygen: give every topic page the same short intro",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "dist/doxygen/pages/examples.md",
+      "example/c-vt-cmake-cross/README.md",
+      "example/c-vt-cmake-static/README.md",
+      "example/c-vt-cmake/README.md",
+      "example/c-vt-snapshot/src/main.c",
+      "example/swift-vt-xcframework/README.md",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/io.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/point.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "include/ghostty/vt/unicode.h",
+      "include/ghostty/vt/version.h",
+      "include/ghostty/vt/wasm.h"
+    ]
+  },
+  {
+    "hash": "ba66391955118c3bddee80bccb08348f0fe149d9",
+    "title": "doxygen: wrap the markdown pages at 80 columns",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "dist/doxygen/pages/conventions.md",
+      "dist/doxygen/pages/examples.md",
+      "dist/doxygen/pages/features.md",
+      "dist/doxygen/pages/getting-started.md",
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/custom-sequences.md",
+      "dist/doxygen/pages/guides/effects.md",
+      "dist/doxygen/pages/guides/grid.md",
+      "dist/doxygen/pages/guides/images.md",
+      "dist/doxygen/pages/guides/input.md",
+      "dist/doxygen/pages/guides/rendering.md",
+      "dist/doxygen/pages/guides/scrollback.md",
+      "dist/doxygen/pages/guides/search.md",
+      "dist/doxygen/pages/guides/selection.md",
+      "dist/doxygen/pages/guides/snapshots.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/memory.md",
+      "dist/doxygen/pages/sized-structs.md",
+      "dist/doxygen/pages/stability.md",
+      "dist/doxygen/pages/values.md"
+    ]
+  },
+  {
+    "hash": "d2ce23a87c9521931851219885e1ac3ab5733fa5",
+    "title": "doxgyen: update some docs",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "dist/doxygen/pages/features.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/stability.md",
+      "example/c-vt-build-info/src/main.c",
+      "example/c-vt-hello/src/main.c"
+    ]
+  },
+  {
+    "hash": "2f8d9e1f99b18c80bfebbeb1e44ca647db46dec0",
+    "title": "doxygen: update concepts",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      "dist/doxygen/pages/conventions.md",
+      "dist/doxygen/pages/examples.md",
+      "dist/doxygen/pages/getting-started.md",
+      "dist/doxygen/pages/getting-started/building-a-terminal.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/memory.md",
+      "dist/doxygen/pages/sized-structs.md",
+      "dist/doxygen/pages/values.md",
+      "example/c-vt-stream/src/main.c",
+      "include/ghostty/vt.h"
+    ]
+  },
+  {
+    "hash": "477bfd2941c73b8eef96395ee898b0c21f069f18",
+    "title": "libghostty-vt: rewritten Doxygen docs (#15120)",
+    "area": "Lib-vt API documentation",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Complete Doxygen API guides/examples inspected and inherited. Rustty has no C ABI/doc export consumer; native comparison examples/adapter consumers audited by parent.",
+    "files": [
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "Doxyfile",
+      "DoxygenLayout.xml",
+      "dist/doxygen/pages/conventions.md",
+      "dist/doxygen/pages/examples.md",
+      "dist/doxygen/pages/features.md",
+      "dist/doxygen/pages/getting-started.md",
+      "dist/doxygen/pages/getting-started/first-terminal.md",
+      "dist/doxygen/pages/getting-started/installing.md",
+      "dist/doxygen/pages/groups.dox",
+      "dist/doxygen/pages/guides.md",
+      "dist/doxygen/pages/guides/colors.md",
+      "dist/doxygen/pages/guides/custom-sequences.md",
+      "dist/doxygen/pages/guides/effects.md",
+      "dist/doxygen/pages/guides/grid.md",
+      "dist/doxygen/pages/guides/images.md",
+      "dist/doxygen/pages/guides/input.md",
+      "dist/doxygen/pages/guides/rendering.md",
+      "dist/doxygen/pages/guides/scrollback.md",
+      "dist/doxygen/pages/guides/search.md",
+      "dist/doxygen/pages/guides/selection.md",
+      "dist/doxygen/pages/guides/snapshots.md",
+      "dist/doxygen/pages/main.md",
+      "dist/doxygen/pages/memory.md",
+      "dist/doxygen/pages/sized-structs.md",
+      "dist/doxygen/pages/stability.md",
+      "dist/doxygen/pages/values.md",
+      "example/c-vt-build-info/README.md",
+      "example/c-vt-build-info/src/main.c",
+      "example/c-vt-cmake-cross/README.md",
+      "example/c-vt-cmake-static/README.md",
+      "example/c-vt-cmake/README.md",
+      "example/c-vt-color-scheme/README.md",
+      "example/c-vt-colors/README.md",
+      "example/c-vt-effects/README.md",
+      "example/c-vt-effects/src/main.c",
+      "example/c-vt-encode-focus/README.md",
+      "example/c-vt-encode-key/README.md",
+      "example/c-vt-encode-key/build.zig.zon",
+      "example/c-vt-encode-mouse/README.md",
+      "example/c-vt-encode-mouse/build.zig.zon",
+      "example/c-vt-formatter/README.md",
+      "example/c-vt-grid-ref-tracked/README.md",
+      "example/c-vt-grid-traverse/README.md",
+      "example/c-vt-hello/README.md",
+      "example/c-vt-hello/build.zig",
+      "example/c-vt-hello/build.zig.zon",
+      "example/c-vt-hello/src/main.c",
+      "example/c-vt-modes/README.md",
+      "example/c-vt-osc/README.md",
+      "example/c-vt-osc/build.zig",
+      "example/c-vt-osc/build.zig.zon",
+      "example/c-vt-osc/src/main.c",
+      "example/c-vt-paste/README.md",
+      "example/c-vt-render/README.md",
+      "example/c-vt-search/README.md",
+      "example/c-vt-selection-gesture/README.md",
+      "example/c-vt-selection/README.md",
+      "example/c-vt-sgr/README.md",
+      "example/c-vt-size-report/README.md",
+      "example/c-vt-snapshot/src/main.c",
+      "example/c-vt-static/README.md",
+      "example/c-vt-stream/README.md",
+      "example/c-vt-stream/src/main.c",
+      "example/c-vt/README.md",
+      "example/c-vt/build.zig",
+      "example/c-vt/build.zig.zon",
+      "example/c-vt/src/main.c",
+      "example/cpp-vt-stream/README.md",
+      "example/swift-vt-xcframework/README.md",
+      "example/wasm-key-encode/README.md",
+      "example/wasm-sgr/README.md",
+      "example/wasm-vt/README.md",
+      "example/zig-formatter/README.md",
+      "example/zig-vt-stream/README.md",
+      "example/zig-vt/README.md",
+      "include/ghostty/vt.h",
+      "include/ghostty/vt/allocator.h",
+      "include/ghostty/vt/build_info.h",
+      "include/ghostty/vt/color.h",
+      "include/ghostty/vt/color_scheme.h",
+      "include/ghostty/vt/device.h",
+      "include/ghostty/vt/focus.h",
+      "include/ghostty/vt/formatter.h",
+      "include/ghostty/vt/grid_ref.h",
+      "include/ghostty/vt/grid_ref_tracked.h",
+      "include/ghostty/vt/io.h",
+      "include/ghostty/vt/key.h",
+      "include/ghostty/vt/key/encoder.h",
+      "include/ghostty/vt/key/event.h",
+      "include/ghostty/vt/kitty_graphics.h",
+      "include/ghostty/vt/modes.h",
+      "include/ghostty/vt/mouse.h",
+      "include/ghostty/vt/mouse/encoder.h",
+      "include/ghostty/vt/osc.h",
+      "include/ghostty/vt/paste.h",
+      "include/ghostty/vt/point.h",
+      "include/ghostty/vt/render.h",
+      "include/ghostty/vt/screen.h",
+      "include/ghostty/vt/search.h",
+      "include/ghostty/vt/selection.h",
+      "include/ghostty/vt/sgr.h",
+      "include/ghostty/vt/size_report.h",
+      "include/ghostty/vt/snapshot.h",
+      "include/ghostty/vt/style.h",
+      "include/ghostty/vt/sys.h",
+      "include/ghostty/vt/terminal.h",
+      "include/ghostty/vt/types.h",
+      "include/ghostty/vt/unicode.h",
+      "include/ghostty/vt/version.h",
+      "include/ghostty/vt/wasm.h"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  },
+  {
+    "hash": "4d6fb32631d20fbd2203be0fdd5ba8109a00519b",
+    "title": "libghostty-vt: deploy docs from GHA, move to Vercel, prep release site",
+    "area": "Lib-vt docs deployment",
+    "merge": false,
+    "disposition": "inherited/not applicable",
+    "evidence": "Doxygen/libghostty-vt deployment workflow inherited. Rustty does not deploy this documentation or consume its version/tag path.",
+    "files": [
+      ".github/scripts/lib-docs-site.sh",
+      ".github/workflows/lib-docs.yml",
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "dist/doxygen/site/release/robots.txt",
+      "dist/doxygen/site/release/vercel.json",
+      "dist/doxygen/site/tip/robots.txt",
+      "dist/doxygen/site/tip/vercel.json",
+      "src/build/docker/lib-c-docs/Dockerfile",
+      "src/build/docker/lib-c-docs/entrypoint.sh"
+    ]
+  },
+  {
+    "hash": "8b3b025bdbbeac42fe066d2235af5ae5e6744e44",
+    "title": "libghostty-vt: deploy docs from GHA, move to Vercel, prep release site (#15123)",
+    "area": "Lib-vt docs deployment",
+    "merge": true,
+    "disposition": "inherited/not applicable",
+    "evidence": "Doxygen/libghostty-vt deployment workflow inherited. Rustty does not deploy this documentation or consume its version/tag path.",
+    "files": [
+      ".github/scripts/lib-docs-site.sh",
+      ".github/workflows/lib-docs.yml",
+      ".github/workflows/release-lib-vt.yml",
+      ".github/workflows/test.yml",
+      "PACKAGING-LIBGHOSTTY.md",
+      "dist/doxygen/site/release/robots.txt",
+      "dist/doxygen/site/release/vercel.json",
+      "dist/doxygen/site/tip/robots.txt",
+      "dist/doxygen/site/tip/vercel.json",
+      "src/build/docker/lib-c-docs/Dockerfile",
+      "src/build/docker/lib-c-docs/entrypoint.sh"
+    ],
+    "merge_resolution": "git show --remerge-diff inspected: no unique resolution delta."
+  }
+]

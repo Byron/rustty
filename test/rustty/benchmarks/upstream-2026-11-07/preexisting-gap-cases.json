@@ -1,0 +1,242 @@
+[
+  {
+    "request": {
+      "id": "grid/terminal-format/preexisting-origin-0",
+      "kind": "input",
+      "cols": 20,
+      "rows": 10,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b333b38721b5b3f36681b5b323b3548"
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt"
+            },
+            "format_content": "all",
+            "terminal_extra": {
+              "palette": true,
+              "modes": true,
+              "scrolling_region": true,
+              "tabstops": true,
+              "pwd": true,
+              "keyboard": true,
+              "screen": {
+                "cursor": true,
+                "style": true,
+                "hyperlink": true,
+                "protection": true,
+                "kitty_keyboard": true,
+                "charsets": true
+              }
+            },
+            "format_map": true
+          }
+        }
+      ]
+    },
+    "covers": [
+      "terminal.selection"
+    ]
+  },
+  {
+    "request": {
+      "id": "grid/terminal-format/preexisting-origin-1",
+      "kind": "input",
+      "cols": 20,
+      "rows": 10,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b3f3639681b5b333b38721b5b343b3135731b5b3f36681b5b323b3348"
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt"
+            },
+            "format_content": "all",
+            "terminal_extra": {
+              "palette": true,
+              "modes": true,
+              "scrolling_region": true,
+              "tabstops": true,
+              "pwd": true,
+              "keyboard": true,
+              "screen": {
+                "cursor": true,
+                "style": true,
+                "hyperlink": true,
+                "protection": true,
+                "kitty_keyboard": true,
+                "charsets": true
+              }
+            },
+            "format_map": true
+          }
+        }
+      ]
+    },
+    "covers": [
+      "terminal.selection"
+    ]
+  },
+  {
+    "request": {
+      "id": "grid/gesture/line/(0, 1)/(8, 0)/None",
+      "kind": "input",
+      "cols": 20,
+      "rows": 6,
+      "operations": [
+        {
+          "op": "write",
+          "data": "616c70686120626574610d0a0d0a776f72642e74776f5f6d6f72650d0a77696465e69687780d0a6c617374"
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "gesture_press",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 1
+            },
+            "rectangle": false,
+            "gesture": {
+              "xpos": 5,
+              "ypos": 30,
+              "time": 0,
+              "behaviors": [
+                "line",
+                "line",
+                "line"
+              ]
+            }
+          }
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "gesture_drag",
+            "point": {
+              "tag": "active",
+              "x": 8,
+              "y": 0
+            },
+            "rectangle": true,
+            "gesture": {
+              "xpos": 85,
+              "ypos": 10
+            }
+          }
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "gesture_release",
+            "point": {
+              "tag": "active",
+              "x": 8,
+              "y": 0
+            },
+            "rectangle": false,
+            "gesture": {
+              "xpos": 85,
+              "ypos": 10
+            }
+          }
+        }
+      ]
+    },
+    "covers": [
+      "terminal.selection",
+      "terminal.tracked"
+    ]
+  },
+  {
+    "request": {
+      "id": "preexisting-check/blank-initial-line-press",
+      "kind": "input",
+      "cols": 20,
+      "rows": 6,
+      "operations": [
+        {
+          "op": "write",
+          "data": "616c70686120626574610d0a0d0a776f72642e74776f5f6d6f72650d0a77696465e69687780d0a6c617374"
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "gesture_press",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 1
+            },
+            "rectangle": false,
+            "gesture": {
+              "xpos": 5,
+              "ypos": 30,
+              "time": 0,
+              "behaviors": [
+                "line",
+                "line",
+                "line"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "covers": [
+      "terminal.selection",
+      "terminal.tracked"
+    ]
+  },
+  {
+    "request": {
+      "id": "preexisting/graphics/placed-priority",
+      "kind": "input",
+      "cols": 12,
+      "rows": 3,
+      "graphics_max_bytes": 8,
+      "observe_graphics": true,
+      "observe_graphics_placements": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5f47663d33322c733d312c763d312c693d392c613d542c433d313b415149442f773d3d1b5c1b5f47663d33322c733d312c763d312c693d312c613d743b415149442f773d3d1b5c1b5f47663d33322c733d312c763d312c693d332c613d743b415149442f773d3d1b5c"
+        }
+      ]
+    },
+    "covers": [
+      "graphics.kitty"
+    ]
+  },
+  {
+    "request": {
+      "id": "preexisting/graphics/transient-priority",
+      "kind": "input",
+      "cols": 12,
+      "rows": 3,
+      "graphics_max_bytes": 8,
+      "observe_graphics": true,
+      "observe_graphics_placements": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5f47663d33322c733d312c763d312c693d392c613d743b415149442f773d3d1b5c1b5f47663d33322c733d312c763d312c693d312c613d742c4e3d313b415149442f773d3d1b5c1b5f47663d33322c733d312c763d312c693d332c613d743b415149442f773d3d1b5c"
+        }
+      ]
+    },
+    "covers": [
+      "graphics.kitty"
+    ]
+  }
+]

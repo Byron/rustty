@@ -1,0 +1,149 @@
+{
+  "purpose": "Two existing complete bounded failures, each replayed by Rust runner as full/scalar/chunks. Compare every saved artifact byte to the existing hashes; no new workload or timing claim.",
+  "fixture": "/private/tmp/rustty-reintegrate.leadij/artifact-buffering-witness/fixtures.json",
+  "fixture_sha256": "51d90bd2c0cc3bfc4e090591ac824213150ca0ebd7a05cc6283aa6d210a30150",
+  "base_cases": 2,
+  "expected_comparisons": 6,
+  "expected_failures": 6,
+  "largest_response_bytes": 41654,
+  "expected_by_id": [
+    {
+      "id": "pages/wide-cut/primary/1/wide/False",
+      "source_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/rest/failures/010468",
+      "files": {
+        "request.json": {
+          "bytes": 742,
+          "sha256": "ebcbc15b3d1bd8120549de2b597f4fbdf6dc499ac63151038133cd16ec39044f"
+        },
+        "zig.json": {
+          "bytes": 24041,
+          "sha256": "bf5eb97bc2a9dca9e7f7bb198d1d95c6d6d4f8c172ad9a112d661c88395f5673"
+        },
+        "rust.json": {
+          "bytes": 24089,
+          "sha256": "637075eec434f36e60c48aaeb79e23354ed4d9f56cd98143bbc372e21cb36a44"
+        },
+        "difference.txt": {
+          "bytes": 4391,
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021"
+        }
+      }
+    },
+    {
+      "id": "pages/wide-cut/primary/1/wide/False/scalar",
+      "source_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/rest/failures/010469",
+      "files": {
+        "request.json": {
+          "bytes": 767,
+          "sha256": "c1452c4614382cd1fa9502cdaa327d970db56c229b439282470c6edf13d58512"
+        },
+        "zig.json": {
+          "bytes": 24048,
+          "sha256": "eaac6764887e5e3f2ac2cc38fedc3088c3e57cc197fb7a9491ed8f16ccf6a928"
+        },
+        "rust.json": {
+          "bytes": 24096,
+          "sha256": "bdfc505affc6f649cb17f434739ff63eb08737dce40bfd65d247771a565fca4e"
+        },
+        "difference.txt": {
+          "bytes": 4391,
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021"
+        }
+      }
+    },
+    {
+      "id": "pages/wide-cut/primary/1/wide/False/chunks",
+      "source_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/rest/failures/010470",
+      "files": {
+        "request.json": {
+          "bytes": 972,
+          "sha256": "6c20b344bbe5684564b337e969c39dd69e9f038c4ff0599d5fc8ca31fae3bc73"
+        },
+        "zig.json": {
+          "bytes": 24048,
+          "sha256": "afdaf5f0944b172aaa4e673e0140664133389d525ac0a43dd9a86fa78ab6eb19"
+        },
+        "rust.json": {
+          "bytes": 24096,
+          "sha256": "c01635ecb06ed2607bff1baf808e83d010868340c4df7def3174bc6a65384d50"
+        },
+        "difference.txt": {
+          "bytes": 4391,
+          "sha256": "da6d96bccf0896a8d7c680f50242b84660de174410ff6da6429f862b5c263021"
+        }
+      }
+    },
+    {
+      "id": "pages/wide-cut/primary/1/wide/True",
+      "source_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/rest/failures/010471",
+      "files": {
+        "request.json": {
+          "bytes": 765,
+          "sha256": "2e98dec523547f9785914e6f9f3ffb34385145ef7afc226c79fee44a48eafa46"
+        },
+        "zig.json": {
+          "bytes": 41551,
+          "sha256": "d7dc1018be9784a43d1dc1ae3de02767bf0cf0977a25b3d1f25eb6c24f9c43e0"
+        },
+        "rust.json": {
+          "bytes": 41647,
+          "sha256": "3a764812af124e7bb6cf793b0e41261ae41eda7f49746890437ac6423dc3c22a"
+        },
+        "difference.txt": {
+          "bytes": 4895,
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6"
+        }
+      }
+    },
+    {
+      "id": "pages/wide-cut/primary/1/wide/True/scalar",
+      "source_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/rest/failures/010472",
+      "files": {
+        "request.json": {
+          "bytes": 790,
+          "sha256": "af7e961a6c561185c24ad50c351befa351223f103444a7f15b3578bb3730de99"
+        },
+        "zig.json": {
+          "bytes": 41558,
+          "sha256": "500b98c46019c55bd8d907798a8687623d9545cbddec35f966b465f5b484298c"
+        },
+        "rust.json": {
+          "bytes": 41654,
+          "sha256": "1c32febb3efde25b6345d9e04253a16bd1432ac0fbeb93b5c3f25913fa2fb144"
+        },
+        "difference.txt": {
+          "bytes": 4895,
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6"
+        }
+      }
+    },
+    {
+      "id": "pages/wide-cut/primary/1/wide/True/chunks",
+      "source_artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/rest/failures/010473",
+      "files": {
+        "request.json": {
+          "bytes": 1097,
+          "sha256": "565d9d7090758d240684eeb7fa572264ca80b03181a8b8fbc30a6823f6de8036"
+        },
+        "zig.json": {
+          "bytes": 41558,
+          "sha256": "f82dba2ad03f8d1d2d9ac4d8aa8a936f0991c4bd64a951045f6e4ef2be4fb8ab"
+        },
+        "rust.json": {
+          "bytes": 41654,
+          "sha256": "d68fced3ed5cfa3fcb890521c70c978a637f60e0b691a7dff2b4615b3ef2e8d5"
+        },
+        "difference.txt": {
+          "bytes": 4895,
+          "sha256": "7969864f1974be307c6f40e67eff1ff6360e390ac9494a833503023687b0e7d6"
+        }
+      }
+    }
+  ],
+  "plan_review": {
+    "finding": "No correctness issue in buffering-only plan.",
+    "byte_preservation": "serde_json serialization and the existing writeln newline keep their order and contents; BufWriter changes how writes reach the File.",
+    "error_preservation": "Propagate serialization, newline and explicit flush errors with ?. Explicit flush must occur before returning success because BufWriter Drop cannot report a delayed write failure.",
+    "scope": "flush writes to the underlying File, as the old writes did; this does not add fsync/durability semantics. No performance claim without measurement."
+  }
+}

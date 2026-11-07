@@ -1,0 +1,111 @@
+{
+  "started": 1794045272.6646981,
+  "baseline": "1aa7813cdb93cf59cc9ac869654d705a9e1291db / yppsryw",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "profile": "release thinLTO codegen-units=1 locked/offline",
+  "binaries": {
+    "before": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "sha256": "69b1bef6a065b80dc6846b7f4aa335dd18fb6b338479ad5690f18fd696eb96c7"
+    },
+    "after": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "sha256": "5ed24febd8fe6049200feae3e067c432c4478ce1778c8fedae6671333dbe1a3b"
+    },
+    "native": {
+      "path": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "sha256": "1bbb6960f2a3f36d8eccb410f59e9621f528cdc44ef21760246cc2d8b2e2b772"
+    }
+  },
+  "configs": {
+    "links-short-120x80-10000": {
+      "name": "links-short-120x80-10000",
+      "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/links-short.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "legacy"
+    },
+    "links-full-120x80-10000": {
+      "name": "links-full-120x80-10000",
+      "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/links-full.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "legacy"
+    },
+    "linked-wide": {
+      "name": "linked-wide",
+      "data": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/linked-wide.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "legacy"
+    },
+    "linked-emoji-control": {
+      "name": "linked-emoji-control",
+      "data": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/linked-emoji-control.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "unicode"
+    },
+    "plain": {
+      "name": "plain",
+      "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/plain.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "legacy"
+    },
+    "plain-styled-protected": {
+      "name": "plain-styled-protected",
+      "data": "/private/tmp/rustty-reintegrate.leadij/blank-inputs/plain-styled-protected.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "legacy"
+    },
+    "styled-4": {
+      "name": "styled-4",
+      "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/styled-4.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "legacy"
+    },
+    "combining-control": {
+      "name": "combining-control",
+      "data": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/combining-control.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "unicode"
+    },
+    "emoji-control": {
+      "name": "emoji-control",
+      "data": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/emoji-control.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "unicode"
+    },
+    "linked-repaint-ascii": {
+      "name": "linked-repaint-ascii",
+      "data": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/linked-repaint-ascii.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 0,
+      "grapheme_width": "unicode"
+    },
+    "linked-repaint-mixed": {
+      "name": "linked-repaint-mixed",
+      "data": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/linked-repaint-mixed.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 0,
+      "grapheme_width": "unicode"
+    }
+  },
+  "finished": 1794045354.998697
+}

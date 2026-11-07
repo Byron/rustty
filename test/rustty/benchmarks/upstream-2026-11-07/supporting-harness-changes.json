@@ -1,0 +1,41 @@
+[
+  {
+    "key": "buffered-failure-artifacts",
+    "commit": "96776a92676c59a40638b97621b160f72e64159a",
+    "change": "qtsstpq",
+    "subject": "perf(test): buffer parity failure artifacts",
+    "author": "Codex <codex@openai.com>",
+    "parent": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+    "scope": "User-steered supporting harness optimization, separate from the 23 incoming ports. No original history rewrite.",
+    "paths": [
+      "test/rustty/parity-runner.rs"
+    ],
+    "patch": "buffered-artifact-change.patch",
+    "patch_sha256": "41f08ef0115d8f5071ed7ebb04ae645bc3880961d5de4966a896f539b0627b0f",
+    "result": "Buffer JSON failure writes and explicitly flush before success, preserving serializer formatting, trailing newlines, directories and write-error propagation.",
+    "validation": {
+      "runner_tests": 13,
+      "strict_targeted_clippy": "passed",
+      "formatting": "passed",
+      "saved_files_exact": 192,
+      "paired_rounds": 3,
+      "workspace_reuse": "Full workspace and default/all-feature Clippy passed at parent ca7; immutable diff proves only this runner writer changes, with new focused tests and strict runner Clippy. VT/platform/shared-consumer source remains unchanged.",
+      "logs": [
+        "buffered-artifact-runner-tests.log",
+        "buffered-artifact-clippy.log",
+        "buffered-artifact-format.log",
+        "buffered-artifact-build.log"
+      ]
+    },
+    "measurement": {
+      "source": "artifact-buffering-witness/measurement.json",
+      "sha256": "fdc063436464494cc0a9ee8078f6ab89440d666a1a9e82a6d87e794725af217d",
+      "median_before_ns": 236291709,
+      "median_after_ns": 19955083,
+      "elapsed_change_percent": -91.55489497094457,
+      "scope": "Whole Rust-runner wall time including process/oracle startup, comparisons and saved failure artifacts; excludes post-run artifact hashing. Not terminal throughput or UI latency."
+    },
+    "source_guard": "final-buffered-rest-reuse-guards.json",
+    "independent_review": "artifact-buffering-witness/root-review.json"
+  }
+]

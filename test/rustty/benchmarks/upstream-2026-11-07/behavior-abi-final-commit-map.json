@@ -1,0 +1,1171 @@
+[
+  {
+    "hash": "7e7968826f02f846e04706729cdccc4b85b85258",
+    "title": "tmux: unescape %output and handle window-close",
+    "area": "Tmux parser and session state",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "c2d93620efc6364b95641fa317d428b8a4e1f9ab",
+    "title": "tmux: do not unescape %output in the parser",
+    "area": "Tmux parser and session state",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "dc6ab39fb1f31c6e0ffe2fadfc0b3e2d4d347442",
+    "title": "termio: handle tmux active_window action",
+    "area": "Tmux parser and session state",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "9a920818820f0885e9302b6831cdfe5a2aab67a4",
+    "title": "tmux: honor session id on active window changes",
+    "area": "Tmux parser and session state",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "7e4cc4fae011dc3a133ce625d6cf6f0d546be64a",
+    "title": "tmux: reject oversized control ids without leaking",
+    "area": "Tmux parser and session state",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "44a4911e9124e64f5da85255e29c21cdfc3d3941",
+    "title": "terminal: implement DECIC, DECDC, DECBI, and DECFI",
+    "area": "VT420 horizontal operations",
+    "merge": false,
+    "disposition": "ported and validated",
+    "evidence": "No Rust ESC 6/9 or CSI apostrophe }/~ dispatch at c06197283; add shared terminal operations and native regressions.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683",
+      "tix_id": "ouskkly",
+      "area": "VT420 horizontal controls",
+      "upstream_prefixes": [
+        "44a4911e9",
+        "86d97211a"
+      ],
+      "validation": "46 Rust tests;12 native;root600 stress native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "86d97211ae167da14d38d8f30064f7802094b9c8",
+    "title": "terminal: implement DECIC, DECDC, DECBI, and DECFI (#14884)",
+    "area": "VT420 horizontal operations",
+    "merge": true,
+    "disposition": "ported and validated",
+    "evidence": "No Rust ESC 6/9 or CSI apostrophe }/~ dispatch at c06197283; add shared terminal operations and native regressions.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683",
+      "tix_id": "ouskkly",
+      "area": "VT420 horizontal controls",
+      "upstream_prefixes": [
+        "44a4911e9",
+        "86d97211a"
+      ],
+      "validation": "46 Rust tests;12 native;root600 stress native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "f761046d6b8a30ad49181ad330ae2f18532cb193",
+    "title": "formatter: restore a pending wrap at the right margin",
+    "area": "Formatter pending wrap at right margin",
+    "merge": false,
+    "disposition": "ported and validated",
+    "evidence": "formatter.rs screen_extra uses physical last column even after restoring horizontal margins.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "ab32a792dbbb61dc66613ae0ca5f4fe2f240c031",
+      "tix_id": "powxpsq",
+      "area": "Formatter margin pending wrap",
+      "upstream_prefixes": [
+        "f761046d6",
+        "9781c0afc"
+      ],
+      "validation": "20 Rust tests;33 native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "9781c0afc8225510e33127466f0815eb51086d7d",
+    "title": "formatter: restore a pending wrap at the right margin (#14918)",
+    "area": "Formatter pending wrap at right margin",
+    "merge": true,
+    "disposition": "ported and validated",
+    "evidence": "formatter.rs screen_extra uses physical last column even after restoring horizontal margins.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "ab32a792dbbb61dc66613ae0ca5f4fe2f240c031",
+      "tix_id": "powxpsq",
+      "area": "Formatter margin pending wrap",
+      "upstream_prefixes": [
+        "f761046d6",
+        "9781c0afc"
+      ],
+      "validation": "20 Rust tests;33 native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "2ddcda8e80fdf53d2a6fdee9d36f4986d858d477",
+    "title": "tmux: test %exit with and without a reason",
+    "area": "Tmux parser and session state",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "0a5a6a6e1a20928f4b097d51ec9fcf06de353024",
+    "title": "Merge remote-tracking branch 'origin/main' into tmux-pr4-protocol",
+    "area": "Tmux parser and session state",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "cd00d09c64c34c3074b0b2c2f584fce6fbab2ca9",
+    "title": "tmux: ignore active_window in raw startup tests",
+    "area": "Tmux parser and session state",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "eec45a52dda2a3080023ef45d37797a091b486bd",
+    "title": "tmux: handle window-close and active window (#14273)",
+    "area": "Tmux parser and session state",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "51e7fe51db607773a651b161527beb10ce92a611",
+    "title": "terminal/tmux: parse %output without a regex",
+    "area": "Tmux parser and session state",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "ae0dc1b7136c2baddc3e067663aa041cd555cfda",
+    "title": "terminal/tmux: parse %output without a regex (#14947)",
+    "area": "Tmux parser and session state",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "tmuxx-protocol byte-slice Decoder checks u64 IDs and preserves arbitrary output; client State routes session/window/close/exit correctly; native tmux uses binary frames.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "b57fb615033447b4662ed7a603d714555a90cda9",
+      "tix_id": "ouskoty",
+      "area": "Existing tmux control guarantees",
+      "upstream_prefixes": [
+        "7e7968826",
+        "c2d93620e",
+        "dc6ab39fb",
+        "9a9208188",
+        "7e4cc4fae",
+        "2ddcda8e8",
+        "cd00d09c6",
+        "51e7fe51d",
+        "0a5a6a6e1",
+        "eec45a52d",
+        "ae0dc1b71"
+      ],
+      "validation": "26 protocol/client tests;production already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "41557e2ccf7f27b7ed6665b163bd467d4fa8691e",
+    "title": "terminal: store Style as a packed u128",
+    "area": "Packed style representation",
+    "merge": false,
+    "disposition": "separate performance audit",
+    "evidence": "C adapter follows packed core style; Rust packed style optimization and tests are owned by performance audit. C frozen ABI has no Rust export counterpart.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "687f37acd90462d451acd5f79042822d5d0255fb",
+    "title": "terminal: pack Style into 128 bits and simplify style updates (#15023)",
+    "area": "Packed style representation",
+    "merge": true,
+    "disposition": "separate performance audit",
+    "evidence": "C adapter follows packed core style; Rust packed style optimization and tests are owned by performance audit. C frozen ABI has no Rust export counterpart.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "faa346b068361c47826b653af5e4a526e5a4e957",
+    "title": "terminal: print uses the right margin after wrapping",
+    "area": "Print right edge after wrap",
+    "merge": false,
+    "disposition": "ported and validated",
+    "evidence": "print_with_properties and append_grapheme reuse right edge computed before print_wrap; print_ascii duplicates old fallback.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "fed6e4c5733f7a9a7e5761414843f92a6586df30",
+      "tix_id": "klmtlvn",
+      "area": "Right margin after wrap",
+      "upstream_prefixes": [
+        "faa346b06",
+        "77f85cd67"
+      ],
+      "validation": "34 Rust tests;24 native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "77f85cd67c4c434acc714bb1d1248107a3782a68",
+    "title": "terminal: print uses the right margin after wrapping (#15030)",
+    "area": "Print right edge after wrap",
+    "merge": true,
+    "disposition": "ported and validated",
+    "evidence": "print_with_properties and append_grapheme reuse right edge computed before print_wrap; print_ascii duplicates old fallback.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "fed6e4c5733f7a9a7e5761414843f92a6586df30",
+      "tix_id": "klmtlvn",
+      "area": "Right margin after wrap",
+      "upstream_prefixes": [
+        "faa346b06",
+        "77f85cd67"
+      ],
+      "validation": "34 Rust tests;24 native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "5db83d7689bd7eaaaeb27198c9f870b04794cc8c",
+    "title": "libghostty-vt: reserved allocator vtable slots, revamp allocator docs",
+    "area": "C allocator vtable compatibility",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Optional resize/remap fallback and reserved slots apply to GhosttyAllocator; Rust uses Rust-owned Vec/Arc and allocator paths, with no GhosttyAllocator vtable caller.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "ee02d019e8459ed4d09fac55753ad2363c5a8b01",
+    "title": "libghostty-vt: reserved allocator vtable slots, revamp allocator docs (#15068)",
+    "area": "C allocator vtable compatibility",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "Optional resize/remap fallback and reserved slots apply to GhosttyAllocator; Rust uses Rust-owned Vec/Arc and allocator paths, with no GhosttyAllocator vtable caller.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "8f7fc00c3da2ac410d73256fc34ecce81ea49344",
+    "title": "libghostty-vt: test that the C headers match the Zig types",
+    "area": "C header and Zig type parity",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "New abi_test checks sizes/offsets/enums/type registry; Rust crate is an rlib with typed Rust exports, no duplicated C declarations.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "942e353465eb80b0bdb63bfb116d95fcb0d8edbf",
+    "title": "libghostty-vt: test that the C headers match the Zig types (#15071)",
+    "area": "C header and Zig type parity",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "New abi_test checks sizes/offsets/enums/type registry; Rust crate is an rlib with typed Rust exports, no duplicated C declarations.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "f5dcef0453e1dd65f080577e07c6d9163dab218f",
+    "title": "libghostty: add a version header and ghostty_version()",
+    "area": "libghostty-vt version header",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "ghostty_version and version.h expose libghostty-vt release metadata; Rust workspace has independent Cargo version and no runtime link to this C library. Release packaging also covered by app audit.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "9fc62a98cc765f2c341d317f2ee684ebb9584237",
+    "title": "libghostty: prepare libghostty-vt for tagged releases (#15069)",
+    "area": "libghostty-vt version header",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "ghostty_version and version.h expose libghostty-vt release metadata; Rust workspace has independent Cargo version and no runtime link to this C library. Release packaging also covered by app audit.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "8c0c45c18a17fe8dc270b4c80ff31053c6f52a89",
+    "title": "libghostty-vt: return GHOSTTY_UNSUPPORTED for unknown keys",
+    "area": "C enum and option validation",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "Unknown C integer keys return unsupported and C enum values are validated before dereference in every build. Rust public enums are typed; serialized enums are validated by serde. No integer-keyed C dispatch surface exists.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "40066da055311c991b5c45be67313ef2b3661539",
+    "title": "libghostty-vt: return GHOSTTY_UNSUPPORTED for unknown keys (#15070)",
+    "area": "C enum and option validation",
+    "merge": true,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "Unknown C integer keys return unsupported and C enum values are validated before dereference in every build. Rust public enums are typed; serialized enums are validated by serde. No integer-keyed C dispatch surface exists.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "02cf8a6a2fbac49a7cf661b5eebfe57b98f21b4b",
+    "title": "libghostty-vt: zero and freeze the structs used for callbacks",
+    "area": "Initialized C callback responses",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "C query callback outputs are zero-initialized and validated. Rust EffectHandler returns fully initialized Option<ColorScheme>, Option<DeviceAttributes>, Option<Size>, Vec or typed clipboard results.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "9e0d83ceea1a268bbe6c8abefa584782e8e5d321",
+    "title": "libghostty-vt: drop the size field from GridRef and Selection",
+    "area": "Frozen C grid and selection values",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "C GridRef/Selection remove size fields; Rust GridPoint/Selection use row IDs and typed fields, not borrowed C page pointers.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "a447ff7d86ecf6c2e52779c0768e476d15d9e914",
+    "title": "libghostty-vt: make GhosttyStyle a frozen 16-byte struct",
+    "area": "Frozen 16-byte C style",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "C Style.write masks reserved bits and endian-converts packed Style. Rust renderer reads typed Rust Style, not the external frozen C layout; core packing is performance-audit scope.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "49fbdafd1df45dfc7e5e8034be03f3d0b89e50a2",
+    "title": "libghostty-vt: set formatter options by key",
+    "area": "Keyed C formatter options",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "Rust TerminalFormatter exposes typed format/options/extras and selection; replacement key setters add no formatting capability. Right-margin replay fix is tracked separately.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "742fc2f2e20f2a6f1a8db43b1268db3d85161360",
+    "title": "libghostty-vt: one sized-struct rule for every sized struct",
+    "area": "C sized-struct compatibility",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Base layout checks, zero extension of missing inputs, zero-tail validation and bounded output writes apply to C-owned structs. Rust interfaces use typed values/references and existing snapshot format versions, without sized C structs.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "86aef72a2c8e67c780867de2378b2fc4d6dcd9ca",
+    "title": "libghostty-vt: zero and freeze the structs used for callbacks (#15074)",
+    "area": "Initialized C callback responses",
+    "merge": true,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "C query callback outputs are zero-initialized and validated. Rust EffectHandler returns fully initialized Option<ColorScheme>, Option<DeviceAttributes>, Option<Size>, Vec or typed clipboard results.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0",
+    "title": "libghostty-vt: frozen value structs and one sized-struct rule (#15075)",
+    "area": "C sized-struct compatibility",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "Base layout checks, zero extension of missing inputs, zero-tail validation and bounded output writes apply to C-owned structs. Rust interfaces use typed values/references and existing snapshot format versions, without sized C structs.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "1a2cf06dd1284f84bb28d87dbc3a055e97c93f42",
+    "title": "docs: add a packaging guide for libghostty-vt",
+    "area": "Lib-vt release packaging",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "e95bed63330cc921f3cf2fe3d14e024396b09d43",
+    "title": "libghostty: release workflow and packaging guide for libghostty-vt (#15076)",
+    "area": "Lib-vt release packaging",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "5ce2325ec623dfa192826521ca85f0dc0cf649b3",
+    "title": "terminal: clear cursor pin garbage flag after resize",
+    "area": "Live cursor after shrink",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "Rust row/column cursor clamps during resize; graphics_place resolves a fresh live row ID. Focused image-placement regression recommended.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "9b51762eb5b3eb41facb70132c93a1eb105fc63b",
+      "tix_id": "qouystx",
+      "area": "Virtual placeholders and cursor shrink equivalence",
+      "upstream_prefixes": [
+        "44385f07c",
+        "c412a3199",
+        "5ce2325ec",
+        "76329e5ad"
+      ],
+      "validation": "7 Rust tests;66 native;cursor shrink already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "44385f07c33972e75087bf2343ec287a79d5ce7b",
+    "title": "terminal/kitty: only target virtual placements from placeholders",
+    "area": "Kitty placeholder placement kind",
+    "merge": false,
+    "disposition": "ported and validated",
+    "evidence": "Graphics::placeholder_target explicit-ID path lacks virtual placement filter; shared renderer consumes it.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "9b51762eb5b3eb41facb70132c93a1eb105fc63b",
+      "tix_id": "qouystx",
+      "area": "Virtual placeholders and cursor shrink equivalence",
+      "upstream_prefixes": [
+        "44385f07c",
+        "c412a3199",
+        "5ce2325ec",
+        "76329e5ad"
+      ],
+      "validation": "7 Rust tests;66 native;cursor shrink already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "657e82d1a34b3d01d53b04e4c040af364786cf53",
+    "title": "libghostty-vt: INVALID=0 key enums, one cursor style and image layer enum",
+    "area": "C key numbering and shared enum names",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "INVALID=0 and unified C cursor enum are ABI normalization. Kitty layer bitmask permits combinations; Rust Renderer::prepare_graphics already returns all three z-based layers and public placements allow arbitrary filtering.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "796f09a6f4bb1505e3b417c6d1db16cf74a14768",
+    "title": "libghostty-vt: consistent setter names, results, and NULL defaults",
+    "area": "C setter defaults and explicit search actions",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "NULL reset semantics and setter result/name normalization are C-only. Rust TerminalSearch::select(Direction,SelectScroll) already navigates both ways and desktop Search::navigate calls it.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "9f09a053dbf2d3f533adfd5d812f08d70978bc51",
+    "title": "libghostty-vt: one shape for every function that fills a caller buffer",
+    "area": "C output-buffer shapes",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "Pointer/capacity/required-size results and bounded grapheme writes replace raw C buffers; Rust encoders/formatters return Vec/String and cell text or images expose length-bearing references.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "6dc6cd92752b905e5d466bb319181319d2f38ee8",
+    "title": "libghostty-vt: continuation size query succeeds when nothing is pending",
+    "area": "Empty continuation output",
+    "merge": false,
+    "disposition": "already equivalent",
+    "evidence": "Parser::continuation constructs Ok(Vec::new()) for ground, and continuation.rs already checks successful empty tails after completion and overflow recovery.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "03bd7e76a0ea68fb2d5856b1bc3153135ebda91b",
+    "title": "libghostty-vt: consistent key enums, signatures, and buffer shapes (#15089)",
+    "area": "C enum, setter and buffer merge",
+    "merge": true,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "Combines 657e82d1a,796f09a6f,9f09a053d,6dc6cd927; empty remerge diff. Rust counterparts described in those rows.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "e9b6108f3895543d24625630593b7987e794a48e",
+    "title": "libghostty-vt: version the ELF exports, add GHOSTTY_DEPRECATED",
+    "area": "C ELF symbol versioning",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Version script hides private dependency exports and versions ghostty_* symbols; Rust applications do not dynamically load libghostty-vt. Build packaging covered by app audit.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "18365c6fefd43ec6337b0e71c83d20c62b48c494",
+    "title": "libghostty-vt: key and mouse event accessors report NULL",
+    "area": "Nullable C input event accessors",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "C null handles return defaults/errors, missing mouse button returns no_value. Rust KeyEvent and MouseEvent require typed live values and represent missing button as Option.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "5af2876e9a73c9422fed52f905ec5913fa417fb7",
+    "title": "libghostty-vt: export every symbol in every build",
+    "area": "C symbol stability across feature builds",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "All C functions remain exported with unsupported stubs and feature-query flags. Rust Cargo features are allocation-probe/scalar-kernels; terminal API modules are always compiled, with no optional C symbols.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "ad89e75cc5278da9a7594eb3d2d58687397c00a8",
+    "title": "example: set the unshifted codepoint in c-vt-encode-key",
+    "area": "C key example unshifted codepoint",
+    "merge": false,
+    "disposition": "already equivalent / example inherited",
+    "evidence": "Example now sets unshifted c for Ctrl-C; Rust KeyEvent::plain sets ASCII unshifted and desktop input builds unshifted from the unmodified key before encoding.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "ee5d0f668c8f7410bdba56fa20b379e080fba68f",
+    "title": "libghostty-vt: version the ELF exports, one symbol set for every build (#15091)",
+    "area": "C symbol stability across feature builds",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "All C functions remain exported with unsupported stubs and feature-query flags. Rust Cargo features are allocation-probe/scalar-kernels; terminal API modules are always compiled, with no optional C symbols.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "76329e5ad9731a74587bc6536ea308d33ad09149",
+    "title": "terminal: clear cursor pin garbage flag after resize (#15085)",
+    "area": "Live cursor after shrink",
+    "merge": true,
+    "disposition": "already equivalent",
+    "evidence": "Rust row/column cursor clamps during resize; graphics_place resolves a fresh live row ID. Focused image-placement regression recommended.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "9b51762eb5b3eb41facb70132c93a1eb105fc63b",
+      "tix_id": "qouystx",
+      "area": "Virtual placeholders and cursor shrink equivalence",
+      "upstream_prefixes": [
+        "44385f07c",
+        "c412a3199",
+        "5ce2325ec",
+        "76329e5ad"
+      ],
+      "validation": "7 Rust tests;66 native;cursor shrink already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "383a6f6ae344998bc637025330ffab69aed0c0fe",
+    "title": "terminal/kitty: find the newest numbered image by transmission",
+    "area": "Kitty image number transmission order",
+    "merge": false,
+    "disposition": "ported and validated",
+    "evidence": "Images::resolve_number uses animated generation; stable Image.identity already exists and snapshots preserve its ordering.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "c43af2aec6e7fefb999a1ed04aadc71c93ba81f7",
+      "tix_id": "nvwpkxp",
+      "area": "Image number transmission order",
+      "upstream_prefixes": [
+        "383a6f6ae",
+        "97f422fa2"
+      ],
+      "validation": "59 Rust tests;6 native after confirmed rebuild",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "97f422fa2464c4770d1d4919d39cfb33da571b79",
+    "title": "terminal/kitty: find the newest numbered image by transmission (#15094)",
+    "area": "Kitty image number transmission order",
+    "merge": true,
+    "disposition": "ported and validated",
+    "evidence": "Images::resolve_number uses animated generation; stable Image.identity already exists and snapshots preserve its ordering.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "c43af2aec6e7fefb999a1ed04aadc71c93ba81f7",
+      "tix_id": "nvwpkxp",
+      "area": "Image number transmission order",
+      "upstream_prefixes": [
+        "383a6f6ae",
+        "97f422fa2"
+      ],
+      "validation": "59 Rust tests;6 native after confirmed rebuild",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "c412a31994e55e05c58c5c540dd2adf4b71f7f96",
+    "title": "terminal/kitty: only target virtual placements from placeholders (#15086)",
+    "area": "Kitty placeholder placement kind",
+    "merge": true,
+    "disposition": "ported and validated",
+    "evidence": "Graphics::placeholder_target explicit-ID path lacks virtual placement filter; shared renderer consumes it.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "9b51762eb5b3eb41facb70132c93a1eb105fc63b",
+      "tix_id": "qouystx",
+      "area": "Virtual placeholders and cursor shrink equivalence",
+      "upstream_prefixes": [
+        "44385f07c",
+        "c412a3199",
+        "5ce2325ec",
+        "76329e5ad"
+      ],
+      "validation": "7 Rust tests;66 native;cursor shrink already equivalent",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "64c83cc2e1aadde92ddea0afdc8cdc87905e3e25",
+    "title": "libghostty-vt: freeze the callback payload structs",
+    "area": "Frozen C notification payloads",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "Notification/progress/program-status/semantic-prompt/clipboard C callback payload sizes freeze; Rust owned Effect enums and clipboard request/result values are initialized and compile-time checked.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "de2dfded37eb3dbf84e1aece3ac4062bfc542cf9",
+    "title": "libghostty-vt: type the keys and callbacks in the type manifest",
+    "area": "Typed C ABI manifest",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "TypeDecl callback signatures, opaque handle identities and key input/output descriptors feed ghostty_type_json; Rust typed APIs do not consume this ABI manifest.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "6b6d0eec6cdbe10c095079f93fc63a73931a09cc",
+    "title": "libghostty-vt: type the remaining key enums in the type manifest",
+    "area": "Typed C ABI manifest",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "TypeDecl callback signatures, opaque handle identities and key input/output descriptors feed ghostty_type_json; Rust typed APIs do not consume this ABI manifest.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "b54f31f825a2988841e0593c03f03e708dbb31be",
+    "title": "libghostty-vt: document threads and output buffers",
+    "area": "C ownership and buffer documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "C pointer lifetime/threading/buffer docs describe wrapper ownership. Rust typed borrowing and owned Vec/Arc expose these guarantees through its existing API.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "12206bfb8dd18aa76f563c613b52c3cc89f182c3",
+    "title": "libghostty-vt: remove the selection format functions",
+    "area": "Remove redundant C selection format wrappers",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "C wrappers are removed in favor of Formatter selection option; Rust selection formatting already goes through TerminalFormatter/ScreenFormatter and retained copy consumers.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "fdedebade075d8189b7a68946eddf35dfb171e6d",
+    "title": "libghostty-vt: fail CI on ABI changes that aren't additions",
+    "area": "C ABI compatibility gate",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "New checker compares type/enum/sized-layout additions and verifies headers, source exports, binary exports and symbol goldens. No Rust C ABI duplicates this artifact; runtime payload/manifest portions are mapped above.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "66af4c7458db7e19ae7adb44aa7054879be58b6b",
+    "title": "libghostty-vt: freeze callback payloads, type the manifest, gate more of the ABI in CI (#15098)",
+    "area": "C ABI compatibility gate",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "New checker compares type/enum/sized-layout additions and verifies headers, source exports, binary exports and symbol goldens. No Rust C ABI duplicates this artifact; runtime payload/manifest portions are mapped above.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "4441aabcafd673314b0667177905726680d9f8ba",
+    "title": "terminal/kitty: evict the oldest image by transmission",
+    "area": "Kitty image eviction transmission order",
+    "merge": false,
+    "disposition": "ported and validated",
+    "evidence": "Graphics::reserve ranks generation rather than transmission identity; check attach_quota import ordering without altering tmux use-order policy.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "725beff764c052e821d3ed9f13fd1d9caf49a949",
+      "tix_id": "sxuolkk",
+      "area": "Local image eviction transmission age",
+      "upstream_prefixes": [
+        "4441aabca",
+        "1fa19fa3e"
+      ],
+      "validation": "67 Rust tests;6 targeted native;181 smoke native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "de202be94a418b56136d8075eb4b768672ad9f18",
+    "title": "terminal: keep triple-click selection over blank lines",
+    "area": "Blank-line line-selection drag",
+    "merge": false,
+    "disposition": "ported and validated",
+    "evidence": "SelectionGesture::drag trimmed select_line returns None on blank target; needs untrimmed fallback.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "13991acb527d6e646fe94d1cc6254bb68056b137",
+      "tix_id": "ywqqypn",
+      "area": "Line selection over blank rows",
+      "upstream_prefixes": [
+        "de202be94",
+        "53e55147b"
+      ],
+      "validation": "29 Rust tests;75 native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "1fa19fa3e9f73e49bd231de4995a1ecfecda7afd",
+    "title": "terminal/kitty: evict the oldest image by transmission (#15103)",
+    "area": "Kitty image eviction transmission order",
+    "merge": true,
+    "disposition": "ported and validated",
+    "evidence": "Graphics::reserve ranks generation rather than transmission identity; check attach_quota import ordering without altering tmux use-order policy.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "725beff764c052e821d3ed9f13fd1d9caf49a949",
+      "tix_id": "sxuolkk",
+      "area": "Local image eviction transmission age",
+      "upstream_prefixes": [
+        "4441aabca",
+        "1fa19fa3e"
+      ],
+      "validation": "67 Rust tests;6 targeted native;181 smoke native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "53e55147bbbb0157672dac0228aa7744e881f1fa",
+    "title": "terminal: keep triple-click selection over blank lines (#15113)",
+    "area": "Blank-line line-selection drag",
+    "merge": true,
+    "disposition": "ported and validated",
+    "evidence": "SelectionGesture::drag trimmed select_line returns None on blank target; needs untrimmed fallback.",
+    "report": "behavior-audit.md",
+    "completion": {
+      "rust_commit": "13991acb527d6e646fe94d1cc6254bb68056b137",
+      "tix_id": "ywqqypn",
+      "area": "Line selection over blank rows",
+      "upstream_prefixes": [
+        "de202be94",
+        "53e55147b"
+      ],
+      "validation": "29 Rust tests;75 native",
+      "report": "behavior-port-validation.md"
+    }
+  },
+  {
+    "hash": "3c3a8873ef0ea7843f1712a40b37c671f565f2a9",
+    "title": "doxygen: fix the configuration and keep the build free of warnings",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "56919d3ffd0981d52110b8d036dc3743b23ef6bb",
+    "title": "doxygen: register every C example and rename c-vt to c-vt-osc",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "f21f40018791bd30fe0ecfc7d104dd556226faf7",
+    "title": "doxygen: nest the API reference and describe every topic",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "5acbc10ebf84ccb7a9b2d7daf1784f2b3262d74d",
+    "title": "doxygen: move the API conventions out of the main page",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "6f41fbaad44e8356abfef9881d10ef0d820ecd7d",
+    "title": "doxygen: write the Examples page and fix example names and READMEs",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "3a73ef54201efa01760013c8bc6ece70075dfed7",
+    "title": "doxygen: move the terminal guides out of the reference pages",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "2bc37a0eea6a2e5da08367e62e0f2b2a2e385938",
+    "title": "doxygen: write the main page and Getting Started",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "7341454308f2b8a564a7540ffa6de2d7cd0d6c85",
+    "title": "doxygen: move the rendering and image guides out of the reference pages",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "51bff35a73097f105078f9566604c265b773ee1c",
+    "title": "doxygen: move the input, grid, selection, search and snapshot guides out of the reference pages",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "9a0cb21428205711aa4982089109e919704b1aee",
+    "title": "doxygen: give every topic page the same short intro",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "2f8d9e1f99b18c80bfebbeb1e44ca647db46dec0",
+    "title": "doxygen: update concepts",
+    "area": "Lib-vt API documentation",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "477bfd2941c73b8eef96395ee898b0c21f069f18",
+    "title": "libghostty-vt: rewritten Doxygen docs (#15120)",
+    "area": "Lib-vt API documentation",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "Documentation/build/release scope audited by app agent; C runtime/declarations contain no extra behavior in this commit.",
+    "report": "app-audit.md"
+  },
+  {
+    "hash": "660a0a2bb1ed76f95a549601764ba62b36881e64",
+    "title": "libghostty: add a test to ensure terminal modes are defined",
+    "area": "C terminal-mode macro parity",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Header macro names align with existing Zig modes and tests verify their presence. Wire mode numbers and core terminal behavior are unchanged; std_enums helper raises compile-time quota only.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "9c773327e23b1ef88fd6a1a8abe1323d20054e41",
+    "title": "libghostty: translate ghostty/vt.h for the ABI tests through c_deps",
+    "area": "C terminal-mode macro parity",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Header macro names align with existing Zig modes and tests verify their presence. Wire mode numbers and core terminal behavior are unchanged; std_enums helper raises compile-time quota only.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "f80e4d5c6bfc8f03a17af4bd1d6f0eeb211332b3",
+    "title": "libghostty: rename the mode macros to match the Zig mode names",
+    "area": "C terminal-mode macro parity",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Header macro names align with existing Zig modes and tests verify their presence. Wire mode numbers and core terminal behavior are unchanged; std_enums helper raises compile-time quota only.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "f6cb4cf1276c3cb1a027468ddeb1a976a822ccfa",
+    "title": "libghostty: add a test to ensure terminal modes are defined (#12230)",
+    "area": "C terminal-mode macro parity",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "Header macro names align with existing Zig modes and tests verify their presence. Wire mode numbers and core terminal behavior are unchanged; std_enums helper raises compile-time quota only.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "0b7f9c156fd9daeb4361c234884c6afc68611566",
+    "title": "libghostty-vt: some final C ABI cleanups",
+    "area": "Final C ABI boundary cleanup",
+    "merge": false,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "Adds systematic null checks, fixed enum values, safe codepoint buffer, byte-string image pixels/OSC title and sized_init. C-only Glyph default becomes off; Rust/core/native oracle retain enabled app policy. No new terminal wire behavior.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "e852b903f439e552b9debddd684d89fea1d433b6",
+    "title": "libghostty-vt: some final C ABI cleanups (#15125)",
+    "area": "Final C ABI boundary cleanup",
+    "merge": true,
+    "disposition": "already equivalent / C ABI inherited",
+    "evidence": "Adds systematic null checks, fixed enum values, safe codepoint buffer, byte-string image pixels/OSC title and sized_init. C-only Glyph default becomes off; Rust/core/native oracle retain enabled app policy. No new terminal wire behavior.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "a859f491075226a883506434aaefb8c552ceba61",
+    "title": "libghostty-vt: prepare for 1.0.0",
+    "area": "libghostty-vt 1.0 release metadata",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Version header/map transitions to 1.0; C release/export metadata only. App audit covers build, docs and Nix release metadata.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+    "title": "libghostty-vt: prepare for 1.0.0 (#15126)",
+    "area": "libghostty-vt 1.0 release metadata",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "Version header/map transitions to 1.0; C release/export metadata only. App audit covers build, docs and Nix release metadata.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "ea675302b71a2413b16c77bb12659605bf736be2",
+    "title": "libghostty-vt: start 1.1.0-dev, add the ABI baseline and version gate",
+    "area": "libghostty-vt 1.1 development ABI baseline",
+    "merge": false,
+    "disposition": "inherited / not applicable",
+    "evidence": "Records 1.0 ABI target goldens, adds 1.1 ELF node and version consistency tests. Explicit incoming source and final merge disposition; no Rust terminal behavior change.",
+    "report": "abi-audit.md"
+  },
+  {
+    "hash": "5acdbf154369928eb228d2263cbe612d165f7569",
+    "title": "libghostty-vt: start 1.1.0-dev, add the ABI baseline and version gate (#15128)",
+    "area": "libghostty-vt 1.1 development ABI baseline",
+    "merge": true,
+    "disposition": "inherited / not applicable",
+    "evidence": "Records 1.0 ABI target goldens, adds 1.1 ELF node and version consistency tests. Explicit incoming source and final merge disposition; no Rust terminal behavior change.",
+    "report": "abi-audit.md"
+  }
+]

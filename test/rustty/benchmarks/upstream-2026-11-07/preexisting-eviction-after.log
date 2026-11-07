@@ -1,0 +1,13 @@
+FAIL preexisting/graphics/placed-priority: response.observations[0].graphics.primary[0].id: Zig 3, Rust 1
+  /private/tmp/rustty-reintegrate.leadij/preexisting-eviction-after/failures/33d6266747b937df
+FAIL preexisting/graphics/placed-priority/scalar: response.observations[0].graphics.primary[0].id: Zig 3, Rust 1
+  /private/tmp/rustty-reintegrate.leadij/preexisting-eviction-after/failures/12803917a8fe6408
+FAIL preexisting/graphics/placed-priority/chunks: response.observations[0].graphics.primary[0].id: Zig 3, Rust 1
+  /private/tmp/rustty-reintegrate.leadij/preexisting-eviction-after/failures/7e9f95e0753bcd16
+FAIL preexisting/graphics/transient-priority: response.observations[0].graphics.primary[0].id: Zig 3, Rust 1
+  /private/tmp/rustty-reintegrate.leadij/preexisting-eviction-after/failures/ba769f557a4dc6a6
+FAIL preexisting/graphics/transient-priority/scalar: response.observations[0].graphics.primary[0].id: Zig 3, Rust 1
+  /private/tmp/rustty-reintegrate.leadij/preexisting-eviction-after/failures/3b5fbbc902f901b2
+FAIL preexisting/graphics/transient-priority/chunks: response.observations[0].graphics.primary[0].id: Zig 3, Rust 1
+  /private/tmp/rustty-reintegrate.leadij/preexisting-eviction-after/failures/d26a0a42f52a864d
+6 comparisons, 6 failures, 0 coverage gaps; full parity not established

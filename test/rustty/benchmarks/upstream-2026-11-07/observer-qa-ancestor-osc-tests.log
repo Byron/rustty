@@ -1,0 +1,17 @@
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+   Compiling serde_json v1.0.151
+   Compiling ciborium v0.2.2
+   Compiling tinytemplate v1.2.1
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+   Compiling criterion v0.8.2
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.71s
+     Running tests/osc_cancel.rs (target/debug/deps/osc_cancel-b657652b78612ff4)
+
+running 2 tests
+test direct_osc_cancellation_preserves_pending_stream_input ... ok
+test cancelled_osc_has_no_effect_and_the_next_command_still_works ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

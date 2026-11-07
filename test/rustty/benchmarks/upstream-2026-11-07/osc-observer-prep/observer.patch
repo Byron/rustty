@@ -1,0 +1,29 @@
+--- a/test/rustty/zig-parser.zig
++++ b/test/rustty/zig-parser.zig
+@@ -51,7 +51,11 @@
+                     continue;
+                 }
+                 const transition = vt.parse_table.table[byte][@backingInt(parser.state)];
+-                if (parser.state == .osc_string and transition.state != .osc_string) {
++                // CAN/SUB cancel raw OSC capture too, including overflow.
++                if (parser.state == .osc_string and
++                    transition.state != .osc_string and
++                    byte != 0x18 and byte != 0x1a)
++                {
+                     try events.append(alloc, if (overflow) .{ .kind = "osc_overflow" } else .{
+                         .kind = "osc",
+                         .data = try hex(alloc, osc.items),
+--- a/test/rustty/parity_reference.py
++++ b/test/rustty/parity_reference.py
+@@ -391,7 +391,10 @@
+         "csi-overflow": b"\x1b[" + b"1;" * 30 + b"m\x1b[1234567890m",
+         "escape": b"\x1b(0\x1b#8\x1b %A\x1b    !x",
+         "osc": b"\x1b]2;title\x07\x1b]not-a-command\x1b\\\x1b]52;c;YWJj\x9c",
+-        "osc-cancel": b"\x1b]2;unfinished\x18tail\x1b]2;other\x1a",
++        "osc-cancel": (b"\x1b]2;unfinished\x18tail\x1b]2;other\x1a"
++                       b"\x1b]2;done\x07"
++                       b"\x1b]9999;raw-bel\x07\x18"
++                       b"\x1b]9999;raw-st\x1b\\\x1a"),
+         "dcs": b"\x1bP1;2$qpayload\x1b\\\x1bP>|version\x9c",
+         "apc": b"\x1b_Ga=T;dGVzdA==\x1b\\\x1bXignored\x1b\\",
+     }

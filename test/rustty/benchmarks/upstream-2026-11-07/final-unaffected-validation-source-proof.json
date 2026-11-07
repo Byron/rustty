@@ -1,0 +1,33 @@
+{
+  "current_source": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+  "prior_validation_source": "f2b7e1344a57dda204355a541d6a811e89891b64",
+  "unchanged_trees": {
+    "crates/rustty-vt": "30aceac6fbccc470aea395cf79a99e8114a3ba6f",
+    "crates/rustty-parser": "7fbeb3e1eadbd8985f8fc825ee4d505fd3abc7dd",
+    "crates/rustty-render": "576e96b5d61ac0dbac2ff4449875c68b956ded25",
+    "crates/rustty-app": "61603d2449e731efd788efd8827f9e5ff52c1b63",
+    "src": "25da2c236f8c05b248d3535ae0f94b8482d63896"
+  },
+  "unchanged_harness_sources": {
+    "test/rustty/zig-oracle.zig": "fb8f0d6c624bd24ed628a52ca8c71905b170557ebca512a6718c65239ebc695c",
+    "test/rustty/zig-stream-file-bench.zig": "47d3ba0fd0f3b62a87db2407d441e71bc166490f5679cae58512731eeaa566bd",
+    "test/rustty/zig-primitives.zig": "c87e2f8a991a697328f4bc26db47dec2fe4e4666daacd582add6937da9e61e8e",
+    "test/rustty/rust-stream-file.rs": "4274996f89a8a3e9c061474bbcfd808cddaa9ac2087a7fcc08b0b9427698ba33",
+    "test/rustty/rust-oracle.rs": "b7a7905e6f0249baadf6af9f196a18d4a0e1ffb57fd4f65c30faa50408752cfc",
+    "test/rustty/parity-runner.rs": "6831e8a2f2d5b37be8b897f3d518ca498794cbdc2d0b5ed9c43c65e944add0a4"
+  },
+  "test_only_changes": {
+    "crates/rustty/src/tmuxx.rs": {
+      "marker": "#[cfg(all(test, unix))]\nmod tests {",
+      "unaffected_prefix_sha256": "961704d40e39f04dba1bb412e647f52d5a8d4c786a4a31a63ed178337944c538",
+      "scope": "All changed text is inside the Unix-only test suffix; production prefix is byte-identical."
+    },
+    "tmuxx/crates/tmuxx-runtime/src/drag.rs": {
+      "marker": "#[cfg(all(test, unix))]\nmod tests {",
+      "unaffected_prefix_sha256": "d9d114916dfb973660dca45048dfc2ef0317cce95d2125f5be56eed307d86d60",
+      "scope": "All changed text is inside the Unix-only test suffix; production prefix is byte-identical."
+    }
+  },
+  "additional_test_file": "tmuxx/crates/tmuxx-runtime/tests/native_stream_consistency.rs",
+  "scope": "Supports reuse of passed scalar VT, shared-consumer correctness and narrowed Windows compile results. Native raw parser observations changed and received full2028comparison rerun. This is source identity evidence, not a new timing or Windows runtime run."
+}

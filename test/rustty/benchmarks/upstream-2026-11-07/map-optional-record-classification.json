@@ -1,0 +1,82 @@
+[
+  {
+    "id": "snapshot/metadata/cursor-default/0",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/0/scalar",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/0/chunks",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/1",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/1/scalar",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/1/chunks",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/2",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/2/scalar",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/2/chunks",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/255",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/255/scalar",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/cursor-default/255/chunks",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/status-display/0",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/status-display/0/scalar",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/status-display/0/chunks",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/status-display/1",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/status-display/1/scalar",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/status-display/1/chunks",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/status-display/2",
+    "only_pointer_shapes_extension": true
+  },
+  {
+    "id": "snapshot/metadata/status-display/2/scalar",
+    "only_pointer_shapes_extension": true
+  }
+]

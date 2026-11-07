@@ -1,0 +1,532 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 3779285df..dfbdc04e5 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3454,9 +3454,9 @@ dependencies = [
+  "getrandom 0.3.4",
+  "libc",
+  "portable-pty",
++ "rmp-serde",
+  "rustty-parser",
+  "rustty-vt",
+- "rmp-serde",
+  "serde",
+  "serde_json",
+  "tmuxx-client",
+diff --git a/crates/rustty-vt/src/page.rs b/crates/rustty-vt/src/page.rs
+index fb5a9ede0..577915984 100644
+--- a/crates/rustty-vt/src/page.rs
++++ b/crates/rustty-vt/src/page.rs
+@@ -434,6 +434,36 @@ impl Page {
+         }
+     }
+ 
++    /// Attach already-admitted, previously unlinked cells without growing the page.
++    /// The caller marks the completed row once after the cell writes.
++    pub fn set_hyperlink_run(
++        &mut self,
++        row: usize,
++        slots: Range<usize>,
++        id: u16,
++        data: &Arc<HyperlinkData>,
++    ) {
++        self.links
++            .retain_cells(
++                id,
++                u16::try_from(slots.len()).expect("run fits a physical row"),
++            )
++            .expect("linked run capacity was checked before writing");
++        self.link_map.reserve(slots.len());
++        let override_data = data != self.links.data(id);
++        for slot in slots {
++            debug_assert!(!self.cells[slot].has_hyperlink());
++            let old = self.link_map.insert(slot as u32, id);
++            debug_assert!(old.is_none());
++            if override_data {
++                self.set_link_data(slot, id, data.clone());
++            }
++            self.cells[slot].set_hyperlink(true);
++        }
++        self.headers[row].set(RowHeader::HYPERLINK, true);
++        self.refresh_charge();
++    }
++
+     pub fn copy_cell(&self, slot: usize) -> CellCopy {
+         let cell = self.cells[slot];
+         let link_id = self.link_id(slot);
+diff --git a/crates/rustty-vt/src/page_resources.rs b/crates/rustty-vt/src/page_resources.rs
+index abc4ecd8d..8ba2e02a8 100644
+--- a/crates/rustty-vt/src/page_resources.rs
++++ b/crates/rustty-vt/src/page_resources.rs
+@@ -626,12 +626,16 @@ impl HyperlinkAdmission {
+     }
+ 
+     pub fn retain_cell(&mut self, id: u16) -> Result<(), HyperlinkFull> {
++        self.retain_cells(id, 1)
++    }
++
++    pub fn retain_cells(&mut self, id: u16, count: u16) -> Result<(), HyperlinkFull> {
+         if id != 0 {
+-            if self.available_cells() == 0 {
++            if self.available_cells() < usize::from(count) {
+                 return Err(HyperlinkFull::Map);
+             }
+-            self.set.retain(id);
+-            self.cells += 1;
++            self.set.retain_many(id, count);
++            self.cells += usize::from(count);
+         }
+         Ok(())
+     }
+diff --git a/crates/rustty-vt/src/screen.rs b/crates/rustty-vt/src/screen.rs
+index 594fccec2..447db0852 100644
+--- a/crates/rustty-vt/src/screen.rs
++++ b/crates/rustty-vt/src/screen.rs
+@@ -2044,9 +2044,13 @@ impl Screen {
+         use crate::printing;
+         debug_assert_eq!(location, self.cursor_location());
+         let charset = self.charset.slots[self.charset.gl];
+-        let (index, row) = if self.cursor_resources_match(location.0) {
++        let (index, row) = if self.cursor_print_resources_match(location.0) {
+             location
+         } else {
++            // Public links with no ID deliberately repeat scalar admission.
++            if self.cursor_link.is_some() || self.cursor.hyperlink.is_some() {
++                return 0;
++            }
+             self.sync_cursor_resources_slow();
+             self.cursor_location()
+         };
+@@ -2056,7 +2060,10 @@ impl Screen {
+             return 0;
+         }
+         let offset = page.slot(row, self.cursor.col);
+-        let len = bytes.len().min(usize::from(page.columns) - self.cursor.col);
++        let mut len = bytes.len().min(usize::from(page.columns) - self.cursor.col);
++        if self.cursor_link.is_some() {
++            len = len.min(page.links.available_cells());
++        }
+         let old = page.cells[offset];
+         if old.width() != 1
+             || old.has_grapheme()
+@@ -2086,6 +2093,14 @@ impl Screen {
+             }
+         }
+         if count != 0 {
++            if let Some((_, id)) = self.cursor_link {
++                page.set_hyperlink_run(
++                    row,
++                    offset..offset + count,
++                    id,
++                    self.cursor.hyperlink.as_ref().unwrap(),
++                );
++            }
+             page.mark_cell(row, template);
+         }
+         if count != 0 {
+@@ -2125,7 +2140,7 @@ impl Screen {
+             return 0;
+         }
+         let available = right + 1 - self.cursor.col;
+-        let len = printing::printable_prefix(properties, width, graphemes)
++        let mut len = printing::printable_prefix(properties, width, graphemes)
+             .min(available / usize::from(width));
+         if len == 0 {
+             return 0;
+@@ -2136,14 +2151,14 @@ impl Screen {
+             return 0;
+         }
+         // The scalar fallback extends partial-reflow rows before any write.
+-        if usize::from(page.columns) <= right || self.cursor_link.is_some() {
++        if usize::from(page.columns) <= right || !self.cursor_print_resources_match(index) {
+             return 0;
+         }
+-        match self.cursor_style {
+-            Some((owner, id))
+-                if owner == page.serial && page.styles.get(id).same_as(&self.cursor.style) => {}
+-            None if self.cursor.style == Style::default() => {}
+-            _ => return 0,
++        if self.cursor_link.is_some() {
++            len = len.min(page.links.available_cells() / usize::from(width));
++            if len == 0 {
++                return 0;
++            }
+         }
+         let offset = page.slot(row, self.cursor.col);
+         let mut next_state = *state;
+@@ -2173,7 +2188,10 @@ impl Screen {
+                 .get(len)
+                 .is_some_and(|p| (p & 3) ^ u32::from(width) == 3)
+             && len * usize::from(width) < available
+-            && self.cursor.style.tmux_tab == 0;
++            && self.cursor.style.tmux_tab == 0
++            // A mixed row may occupy every remaining cell; uniform batches
++            // consume smaller available map prefixes before scalar growth.
++            && (self.cursor_link.is_none() || page.links.available_cells() >= available);
+         let (count, slots, mut marked) = if mixed {
+             let result = self.write_cursor_mixed_codepoints(
+                 codepoints,
+@@ -2245,6 +2263,14 @@ impl Screen {
+             marked.set_codepoint(Some(crate::graphics::unicode::PLACEHOLDER));
+         }
+         let page = &mut self.pages.pages[index];
++        if let Some((_, id)) = self.cursor_link {
++            page.set_hyperlink_run(
++                row,
++                offset..offset + slots,
++                id,
++                self.cursor.hyperlink.as_ref().unwrap(),
++            );
++        }
+         page.mark_cell(row, marked);
+         self.graphics
+             .overwrite_sixel(page.row_ids[row], self.cursor.col, self.cursor.col + slots);
+@@ -3076,6 +3102,27 @@ impl Screen {
+             }
+     }
+ 
++    /// Batch writes require stable public link identity as well as a live pen.
++    /// Keep ordinary cursor synchronization's unlinked fast check unchanged.
++    fn cursor_print_resources_match(&self, index: usize) -> bool {
++        let page = &self.pages.pages[index];
++        let style_matches = match self.cursor_style {
++            None => self.cursor.style == Style::default(),
++            Some((owner, id)) => {
++                owner == page.serial && page.styles.get(id).same_as(&self.cursor.style)
++            }
++        };
++        style_matches
++            && match (self.cursor_link, self.cursor.hyperlink.as_ref()) {
++                (None, None) => true,
++                (Some((owner, id)), Some(data)) if owner == page.serial => {
++                    let link = page.links.get(id);
++                    link.uri == data.uri_bytes() && Some(&link.id) == data.id.as_ref()
++                }
++                _ => false,
++            }
++    }
++
+     fn sync_cursor_resources_slow(&mut self) {
+         let index = self.cursor_page_index();
+         let serial = self.pages.pages[index].serial;
+diff --git a/crates/rustty-vt/src/screen/tests.rs b/crates/rustty-vt/src/screen/tests.rs
+index e99ea114b..8edb99463 100644
+--- a/crates/rustty-vt/src/screen/tests.rs
++++ b/crates/rustty-vt/src/screen/tests.rs
+@@ -1478,3 +1478,134 @@ fn mixed_batches_reacquire_styles_after_crossing_a_page() {
+         assert_references(&detached);
+     }
+ }
++
++#[test]
++fn linked_row_batches_retain_every_occupied_cell_and_the_cursor() {
++    for explicit in [false, true] {
++        for input in ["abcdefghij", "界界界界界", "界 a語bcde"] {
++            let mut terminal = Terminal::new(32, 3, 100);
++            terminal.feed(if explicit {
++                b"\x1b]8;id=one;https://example.test\x07"
++            } else {
++                b"\x1b]8;;https://example.test\x07"
++            });
++            let (index, row) = terminal.screen().cursor_location();
++            let count = if input.is_ascii() {
++                terminal
++                    .screen_mut()
++                    .write_cursor_ascii(input.as_bytes(), (index, row))
++            } else {
++                let codepoints: Vec<_> = input.chars().collect();
++                let properties: Vec<_> = codepoints
++                    .iter()
++                    .copied()
++                    .map(crate::unicode::print_properties)
++                    .collect();
++                terminal.screen_mut().write_cursor_codepoints(
++                    &codepoints,
++                    &properties,
++                    31,
++                    false,
++                    true,
++                    &mut 0,
++                )
++            };
++            assert_eq!(count, input.chars().count());
++            let screen = terminal.screen();
++            let page = &screen.pages.pages[index];
++            let id = screen.cursor_link.unwrap().1;
++            assert_eq!(page.link_map.len(), 10);
++            assert!(page.row(row).cells[..10].iter().all(|c| c.has_hyperlink()));
++            page.links
++                .assert_references(std::iter::repeat_n(id, 10), Some(id));
++            assert_references(screen);
++        }
++    }
++}
++
++#[test]
++fn linked_batches_grow_at_actual_map_boundaries_without_losing_refs() {
++    for free in [0, 1, 2, 3, 7] {
++        for (col, input) in [
++            (1, "abcdefghijk"),
++            (1, "界界界界界界"),
++            (1, "界 a語 bc界a"),
++            (200, "界 a"),
++        ] {
++            let mut terminal = Terminal::new(200, 3, 100);
++            let capacity = terminal.screen().pages.pages[0].links.available_cells();
++            assert!(capacity <= 200);
++            terminal.feed(b"\x1b[2;1H\x1b]8;id=filler;https://example.test/filler\x07");
++            terminal.feed(&vec![b'x'; capacity - free]);
++            terminal.feed(
++                format!("\x1b[1;{col}H\x1b]8;id=next;https://example.test/next\x07").as_bytes(),
++            );
++            assert_eq!(
++                terminal.screen().pages.pages[0].links.available_cells(),
++                free
++            );
++            let mut scalar = terminal.clone();
++            for cp in input.chars() {
++                scalar.print(cp);
++            }
++            terminal.feed(input.as_bytes());
++            assert_eq!(
++                snapshot::encode_to_vec(&terminal).unwrap(),
++                snapshot::encode_to_vec(&scalar).unwrap()
++            );
++            assert_references(terminal.screen());
++            assert_references(scalar.screen());
++            let detached = terminal.screen().snapshot_viewport();
++            terminal.feed(b"\x1b]8;;\x07\x1b[Hplain");
++            terminal.resize(73, 3);
++            assert_references(terminal.screen());
++            assert_references(&detached);
++        }
++    }
++}
++
++#[test]
++fn linked_batches_preserve_full_retained_history_across_page_growth() {
++    for bytes in [10_000, 50_000_000] {
++        let mut terminal = Terminal::with_limits(
++            200,
++            3,
++            ScrollbackLimits {
++                lines: None,
++                bytes: Some(bytes),
++            },
++        );
++        for uri in ["https://one", "https://two", "https://three"] {
++            terminal.feed(format!("\x1b]8;;{uri}\x07x").as_bytes());
++        }
++        terminal.feed(b"\x1b[1m\x1b[3;1H");
++        let rows = usize::from(terminal.screen().pages.pages[0].capacity.rows);
++        terminal.feed(&vec![b'\n'; rows - 3]);
++        let old_page = terminal.screen().cursor_link.unwrap().0;
++        let text: String = "界 a語 bc".chars().cycle().take(1607).collect();
++        let mut scalar = terminal.clone();
++        for cp in text.chars() {
++            scalar.print(cp);
++        }
++        terminal.feed(text.as_bytes());
++        assert_ne!(terminal.screen().cursor_link.unwrap().0, old_page);
++        // Binary snapshots contain all retained rows, link identities and styles.
++        assert_eq!(
++            snapshot::encode_to_vec(&terminal).unwrap(),
++            snapshot::encode_to_vec(&scalar).unwrap()
++        );
++        assert_references(terminal.screen());
++        assert_references(scalar.screen());
++        let detached = terminal.screen().snapshot_viewport();
++        for cols in [97, 201] {
++            terminal.resize(cols, 3);
++            scalar.resize(cols, 3);
++            assert_eq!(
++                snapshot::encode_to_vec(&terminal).unwrap(),
++                snapshot::encode_to_vec(&scalar).unwrap()
++            );
++            assert_references(terminal.screen());
++        }
++        assert_references(&detached);
++    }
++}
+diff --git a/crates/rustty-vt/src/terminal.rs b/crates/rustty-vt/src/terminal.rs
+index d6a56ba80..3e10149df 100644
+--- a/crates/rustty-vt/src/terminal.rs
++++ b/crates/rustty-vt/src/terminal.rs
+@@ -1523,11 +1523,7 @@ impl Terminal {
+             return;
+         }
+         let screen = self.screen();
+-        if self.modes.get(false, 4)
+-            || !self.modes.dec(7)
+-            || screen.charset.single.is_some()
+-            || screen.cursor.hyperlink.is_some()
+-        {
++        if self.modes.get(false, 4) || !self.modes.dec(7) || screen.charset.single.is_some() {
+             for &byte in bytes {
+                 self.print(char::from(byte));
+             }
+@@ -1595,7 +1591,6 @@ impl Terminal {
+                 screen.charset.slots[screen.charset.gl],
+                 Charset::Utf8 | Charset::Ascii
+             )
+-            || screen.cursor.hyperlink.is_some()
+             || self.margins.left != 0
+             || self.margins.right != usize::from(self.cols) - 1
+         {
+diff --git a/crates/rustty-vt/tests/batched_input.rs b/crates/rustty-vt/tests/batched_input.rs
+index 0104e7634..cd7624709 100644
+--- a/crates/rustty-vt/tests/batched_input.rs
++++ b/crates/rustty-vt/tests/batched_input.rs
+@@ -476,3 +476,35 @@ fn mixed_width_handoffs_and_decode_boundaries_match_scalar_printing() {
+         }
+     }
+ }
++
++#[test]
++fn linked_batches_preserve_public_display_overrides_and_missing_ids() {
++    for missing_id in [false, true] {
++        let mut base = Terminal::new(7, 3, 100);
++        base.feed(b"\x1b[?2027h\x1b]8;id=opaque;http://raw/\xff\x1b\\");
++        let link = std::sync::Arc::make_mut(base.screen_mut().cursor.hyperlink.as_mut().unwrap());
++        link.uri = "display alias".into();
++        if missing_id {
++            link.id = None;
++        }
++        let input = "中 a語 b☝🏻";
++        let mut expected = base.clone();
++        for cp in input.chars() {
++            expected.print(cp);
++        }
++        for handler in [false, true] {
++            for chunk in [usize::MAX, 3, 7] {
++                let mut actual = base.clone();
++                assert!(deliver(&mut actual, input.as_bytes(), chunk, handler).is_empty());
++                let context = format!("missing_id={missing_id}, chunk={chunk}, handler={handler}");
++                same_state(&actual, &expected, &context);
++                // GHOSTSNP preserves opaque URI bytes; JSON also exposes the display override.
++                assert_eq!(
++                    serde_json::to_value(actual.screen()).unwrap(),
++                    serde_json::to_value(expected.screen()).unwrap(),
++                    "{context}"
++                );
++            }
++        }
++    }
++}
+diff --git a/test/rustty/hyperlink_lifecycle_requests.py b/test/rustty/hyperlink_lifecycle_requests.py
+index 6899e62e5..f8e59e156 100644
+--- a/test/rustty/hyperlink_lifecycle_requests.py
++++ b/test/rustty/hyperlink_lifecycle_requests.py
+@@ -173,3 +173,112 @@ def requests(reference):
+                 "rows": 3, "operations": [write(text)],
+                 "after": [op for op in after if op["op"] != "pages"]},
+                ["terminal.pages", "snapshot.cross-decode"])
++
++    yield from _batched_requests(reference)
++
++
++def _batched_requests(reference):
++    def write(text):
++        data = text if isinstance(text, bytes) else text.encode()
++        return {"op": "write", "data": data.hex()}
++
++    def start(uri="http://example.test", identifier=None):
++        return f"\x1b]8;{'id=' + identifier if identifier is not None else ''};{uri}\x1b\\"
++
++    end = "\x1b]8;;\x1b\\"
++
++    def case(name, cols, rows, operations, checkpoint=True):
++        request = {"id": "pages/hyperlinks/batched/" + name, "kind": "snapshot",
++                   "cols": cols, "rows": rows, "observe_semantic": True,
++                   "operations": [{"op": "pages"}, *operations],
++                   "after": [write("\x1b[2b\x1b[6n")]}
++        if not checkpoint:
++            request["kind"] = "input"
++            request["operations"].extend(request.pop("after"))
++        return request, ["terminal.pages", "terminal.cells", "terminal.cursor"]
++
++    texts = {"narrow": "hello world!abc", "wide": "中二三四漢字あア",
++             "mixed": "中 二12三 四a漢字 "}
++    for identifier in (None, "explicit"):
++        for name, body in texts.items():
++            yield case(f"odd-edge/{identifier}/{name}", 7, 3, [
++                write("\x1b[1;31m\x1b[1\"q\x1b]133;P\x07" + start(identifier=identifier)),
++                write(body), {"op": "pages"}, {"op": "observe"},
++                write(end + "\x1b[2b"), {"op": "observe"},
++            ])
++        yield case(f"underfull/{identifier}", 80, 3, [
++            write(start(identifier=identifier)), write(texts["mixed"]),
++            {"op": "pages"}, {"op": "observe"},
++        ])
++        yield case(f"same-uri-reopen/{identifier}", 80, 3, [
++            write(start(identifier=identifier) + "中 a" + end), {"op": "observe"},
++            write(start(identifier=identifier) + "語 b" + end),
++            {"op": "pages"}, {"op": "observe"},
++        ])
++        yield case(f"grapheme-mode/{identifier}", 7, 3, [
++            write("\x1b[?2027h" + start(identifier=identifier)), write("中 ☝🏻語ःa"),
++            {"op": "pages"}, {"op": "observe"},
++        ])
++    for name, change in (("same", ""), ("other", start("http://other.test")), ("closed", end)):
++        yield case("overwrite/" + name, 15, 3, [
++            write(start() + "o" * 12 + "中\x1b[1;3H" + change),
++            write("a二b三四 c漢defg"), {"op": "pages"}, {"op": "observe"},
++            ])
++    yield case("raw-uri", 7, 3, [
++        write(b"\x1b]8;id=opaque;http://raw/\xff\x1b\\"),
++        write("中 a語 b"), {"op": "pages"}, {"op": "observe"},
++    ])
++    yield case("margin-wrap-control", 10, 3, [
++        write("\x1b[?2027h\x1b[?69h\x1b[3;8s\x1b[1;10H" + start()),
++        write("abcd中 a語 b"), {"op": "pages"}, {"op": "observe"},
++    ])
++    yield case("charset-control", 8, 3, [
++        write("\x1b(0" + start(identifier="line")), write("lqkxmj#q"),
++        {"op": "pages"}, {"op": "observe"}, write("\x1b(B\x1b[2b"),
++        {"op": "observe"},
++    ])
++    colors = "".join(f"\x1b[38;2;{i};0;0ma" for i in range(110))
++    for resource, growth in (("styles", colors), ("graphemes", "a\u0301" * 513)):
++        yield case("cursor-link-after-growth/" + resource, 1024, 2, [
++            write(start("x" * 2016) + "a"), write(growth), {"op": "pages"},
++            {"op": "observe"}, write("中 a語 b" * 4),
++            {"op": "pages"}, {"op": "observe"},
++        ])
++
++    if reference is None:
++        return
++    layout = reference.request({"id": "linked-batch/capacity", "kind": "page_layout",
++                                "page_layout": {"columns": 200}})
++    if not layout["ok"]:
++        raise RuntimeError("linked batching native capacity query failed")
++    capacity = layout["page_layout"]["layout"]["capacity"]
++    map_cells = layout["page_layout"]["layout"]["hyperlink_map_layout"]["capacity"] * 80 // 100
++    if map_cells < 7 or map_cells > 200:
++        raise RuntimeError("linked batching fixture expects a map fitting one filler row")
++    for free in (0, 1, 2, 3, 7):
++        for name, body in texts.items():
++            yield case(f"map-free/{free}/{name}", 200, 3, [
++                write("\x1b[2;1H" + start("filler") + "x" * (map_cells - free)
++                      + "\x1b[H" + start()),
++                {"op": "pages"}, write(body * 8), {"op": "pages"}, {"op": "observe"},
++                    ])
++    yield case("one-map-slot-wide-spacer", 200, 3, [
++        write("\x1b[2;1H" + start("filler") + "x" * (map_cells - 1)
++              + "\x1b[1;200H" + start()),
++        {"op": "pages"}, write("中 a"), {"op": "pages"}, {"op": "observe"},
++    ])
++    # As upstream, older links on the first page ensure re-interned IDs differ.
++    setup = "".join(start(uri) + "x" for uri in ("http://a", "http://b", "http://c"))
++    setup += "\x1b[3;1H" + "\n" * (capacity["rows"] - 3)
++    mixed = "".join(" " if i % 3 == 2 else chr(0x4E00 + i % 512) for i in range(807))
++    narrow = "".join(chr(ord("a") + i % 26) for i in range(1007))
++    # Packing a snapshot prunes tiny-budget history in both native and Rust
++    # decoders. Keep those live checks; the larger budget also checks capture.
++    for limit in (10_000, 50_000_000):
++        for name, body in (("narrow", narrow), ("mixed", mixed)):
++            yield case(f"page-crossing/{limit}/{name}", 200, 3, [
++                {"op": "grid", "grid": {"action": "limits", "bytes": limit}},
++                write("\x1b[1m" + setup), {"op": "pages"}, write(body),
++                {"op": "pages"}, {"op": "observe"},
++                write(end + "\x1b[2b"), {"op": "observe"},
++            ], checkpoint=limit != 10_000)

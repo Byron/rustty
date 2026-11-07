@@ -1,0 +1,200 @@
+{
+  "started": 1794052825.388528,
+  "complete": true,
+  "source_commit": "96776a92676c59a40638b97621b160f72e64159a",
+  "binaries": {
+    "runner": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/binaries/runner",
+      "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner",
+      "sha256": "c45d897330f1faf16c3ed43d7bab4f3f51ed4aa41bd05bef058c1e9c45587a08"
+    },
+    "rust": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/binaries/rust",
+      "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity",
+      "sha256": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5"
+    },
+    "zig": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/binaries/zig",
+      "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-oracle",
+      "sha256": "ffed07e73c1a44e3cae1cec05308a47aeb60bf7e990d763faba96ddca1234ccc"
+    }
+  },
+  "runs": [
+    {
+      "name": "rest",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/binaries/runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/binaries/rust",
+        "--zig-bin",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/binaries/zig",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/rest",
+        "--max-failures",
+        "100000",
+        "--timeout",
+        "60",
+        "--generated",
+        "100",
+        "--seed",
+        "0",
+        "--input",
+        "--page-layout",
+        "--pages",
+        "--snapshots",
+        "--snapshot-wire"
+      ],
+      "expected_comparisons": 17170,
+      "groups": [
+        "input",
+        "page-layout",
+        "pages",
+        "snapshots",
+        "snapshot-wire"
+      ],
+      "generated": 100,
+      "seed": 0,
+      "smoke_comparisons": 181,
+      "started": 1794052826.304781,
+      "pid": 18891,
+      "exit_status": 1,
+      "finished": 1794053037.411084,
+      "summary": {
+        "aborted": false,
+        "checked": 17170,
+        "coverage_gaps": [],
+        "covered": [
+          "effects.bell",
+          "effects.pty",
+          "effects.pwd",
+          "effects.title",
+          "input.focus-paste",
+          "input.key",
+          "input.mouse",
+          "snapshot.cross-decode",
+          "snapshot.fixtures",
+          "snapshot.streaming",
+          "terminal.cells",
+          "terminal.cursor",
+          "terminal.observe",
+          "terminal.page-layout",
+          "terminal.pages",
+          "terminal.reset",
+          "terminal.resize",
+          "terminal.screens",
+          "terminal.styles",
+          "terminal.write",
+          "unicode.width"
+        ],
+        "error": null,
+        "failures": 2061,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "complete": true,
+      "classifier": {
+        "argv": [
+          "python3",
+          "/private/tmp/rustty-reintegrate.leadij/classify-final-parity.py",
+          "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/rest"
+        ],
+        "status": 0,
+        "stdout": "{\"output\": \"/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/rest/classification.json\", \"counts\": {\"existing-pointer-shape-record-only\": 2061}}\n",
+        "stderr": ""
+      }
+    }
+  ],
+  "source_guard_sha256": "9ec185b60772c630748db3f9662ee7e362c7fc10d4ce4941442ad83844068381",
+  "runner_source_diff_verified": true,
+  "fixture_manifest_sha256": "a69509af64b161c78bc796ac20691332de82fea89c8d0e6f269c3a56e1a7adf6",
+  "first_run_sha256": "d94e109124494af84a7187014ce6d2d6438b02ac8b68c188c4aaa1af3aaf3f94",
+  "parser_run_sha256": "33a9423dde05e155cbc9c44749c08e4d6ddd41afc68b6e69ae5156a8d3613d5b",
+  "script_sha256": "2a322bddb4d6347ce3f3c232024b554cd973d87be00813bf5a5d537f466a55ff",
+  "shared_helper_sha256": "4ab21e2989683b2120a19a33d168a7e5d3ff7f2a116327060c1d7fa4b36e0104",
+  "artifact_io_witness": {
+    "path": "artifact-buffering-witness/measurement.json",
+    "sha256": "fdc063436464494cc0a9ee8078f6ab89440d666a1a9e82a6d87e794725af217d"
+  },
+  "archive_provenance": {
+    "input": {
+      "sha256": "6d2a4e9d4f748eef8753509fa7670e7ff2ed1ef66bc85ca994697ccde1f6a752",
+      "cases": 3300,
+      "comparisons": 9900,
+      "native_probes": 0
+    },
+    "parser": {
+      "sha256": "a9f5a4ad6de97097db0da3f474062d4dc6fe9e64e76c0e43d367ec78149ba6c0",
+      "cases": 676,
+      "comparisons": 2028,
+      "native_probes": 0
+    },
+    "grid": {
+      "sha256": "bca3b5f3bc9198452baa8f0c7600d9eb85a72e69a2fc26990ff02ba935d51abb",
+      "cases": 2592,
+      "comparisons": 7752,
+      "native_probes": 72
+    },
+    "page-layout": {
+      "sha256": "56511c741137bee19c26c1fc213dc48e46967978e75e757d09b5901fcaa25156",
+      "cases": 386,
+      "comparisons": 386,
+      "native_probes": 0
+    },
+    "pages": {
+      "sha256": "11f6e90ac05e9bdf80f88e439f9c6213010676cc1d39ee916d3ce76bad1c190b",
+      "cases": 785,
+      "comparisons": 2355,
+      "native_probes": 150
+    },
+    "unicode": {
+      "sha256": "5fcb213de140d4c6e38027c42c2ad37496b7faf732dc98f288133f0ff25cbe17",
+      "cases": 276,
+      "comparisons": 276,
+      "native_probes": 0
+    },
+    "snapshots": {
+      "sha256": "251eb6913e71004bb8c600f607e3afd2981bf0e2295bea862fb75c3e01eda668",
+      "cases": 112,
+      "comparisons": 336,
+      "native_probes": 0
+    },
+    "snapshot-wire": {
+      "sha256": "6315fe597667a632c291d92bcc8570545bf72aafd21e072c2f4b6a36e3e76812",
+      "cases": 2186,
+      "comparisons": 3712,
+      "native_probes": 15
+    },
+    "protocols": {
+      "sha256": "f58a28931b2bdb2e71baf82fdb7beb62b2467a06fabdeca4b86f4a1e59516ae6",
+      "cases": 8042,
+      "comparisons": 24066,
+      "native_probes": 4
+    },
+    "corpus": {
+      "sha256": "2b665e6bf4119411121ebdd825d3e497b2fc45013ecb900ce9164c020217643e",
+      "cases": 3295,
+      "comparisons": 9885,
+      "native_probes": 0
+    },
+    "osc": {
+      "sha256": "17db8d52333e4e570ad741544cb6a37a4ae4ebe6fed314f13f70def06ab6e0bc",
+      "cases": 216,
+      "comparisons": 648,
+      "native_probes": 0
+    },
+    "thorough": {
+      "sha256": "40fbbd6264ce0038bbee78988c5d78a8d17d8b1dc53214357a0a2a538f025b0a",
+      "cases": 79,
+      "comparisons": 237,
+      "native_probes": 0
+    }
+  },
+  "scope": "Complete replacement of the entire interrupted rest job; retained parser coverage is the six complete zero-failure corrected shards. Only runner artifact serialization buffering/flush changed; native/Rust oracles and all fixture bytes are identical.",
+  "finished": 1794053037.411741,
+  "actual_physical_comparisons": 17170,
+  "raw_failures": 2061,
+  "raw_full_parity": false,
+  "head_sources_fixtures_and_scripts_unchanged_at_completion": true,
+  "classifier_execution_complete": true
+}

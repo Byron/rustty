@@ -1,0 +1,2609 @@
+[
+  {
+    "round": 1,
+    "name": "links-short-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 1043405123,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 804658417,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "links-short-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 307787793,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 2758822835,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 410775292,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "links-full-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 393398875,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-wide",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-wide.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-wide",
+      "iterations": 8,
+      "elapsed_ns": 2118881543,
+      "units_per_iteration": 8388640,
+      "cell_bytes": 8,
+      "checksum": 9256418754651485538,
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": 1962392
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-wide",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-wide.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-wide",
+      "iterations": 8,
+      "elapsed_ns": 296414168,
+      "units_per_iteration": 8388640,
+      "cell_bytes": 8,
+      "checksum": 9256418754651485538,
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": 1962392
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-wide",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-wide.json",
+      "8"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-wide",
+      "iterations": 8,
+      "elapsed_ns": 299932876,
+      "units_per_iteration": 8388640,
+      "cell_bytes": 8,
+      "checksum": 9256418754651485538,
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-emoji-control",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 549894125,
+      "units_per_iteration": 1048596,
+      "cell_bytes": 8,
+      "checksum": 6668176137143591533,
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": 4521932
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-emoji-control",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 562528087,
+      "units_per_iteration": 1048596,
+      "cell_bytes": 8,
+      "checksum": 6668176137143591533,
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": 4521932
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-emoji-control",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 217798916,
+      "units_per_iteration": 1048596,
+      "cell_bytes": 8,
+      "checksum": 6668176137143591533,
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "50"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 50,
+      "elapsed_ns": 741164297,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "50"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 50,
+      "elapsed_ns": 733071836,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "50"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 50,
+      "elapsed_ns": 315588875,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "plain-styled-protected",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain-styled-protected.json",
+      "40"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain-styled-protected",
+      "iterations": 40,
+      "elapsed_ns": 757780669,
+      "units_per_iteration": 8388602,
+      "cell_bytes": 8,
+      "checksum": 18255222369340065892,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "plain-styled-protected",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain-styled-protected.json",
+      "40"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain-styled-protected",
+      "iterations": 40,
+      "elapsed_ns": 767741959,
+      "units_per_iteration": 8388602,
+      "cell_bytes": 8,
+      "checksum": 18255222369340065892,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "plain-styled-protected",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain-styled-protected.json",
+      "40"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain-styled-protected",
+      "iterations": 40,
+      "elapsed_ns": 2926456294,
+      "units_per_iteration": 8388602,
+      "cell_bytes": 8,
+      "checksum": 18255222369340065892,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "styled-4",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 814950667,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "styled-4",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 812826543,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "styled-4",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 730151168,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "combining-control",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/combining-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "combining-control",
+      "iterations": 20,
+      "elapsed_ns": 2082073250,
+      "units_per_iteration": 1048572,
+      "cell_bytes": 8,
+      "checksum": 13098106629807391813,
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "combining-control",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/combining-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "combining-control",
+      "iterations": 20,
+      "elapsed_ns": 1025500332,
+      "units_per_iteration": 1048572,
+      "cell_bytes": 8,
+      "checksum": 13098106629807391813,
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "combining-control",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/combining-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "combining-control",
+      "iterations": 20,
+      "elapsed_ns": 224966917,
+      "units_per_iteration": 1048572,
+      "cell_bytes": 8,
+      "checksum": 13098106629807391813,
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "emoji-control",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 241864998,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 11826547733588908845,
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "emoji-control",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 246755417,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 11826547733588908845,
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "emoji-control",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 126611375,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 11826547733588908845,
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-repaint-ascii",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-ascii.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-ascii",
+      "iterations": 20,
+      "elapsed_ns": 1145658081,
+      "units_per_iteration": 1048360,
+      "cell_bytes": 8,
+      "checksum": 4618367886892164473,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-repaint-ascii",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-ascii.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-ascii",
+      "iterations": 20,
+      "elapsed_ns": 1121777708,
+      "units_per_iteration": 1048360,
+      "cell_bytes": 8,
+      "checksum": 4618367886892164473,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-repaint-ascii",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-ascii.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-repaint-ascii",
+      "iterations": 20,
+      "elapsed_ns": 314223291,
+      "units_per_iteration": 1048360,
+      "cell_bytes": 8,
+      "checksum": 4618367886892164473,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-repaint-mixed",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-mixed.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-mixed",
+      "iterations": 20,
+      "elapsed_ns": 764497414,
+      "units_per_iteration": 1048496,
+      "cell_bytes": 8,
+      "checksum": 7204845476595696217,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-repaint-mixed",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-mixed.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-mixed",
+      "iterations": 20,
+      "elapsed_ns": 761847249,
+      "units_per_iteration": 1048496,
+      "cell_bytes": 8,
+      "checksum": 7204845476595696217,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 1,
+    "name": "linked-repaint-mixed",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-mixed.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-repaint-mixed",
+      "iterations": 20,
+      "elapsed_ns": 244073212,
+      "units_per_iteration": 1048496,
+      "cell_bytes": 8,
+      "checksum": 7204845476595696217,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 306295875,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 794062999,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "links-short-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 1040281665,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 392539459,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 413325834,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "links-full-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 2768192417,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-wide",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-wide.json",
+      "8"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-wide",
+      "iterations": 8,
+      "elapsed_ns": 289366915,
+      "units_per_iteration": 8388640,
+      "cell_bytes": 8,
+      "checksum": 9256418754651485538,
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-wide",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-wide.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-wide",
+      "iterations": 8,
+      "elapsed_ns": 299738291,
+      "units_per_iteration": 8388640,
+      "cell_bytes": 8,
+      "checksum": 9256418754651485538,
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": 1962392
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-wide",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-wide.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-wide",
+      "iterations": 8,
+      "elapsed_ns": 2148396584,
+      "units_per_iteration": 8388640,
+      "cell_bytes": 8,
+      "checksum": 9256418754651485538,
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": 1962392
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-emoji-control",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 220831751,
+      "units_per_iteration": 1048596,
+      "cell_bytes": 8,
+      "checksum": 6668176137143591533,
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-emoji-control",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 574420459,
+      "units_per_iteration": 1048596,
+      "cell_bytes": 8,
+      "checksum": 6668176137143591533,
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": 4521932
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-emoji-control",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 561674624,
+      "units_per_iteration": 1048596,
+      "cell_bytes": 8,
+      "checksum": 6668176137143591533,
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": 4521932
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "50"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 50,
+      "elapsed_ns": 323877917,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "50"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 50,
+      "elapsed_ns": 742474212,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "50"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 50,
+      "elapsed_ns": 743860335,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "plain-styled-protected",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain-styled-protected.json",
+      "40"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain-styled-protected",
+      "iterations": 40,
+      "elapsed_ns": 2941867045,
+      "units_per_iteration": 8388602,
+      "cell_bytes": 8,
+      "checksum": 18255222369340065892,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "plain-styled-protected",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain-styled-protected.json",
+      "40"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain-styled-protected",
+      "iterations": 40,
+      "elapsed_ns": 770624669,
+      "units_per_iteration": 8388602,
+      "cell_bytes": 8,
+      "checksum": 18255222369340065892,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "plain-styled-protected",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain-styled-protected.json",
+      "40"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain-styled-protected",
+      "iterations": 40,
+      "elapsed_ns": 800719332,
+      "units_per_iteration": 8388602,
+      "cell_bytes": 8,
+      "checksum": 18255222369340065892,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "styled-4",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 497134832,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "styled-4",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 811200750,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "styled-4",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 813104793,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "combining-control",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/combining-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "combining-control",
+      "iterations": 20,
+      "elapsed_ns": 226822670,
+      "units_per_iteration": 1048572,
+      "cell_bytes": 8,
+      "checksum": 13098106629807391813,
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "combining-control",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/combining-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "combining-control",
+      "iterations": 20,
+      "elapsed_ns": 628457123,
+      "units_per_iteration": 1048572,
+      "cell_bytes": 8,
+      "checksum": 13098106629807391813,
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "combining-control",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/combining-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "combining-control",
+      "iterations": 20,
+      "elapsed_ns": 586038623,
+      "units_per_iteration": 1048572,
+      "cell_bytes": 8,
+      "checksum": 13098106629807391813,
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "emoji-control",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 123126709,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 11826547733588908845,
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "emoji-control",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 234340960,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 11826547733588908845,
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "emoji-control",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 234114294,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 11826547733588908845,
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-repaint-ascii",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-ascii.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-repaint-ascii",
+      "iterations": 20,
+      "elapsed_ns": 321624167,
+      "units_per_iteration": 1048360,
+      "cell_bytes": 8,
+      "checksum": 4618367886892164473,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-repaint-ascii",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-ascii.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-ascii",
+      "iterations": 20,
+      "elapsed_ns": 1204147585,
+      "units_per_iteration": 1048360,
+      "cell_bytes": 8,
+      "checksum": 4618367886892164473,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-repaint-ascii",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-ascii.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-ascii",
+      "iterations": 20,
+      "elapsed_ns": 1156891211,
+      "units_per_iteration": 1048360,
+      "cell_bytes": 8,
+      "checksum": 4618367886892164473,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-repaint-mixed",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-mixed.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-repaint-mixed",
+      "iterations": 20,
+      "elapsed_ns": 243614418,
+      "units_per_iteration": 1048496,
+      "cell_bytes": 8,
+      "checksum": 7204845476595696217,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-repaint-mixed",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-mixed.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-mixed",
+      "iterations": 20,
+      "elapsed_ns": 749395458,
+      "units_per_iteration": 1048496,
+      "cell_bytes": 8,
+      "checksum": 7204845476595696217,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 2,
+    "name": "linked-repaint-mixed",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-mixed.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-mixed",
+      "iterations": 20,
+      "elapsed_ns": 756614082,
+      "units_per_iteration": 1048496,
+      "cell_bytes": 8,
+      "checksum": 7204845476595696217,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 1045944750,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 801507043,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "links-short-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-short-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 305549043,
+      "units_per_iteration": 8388600,
+      "cell_bytes": 8,
+      "checksum": 10677737215458174579,
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-10000",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 2788739624,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-10000",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 414579834,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "links-full-120x80-10000",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+      "8"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "links-full-120x80-10000",
+      "iterations": 8,
+      "elapsed_ns": 405238916,
+      "units_per_iteration": 8388457,
+      "cell_bytes": 8,
+      "checksum": 1589550112815534490,
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-wide",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-wide.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-wide",
+      "iterations": 8,
+      "elapsed_ns": 2140387459,
+      "units_per_iteration": 8388640,
+      "cell_bytes": 8,
+      "checksum": 9256418754651485538,
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": 1962392
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-wide",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-wide.json",
+      "8"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-wide",
+      "iterations": 8,
+      "elapsed_ns": 302650293,
+      "units_per_iteration": 8388640,
+      "cell_bytes": 8,
+      "checksum": 9256418754651485538,
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": 1962392
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-wide",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-wide.json",
+      "8"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-wide",
+      "iterations": 8,
+      "elapsed_ns": 290953627,
+      "units_per_iteration": 8388640,
+      "cell_bytes": 8,
+      "checksum": 9256418754651485538,
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-emoji-control",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 544063335,
+      "units_per_iteration": 1048596,
+      "cell_bytes": 8,
+      "checksum": 6668176137143591533,
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": 4521932
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-emoji-control",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 552814041,
+      "units_per_iteration": 1048596,
+      "cell_bytes": 8,
+      "checksum": 6668176137143591533,
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": 4521932
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-emoji-control",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 213494252,
+      "units_per_iteration": 1048596,
+      "cell_bytes": 8,
+      "checksum": 6668176137143591533,
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "50"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 50,
+      "elapsed_ns": 743846788,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "50"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 50,
+      "elapsed_ns": 756957038,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "50"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 50,
+      "elapsed_ns": 316882542,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "plain-styled-protected",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain-styled-protected.json",
+      "40"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain-styled-protected",
+      "iterations": 40,
+      "elapsed_ns": 774620958,
+      "units_per_iteration": 8388602,
+      "cell_bytes": 8,
+      "checksum": 18255222369340065892,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "plain-styled-protected",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain-styled-protected.json",
+      "40"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain-styled-protected",
+      "iterations": 40,
+      "elapsed_ns": 795529833,
+      "units_per_iteration": 8388602,
+      "cell_bytes": 8,
+      "checksum": 18255222369340065892,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "plain-styled-protected",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain-styled-protected.json",
+      "40"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain-styled-protected",
+      "iterations": 40,
+      "elapsed_ns": 2942812462,
+      "units_per_iteration": 8388602,
+      "cell_bytes": 8,
+      "checksum": 18255222369340065892,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "styled-4",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 807211878,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "styled-4",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 814243086,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "styled-4",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/styled-4.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 20,
+      "elapsed_ns": 492179165,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "combining-control",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/combining-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "combining-control",
+      "iterations": 20,
+      "elapsed_ns": 622187042,
+      "units_per_iteration": 1048572,
+      "cell_bytes": 8,
+      "checksum": 13098106629807391813,
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "combining-control",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/combining-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "combining-control",
+      "iterations": 20,
+      "elapsed_ns": 631143334,
+      "units_per_iteration": 1048572,
+      "cell_bytes": 8,
+      "checksum": 13098106629807391813,
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "combining-control",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/combining-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "combining-control",
+      "iterations": 20,
+      "elapsed_ns": 232109131,
+      "units_per_iteration": 1048572,
+      "cell_bytes": 8,
+      "checksum": 13098106629807391813,
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "emoji-control",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 247970921,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 11826547733588908845,
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "emoji-control",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 242231458,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 11826547733588908845,
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "emoji-control",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/emoji-control.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "emoji-control",
+      "iterations": 20,
+      "elapsed_ns": 135781750,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 11826547733588908845,
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-repaint-ascii",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-ascii.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-ascii",
+      "iterations": 20,
+      "elapsed_ns": 1165023956,
+      "units_per_iteration": 1048360,
+      "cell_bytes": 8,
+      "checksum": 4618367886892164473,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-repaint-ascii",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-ascii.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-ascii",
+      "iterations": 20,
+      "elapsed_ns": 1165616919,
+      "units_per_iteration": 1048360,
+      "cell_bytes": 8,
+      "checksum": 4618367886892164473,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-repaint-ascii",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-ascii.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-repaint-ascii",
+      "iterations": 20,
+      "elapsed_ns": 328270628,
+      "units_per_iteration": 1048360,
+      "cell_bytes": 8,
+      "checksum": 4618367886892164473,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-repaint-mixed",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-mixed.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-mixed",
+      "iterations": 20,
+      "elapsed_ns": 826580044,
+      "units_per_iteration": 1048496,
+      "cell_bytes": 8,
+      "checksum": 7204845476595696217,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-repaint-mixed",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/linked-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-mixed.json",
+      "20"
+    ],
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "linked-repaint-mixed",
+      "iterations": 20,
+      "elapsed_ns": 794308705,
+      "units_per_iteration": 1048496,
+      "cell_bytes": 8,
+      "checksum": 7204845476595696217,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "stderr": "",
+    "status": 0
+  },
+  {
+    "round": 3,
+    "name": "linked-repaint-mixed",
+    "version": "native",
+    "argv": [
+      "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/linked-repaint-mixed.json",
+      "20"
+    ],
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "linked-repaint-mixed",
+      "iterations": 20,
+      "elapsed_ns": 253486624,
+      "units_per_iteration": 1048496,
+      "cell_bytes": 8,
+      "checksum": 7204845476595696217,
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "stderr": "",
+    "status": 0
+  }
+]

@@ -1,0 +1,526 @@
+diff --git a/crates/rustty-vt/src/printing.rs b/crates/rustty-vt/src/printing.rs
+index 7a7c2d214..e1446cd8b 100644
+--- a/crates/rustty-vt/src/printing.rs
++++ b/crates/rustty-vt/src/printing.rs
+@@ -3,6 +3,105 @@ use crate::packed::Cell;
+ 
+ pub(crate) const DEST_MASK: u64 = 3 | Cell::STYLE_MASK | Cell::WIDE_MASK | Cell::HYPERLINK_MASK;
+ 
++/// Resume SIMD scans after a long stretch of one width class.
++pub(crate) const HOMOGENEOUS_MAX: usize = 32;
++
++/// Progress within one mixed-width row. No page IDs or borrows survive a wrap.
++pub(crate) struct MixedRun {
++    pub codepoints: usize,
++    pub cells: usize,
++    pub default_styles: u16,
++    pub state: u8,
++    same_width: usize,
++}
++
++impl MixedRun {
++    pub fn new(state: u8) -> Self {
++        Self {
++            codepoints: 0,
++            cells: 0,
++            default_styles: 0,
++            state,
++            same_width: 0,
++        }
++    }
++
++    /// Returns true only when the next eligible scalar needs destination restyling.
++    /// The caller has checked the leading grapheme boundary and owns the style.
++    #[inline(never)]
++    pub fn fill(
++        &mut self,
++        cells: &mut [Cell],
++        codepoints: &[char],
++        properties: &[u32],
++        template: Cell,
++        graphemes: bool,
++    ) -> bool {
++        use crate::unicode;
++        let expected = template.bits() & Cell::STYLE_MASK;
++        let mut tail = template;
++        tail.set_width(0);
++        while self.codepoints < codepoints.len() {
++            let p = self.codepoints;
++            let cp = codepoints[p];
++            let width = (properties[p] & 3) as usize;
++            if !(1..=2).contains(&width)
++                || cp < '\u{10}'
++                || cp == crate::graphics::unicode::PLACEHOLDER
++            {
++                return false;
++            }
++            // Test a join before the row boundary. The fallback can still attach
++            // a combining scalar to the last cell when pending_wrap is set.
++            let mut next_state = self.state;
++            if graphemes && p != 0 && cp as u32 > 255 {
++                let previous = if codepoints[p - 1] as u32 <= 255 {
++                    unicode::properties(codepoints[p - 1]).grapheme
++                } else {
++                    ((properties[p - 1] >> 3) & 31) as u8
++                };
++                if !unicode::grapheme_break_properties(
++                    previous,
++                    ((properties[p] >> 3) & 31) as u8,
++                    &mut next_state,
++                ) {
++                    return false;
++                }
++            }
++            if self.cells + width > cells.len() {
++                return false;
++            }
++            let first = self.cells;
++            let last = first + width - 1;
++            let a = cells[first].bits() & DEST_MASK;
++            let b = cells[last].bits() & DEST_MASK;
++            if (a != expected && a != 0) || (b != expected && b != 0) {
++                return true;
++            }
++            if expected != 0 {
++                self.default_styles += u16::from(a == 0) + u16::from(width == 2 && b == 0);
++            }
++            // A narrow scalar overwrites its temporary tail in the same slot.
++            cells[last] = tail;
++            let mut head = template;
++            head.set_width(width as u8);
++            cells[first] = Cell::from_bits(head.bits() | (u64::from(cp) << 2));
++            self.codepoints += 1;
++            self.cells += width;
++            self.state = next_state;
++            self.same_width = if p != 0 && properties[p - 1] & 3 == width as u32 {
++                self.same_width + 1
++            } else {
++                1
++            };
++            if self.same_width >= HOMOGENEOUS_MAX {
++                return false;
++            }
++        }
++        false
++    }
++}
++
+ #[cfg(not(all(
+     target_arch = "aarch64",
+     target_feature = "neon",
+diff --git a/crates/rustty-vt/src/screen.rs b/crates/rustty-vt/src/screen.rs
+index d47935c49..bf4afda3b 100644
+--- a/crates/rustty-vt/src/screen.rs
++++ b/crates/rustty-vt/src/screen.rs
+@@ -2123,8 +2123,9 @@ impl Screen {
+         if width == 0 {
+             return 0;
+         }
+-        let len = printing::printable_prefix(properties, width, graphemes)
+-            .min((right + 1 - self.cursor.col) / usize::from(width));
++        let uniform = printing::printable_prefix(properties, width, graphemes);
++        let available = right + 1 - self.cursor.col;
++        let len = uniform.min(available / usize::from(width));
+         if len == 0 {
+             return 0;
+         }
+@@ -2164,59 +2165,84 @@ impl Screen {
+                 return 0;
+             }
+         }
+-        let cells = &page.cells[offset..offset + len * usize::from(width)];
+-        let old = cells[0];
+-        if old.has_grapheme() || old.has_hyperlink() || page.style(offset).tmux_tab != 0 {
+-            return 0;
+-        }
+-        let count = if page.headers[row].has(RowHeader::BLANK) {
+-            len
+-        } else if old.width() == 1 {
+-            printing::destination_narrow(cells, old.bits() & printing::DEST_MASK)
+-                / usize::from(width)
+-        } else if width == 2
+-            && old.width() == 2
+-            && cells[1].width() == 0
+-            && cells[1].style_id() == old.style_id()
+-            && !cells[1].has_grapheme()
+-            && !cells[1].has_hyperlink()
+-        {
+-            printing::destination_wide(
+-                cells,
+-                [
+-                    old.bits() & printing::DEST_MASK,
+-                    cells[1].bits() & printing::DEST_MASK,
+-                ],
+-            ) / 2
++        let mixed = uniform < printing::HOMOGENEOUS_MAX
++            && uniform * usize::from(width) < available
++            && properties
++                .get(uniform)
++                .is_some_and(|p| (1..=2).contains(&(p & 3)) && p & 3 != u32::from(width))
++            && self.cursor.style.tmux_tab == 0;
++        let (count, slots) = if mixed {
++            let result = self.write_cursor_mixed_codepoints(
++                codepoints,
++                properties,
++                (index, row),
++                available,
++                graphemes,
++                next_state,
++            );
++            next_state = result.2;
++            (result.0, result.1)
+         } else {
+-            0
++            let page = &self.pages.pages[index];
++            let cells = &page.cells[offset..offset + len * usize::from(width)];
++            let old = cells[0];
++            if old.has_grapheme() || old.has_hyperlink() || page.style(offset).tmux_tab != 0 {
++                return 0;
++            }
++            let count = if page.headers[row].has(RowHeader::BLANK) {
++                len
++            } else if old.width() == 1 {
++                printing::destination_narrow(cells, old.bits() & printing::DEST_MASK)
++                    / usize::from(width)
++            } else if width == 2
++                && old.width() == 2
++                && cells[1].width() == 0
++                && cells[1].style_id() == old.style_id()
++                && !cells[1].has_grapheme()
++                && !cells[1].has_hyperlink()
++            {
++                printing::destination_wide(
++                    cells,
++                    [
++                        old.bits() & printing::DEST_MASK,
++                        cells[1].bits() & printing::DEST_MASK,
++                    ],
++                ) / 2
++            } else {
++                0
++            };
++            if count == 0 {
++                return 0;
++            }
++            // Once the leading boundary is checked, neighboring input characters
++            // in this run have ordinary grapheme classes. Latin-1 skips segmentation.
++            if graphemes
++                && (1..=4).contains(&next_state)
++                && codepoints[1..count].iter().any(|&cp| cp as u32 > 255)
++            {
++                next_state = 0;
++            }
++            let head = self.cursor_template(None, width, false);
++            let tail = self.cursor_template(None, 0, false);
++            let page = &mut self.pages.pages[index];
++            let slots = count * usize::from(width);
++            page.replace_simple_styles(old.style_id(), head.style_id(), slots);
++            let cells = &mut page.cells[offset..offset + slots];
++            if width == 1 {
++                printing::store_narrow(cells, &codepoints[..count], head);
++            } else {
++                printing::store_wide(cells, &codepoints[..count], head, tail);
++            }
++            (count, slots)
+         };
+         if count == 0 {
+             return 0;
+         }
+-        // Once the leading boundary is checked, neighboring input characters
+-        // in this run have ordinary grapheme classes. Latin-1 skips segmentation.
+-        if graphemes
+-            && (1..=4).contains(&next_state)
+-            && codepoints[1..count].iter().any(|&cp| cp as u32 > 255)
+-        {
+-            next_state = 0;
+-        }
+-        let head = self.cursor_template(None, width, false);
+-        let tail = self.cursor_template(None, 0, false);
+-        let page = &mut self.pages.pages[index];
+-        let slots = count * usize::from(width);
+-        page.replace_simple_styles(old.style_id(), head.style_id(), slots);
+-        let cells = &mut page.cells[offset..offset + slots];
+-        if width == 1 {
+-            printing::store_narrow(cells, &codepoints[..count], head);
+-        } else {
+-            printing::store_wide(cells, &codepoints[..count], head, tail);
+-        }
+-        let mut marked = head;
++        let mut marked = self.pages.pages[index].cells[offset];
+         if codepoints[..count].contains(&crate::graphics::unicode::PLACEHOLDER) {
+             marked.set_codepoint(Some(crate::graphics::unicode::PLACEHOLDER));
+         }
++        let page = &mut self.pages.pages[index];
+         page.mark_cell(row, marked);
+         self.graphics
+             .overwrite_sixel(page.row_ids[row], self.cursor.col, self.cursor.col + slots);
+@@ -2236,6 +2262,51 @@ impl Screen {
+         count
+     }
+ 
++    // Keep mixed-only restyling out of the common uniform and scalar fallback paths.
++    #[inline(never)]
++    fn write_cursor_mixed_codepoints(
++        &mut self,
++        codepoints: &[char],
++        properties: &[u32],
++        location: (usize, usize),
++        available: usize,
++        graphemes: bool,
++        state: u8,
++    ) -> (usize, usize, u8) {
++        use crate::printing;
++        let (index, row) = location;
++        let narrow = self.cursor_template(None, 1, false);
++        let page = &mut self.pages.pages[index];
++        let offset = page.slot(row, self.cursor.col);
++        let mut run = printing::MixedRun::new(state);
++        while run.fill(
++            &mut page.cells[offset..offset + available],
++            codepoints,
++            properties,
++            narrow,
++            graphemes,
++        ) {
++            // Restyle only the already classified next scalar. Wide cells,
++            // graphemes, links, background tags and tmux tabs need scalar cleanup.
++            let width = (properties[run.codepoints] & 3) as usize;
++            let start = offset + run.cells;
++            let end = start + width;
++            if (start..end).any(|slot| {
++                page.cells[slot].bits() & (printing::DEST_MASK & !Cell::STYLE_MASK) != 0
++                    || page.style(slot).tmux_tab != 0
++            }) {
++                break;
++            }
++            for slot in start..end {
++                page.replace_simple_styles(page.cells[slot].style_id(), narrow.style_id(), 1);
++                page.cells[slot].set_style_id(narrow.style_id());
++            }
++        }
++        page.styles
++            .retain_many(narrow.style_id(), run.default_styles);
++        (run.codepoints, run.cells, run.state)
++    }
++
+     pub(crate) fn next_row_id(&mut self) -> u64 {
+         let id = self.next_row;
+         self.next_row = self
+diff --git a/crates/rustty-vt/src/screen/tests.rs b/crates/rustty-vt/src/screen/tests.rs
+index 071817135..98e0fcb03 100644
+--- a/crates/rustty-vt/src/screen/tests.rs
++++ b/crates/rustty-vt/src/screen/tests.rs
+@@ -1402,3 +1402,78 @@ fn grouped_style_comparison_matches_derived_equality() {
+ 
+ #[path = "blank_tests.rs"]
+ mod blank_tests;
++
++#[test]
++fn mixed_row_writer_crosses_width_changes_and_restyles_exact_cells() {
++    for graphemes in [false, true] {
++        let mut terminal = Terminal::new(32, 3, 100);
++        terminal.feed(b"\x1b[31mold\x1b[32mrun\x1b[0m\r\x1b[1m");
++        let input: Vec<_> = "界 a語b".chars().collect();
++        let properties: Vec<_> = input
++            .iter()
++            .copied()
++            .map(crate::unicode::print_properties)
++            .collect();
++        let mut state = 0;
++        assert_eq!(
++            terminal.screen_mut().write_cursor_codepoints(
++                &input,
++                &properties,
++                31,
++                graphemes,
++                &mut state,
++            ),
++            input.len()
++        );
++        let row = terminal.screen().row(0);
++        assert_eq!(terminal.screen().cursor.col, 7);
++        assert_eq!(row.cells[0].codepoint(), Some('界'));
++        assert_eq!(row.cells[1].width(), 0);
++        assert_eq!(row.cells[4].codepoint(), Some('語'));
++        assert_eq!(row.cells[5].width(), 0);
++        assert!((0..7).all(|col| row.style(col).bold));
++        assert_references(terminal.screen());
++    }
++}
++
++#[test]
++fn mixed_batches_reacquire_styles_after_crossing_a_page() {
++    for bytes in [10_000, 50_000_000] {
++        let mut terminal = Terminal::with_limits(
++            200,
++            3,
++            ScrollbackLimits {
++                lines: None,
++                bytes: Some(bytes),
++            },
++        );
++        terminal.feed(b"\x1b[3my\x1b[0m\x1b[2my\x1b[0m\x1b[4my\x1b[0m\x1b[1m\x1b[3;1H");
++        let page_rows = usize::from(terminal.screen().pages.pages[0].capacity.rows);
++        terminal.feed(&vec![b'\n'; page_rows - 3]);
++        let old_page = terminal.screen().cursor_style.unwrap().0;
++        let text: String = "界 語".chars().cycle().take(807).collect();
++        let mut scalar = terminal.clone();
++        for cp in text.chars() {
++            scalar.print(cp);
++        }
++        terminal.feed(text.as_bytes());
++        assert_ne!(terminal.screen().cursor_style.unwrap().0, old_page);
++        assert_eq!(
++            snapshot::encode_to_vec(&terminal).unwrap(),
++            snapshot::encode_to_vec(&scalar).unwrap()
++        );
++        for row in terminal.screen().rows() {
++            for (col, cell) in row.cells.iter().enumerate() {
++                if cell.codepoint().is_some() {
++                    assert!(row.style(col).bold);
++                }
++            }
++        }
++        assert_references(terminal.screen());
++        assert_references(scalar.screen());
++        let detached = terminal.screen().snapshot_viewport();
++        terminal.resize(97, 3);
++        assert_references(terminal.screen());
++        assert_references(&detached);
++    }
++}
+diff --git a/crates/rustty-vt/tests/batched_input.rs b/crates/rustty-vt/tests/batched_input.rs
+index b35bb77bc..6962775b1 100644
+--- a/crates/rustty-vt/tests/batched_input.rs
++++ b/crates/rustty-vt/tests/batched_input.rs
+@@ -424,3 +424,55 @@ fn apc_batches_preserve_pixels_glyph_limits_and_unfinished_payloads() {
+         }
+     }
+ }
++
++#[test]
++fn mixed_width_handoffs_and_decode_boundaries_match_scalar_printing() {
++    let mut texts = vec![
++        "abcd中 二".to_owned(),
++        "中二a三".to_owned(),
++        "中 中".to_owned(),
++        "a☝🏻b".to_owned(),
++        " 中ःb".to_owned(),
++        "a\u{600}中b".to_owned(),
++        "中二👍🏻三".to_owned(),
++        "aабःb".to_owned(),
++        "中 ©\u{200d}🙂a".to_owned(),
++    ];
++    for length in [31, 32, 33] {
++        texts.push(format!("中 {} a界", "語".repeat(length)));
++    }
++    for length in [255, 256, 257] {
++        texts.push("中 a".chars().cycle().take(length).collect());
++    }
++    for graphemes in [false, true] {
++        for text in &texts {
++            let mut base = Terminal::new(73, 5, 100);
++            base.feed(if graphemes {
++                b"\x1b[?2027h"
++            } else {
++                b"\x1b[?2027l"
++            });
++            base.feed(b"\x1b[1;31;44m\x1b[1\"q\x1b]133;P\x07");
++            let mut expected = base.clone();
++            for cp in text.chars() {
++                expected.print(cp);
++            }
++            for handler in [false, true] {
++                for chunk in [usize::MAX, 7, 255] {
++                    let mut actual = base.clone();
++                    assert!(deliver(&mut actual, text.as_bytes(), chunk, handler).is_empty());
++                    let context = format!(
++                        "mixed={text:?}, 2027={graphemes}, chunk={chunk}, handler={handler}"
++                    );
++                    same_state(&actual, &expected, &context);
++                    let mut repeated = expected.clone();
++                    assert_eq!(
++                        actual.feed(b"\x1b[2b\x1b[6n"),
++                        repeated.feed(b"\x1b[2b\x1b[6n")
++                    );
++                    same_state(&actual, &repeated, &context);
++                }
++            }
++        }
++    }
++}
+diff --git a/test/rustty/grapheme_lifecycle_requests.py b/test/rustty/grapheme_lifecycle_requests.py
+index fb0f477e8..ffd63e421 100644
+--- a/test/rustty/grapheme_lifecycle_requests.py
++++ b/test/rustty/grapheme_lifecycle_requests.py
+@@ -13,9 +13,9 @@ def requests(reference):
+     def cluster(length=1, base="a"):
+         return base + "\u0301" * length
+ 
+-    def case(name, cols, rows, operations):
++    def case(name, cols, rows, operations, **options):
+         return ({"id": "pages/graphemes/" + name, "kind": "input", "cols": cols,
+-                 "rows": rows, "operations": [pages, *operations]},
++                 "rows": rows, "operations": [pages, *operations], **options},
+                 ["terminal.pages", "terminal.cells"])
+ 
+     for cols, rows in ((80, 24), (1024, 2), (1024, 46)):
+@@ -146,3 +146,58 @@ def requests(reference):
+                         write("\x1b[?69l\x1b[r\x1b[H" + cluster(5) * 17), pages,
+                         {"op": "observe"}, {"op": "snapshot"},
+                     ])
++
++    # Mixed-width rows exercise joins, overwrite barriers and page-local pen IDs.
++    simple = [
++        ("wide-space-edge", 4, "", "中 中"),
++        ("one-column", 1, "", "中 a語"),
++        ("two-columns", 2, "", "中 a語"),
++        ("three-columns", 3, "", "中 a語"),
++        ("pending-narrow-wide", 4, "", "abcd中 二"),
++        ("pending-wide-narrow", 4, "", "中二a三"),
++        ("skin-tone", 5, "x", "a☝🏻b"),
++        ("spacing-mark", 5, "x", " 中ःb"),
++        ("prepend", 5, "x", "a\u0600中b"),
++        ("regional-pair", 5, "x", "a🇦🇧b"),
++        ("join-inside-wide", 12, "", "中二👍🏻三"),
++        ("join-inside-narrow", 12, "", "aабःb"),
++        ("placeholder", 9, "", "中 a\U0010eeee\u0301語 b"),
++        ("latin1-control", 9, "", "中é\u00adÿ語\u0085a"),
++        ("latin1-grapheme", 9, "", "中 ©\u200d🙂a"),
++        ("overwrite-barriers", 9,
++         "\x1b[31m界a\u0301\x1b]8;id=old;old\x1b\\x\x1b]8;;\x1b\\"
++         "\x1b[0m界Q\x1b[H\x1b[1;44m\x1b[1\"q\x1b]133;P\x07",
++         "中 a語 b界 c"),
++    ]
++    for length in (31, 32, 33):
++        simple.append((f"homogeneous-return/{length}", 120, "", "中 " + "語" * length + " a界"))
++    for length in (255, 256, 257):
++        simple.append((f"decode-boundary/{length}", 73, "", ("中 a" * 86)[:length]))
++    for graphemes in (False, True):
++        mode = f"\x1b[?2027{'h' if graphemes else 'l'}"
++        for name, cols, setup, body in simple:
++            yield case(f"mixed-batch/{name}/{int(graphemes)}", cols, 5, [
++                write(mode + setup), write(body), {"op": "observe"}, {"op": "pages"},
++                write("\x1b[2b"), {"op": "observe"},
++            ], observe_semantic=True, kind="snapshot", after=[write("\x1b[2b\x1b[6n")])
++
++    # Exactly the upstream stale-style shape: prior page has three unrelated
++    # styles, the pen is bold, and the printable slice itself triggers a wrap.
++    layout = reference.request({"id": "mixed-batch/capacity", "kind": "page_layout",
++                                "page_layout": {"columns": 200}})
++    if not layout["ok"]:
++        raise RuntimeError("mixed batching native capacity query failed")
++    rows = layout["page_layout"]["layout"]["capacity"]["rows"]
++    if rows < 3:
++        raise RuntimeError("mixed batching source page is smaller than its active rows")
++    styles = "\x1b[3my\x1b[0m\x1b[2my\x1b[0m\x1b[4my\x1b[0m\x1b[1m"
++    body = "".join(" " if i % 3 == 2 else chr(0x4E00 + i % 512) for i in range(807))
++    for limit in (10_000, 50_000_000):
++        for graphemes in (False, True):
++            mode = f"\x1b[?2027{'h' if graphemes else 'l'}"
++            yield case(f"mixed-batch/style-page-crossing/{limit}/{int(graphemes)}", 200, 3, [
++                {"op": "grid", "grid": {"action": "limits", "bytes": limit}},
++                write(mode + styles + "\x1b[3;1H" + "\n" * (rows - 3)),
++                {"op": "pages"}, write(body), {"op": "pages"}, {"op": "observe"},
++                write("\x1b[2b"), {"op": "observe"},
++            ], observe_semantic=True, kind="snapshot", after=[write("\x1b[2b\x1b[6n")])

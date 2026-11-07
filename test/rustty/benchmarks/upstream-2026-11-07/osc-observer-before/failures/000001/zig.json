@@ -1,0 +1,222 @@
+{
+  "capabilities": [
+    "drag-and-drop",
+    "terminal.pages",
+    "graphics.glyphs",
+    "terminal.page-layout",
+    "terminal.selection",
+    "terminal.search",
+    "terminal.tracked",
+    "graphics.kitty",
+    "graphics.png",
+    "protocol.dcs",
+    "terminal.write",
+    "terminal.resize",
+    "terminal.reset",
+    "terminal.observe",
+    "terminal.cells",
+    "terminal.styles",
+    "terminal.screens",
+    "terminal.cursor",
+    "terminal.modes",
+    "terminal.colors",
+    "effects.pty",
+    "effects.title",
+    "effects.pwd",
+    "effects.bell",
+    "effects.host",
+    "clipboard",
+    "unicode.width",
+    "input.key",
+    "input.mouse",
+    "input.focus-paste",
+    "parser.raw-events",
+    "snapshot.cross-decode",
+    "snapshot.streaming",
+    "snapshot.fixtures"
+  ],
+  "dnd_results": [],
+  "err": null,
+  "events": [],
+  "glyph_results": [],
+  "graphics_ticks": [],
+  "grid_results": [],
+  "id": "parser/osc-cancel",
+  "mode_results": [],
+  "observations": [],
+  "ok": true,
+  "page_layout": null,
+  "page_results": [],
+  "parsed_colors": [],
+  "parser": {
+    "events": [
+      {
+        "bell": false,
+        "byte": null,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "323b756e66696e6973686564",
+        "intermediates": "",
+        "kind": "osc",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": 24,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "execute",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": null,
+        "codepoint": 116,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "print",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": null,
+        "codepoint": 97,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "print",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": null,
+        "codepoint": 105,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "print",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": null,
+        "codepoint": 108,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "print",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": null,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "323b6f74686572",
+        "intermediates": "",
+        "kind": "osc",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": 26,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "execute",
+        "params": []
+      },
+      {
+        "bell": true,
+        "byte": null,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "323b646f6e65",
+        "intermediates": "",
+        "kind": "osc",
+        "params": []
+      },
+      {
+        "bell": true,
+        "byte": null,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "393939393b7261772d62656c",
+        "intermediates": "",
+        "kind": "osc",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": 24,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "execute",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": null,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "393939393b7261772d7374",
+        "intermediates": "",
+        "kind": "osc",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": 92,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "esc",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": 26,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "execute",
+        "params": []
+      },
+      {
+        "bell": false,
+        "byte": 109,
+        "codepoint": null,
+        "colon_separators": 0,
+        "data": "",
+        "intermediates": "",
+        "kind": "csi",
+        "params": [
+          0
+        ]
+      }
+    ],
+    "states": [
+      {
+        "events": 14,
+        "ground": true,
+        "state": "ground"
+      },
+      {
+        "events": 15,
+        "ground": true,
+        "state": "ground"
+      }
+    ]
+  },
+  "snapshot_progress": [],
+  "snapshots": [],
+  "widths": []
+}

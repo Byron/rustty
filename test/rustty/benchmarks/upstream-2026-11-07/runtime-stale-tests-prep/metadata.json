@@ -1,0 +1,55 @@
+{
+  "scope": "scratch test-only amendments; no repository writes/builds/tests by this agent",
+  "order": [
+    {
+      "name": "drag",
+      "path": "tmuxx/crates/tmuxx-runtime/src/drag.rs",
+      "original_current_hash": "5eabf465c2acd2575f972b27f0f896d30322676f",
+      "tix_change": "myywtyl",
+      "author": "Codex <codex@openai.com>",
+      "source_at_pre_task_equals_final_and_target_commit": true,
+      "before_sha256": "a6c24cac94575ca544a4668d04d388fa37c327c38049447dc3e96b42d9007460",
+      "after_sha256": "b26922f89c381a42979c4dcbab5102f45430a8c903559e14dc265632e0c71ea7",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/runtime-stale-tests-prep/drag.patch",
+      "patch_sha256": "47ff7c8138595808af2c34b411ebad271d5979f1eef17af346a9d2df954b78aa"
+    },
+    {
+      "name": "native-stream",
+      "path": "tmuxx/crates/tmuxx-runtime/tests/native_stream_consistency.rs",
+      "original_current_hash": "61b0f838e50383a2c1a9de8ecf825b521ee3167b",
+      "tix_change": "vmwpzyz",
+      "author": "Sebastian Thiel <sebastian.thiel@icloud.com>",
+      "source_at_pre_task_equals_final_and_target_commit": true,
+      "before_sha256": "e073771c41e8c20c5c66a6aa83e17c34078b7df1a84eff33134739f381a18e42",
+      "after_sha256": "e9bbae98b75dc56112a372542d10e8e3fc4a8d101ded4af03db9366e10a243a8",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/runtime-stale-tests-prep/native-stream.patch",
+      "patch_sha256": "78b803b129e792d57d7faaf57d242d83b08336b942c50001d07929571cba43b8"
+    }
+  ],
+  "production_input_queue_source_unchanged_since_pre_task": true,
+  "delivery_source_difference_since_pre_task": "map_err returning the same error replaced by inspect_err; identical accounting, no policy change",
+  "reason": {
+    "drag": "Full record queue maps to WouldBlock, which write_input formats as byte budget; old unavailable substring is stale. Existing transactional rollback/refcount assertions stay.",
+    "native-stream": "Replayable output overflow coalesces into an authoritative snapshot; reuse existing snapshot(&slow), assert same PID/READYDONE, and retain healthy view/PTTY/reconnect checks. Instantaneous queue bounds remain covered by existing controlled unit tests."
+  },
+  "validation": "Not executed; root will apply and run exact suites at the original Tix changes.",
+  "independent_review": {
+    "reviewer": "terminal_performance_audit",
+    "result": "no findings",
+    "scope": "Connected input congestion rollback and recovery snapshot ordering; existing healthy output/PID/PTTY/reconnect checks preserved. No tests or builds run during review.",
+    "qualification": "Initial queue-count assertion passed source review but failed runtime with257; corrected by reusing existing snapshot helper and relying on existing unit tests for instantaneous bounds."
+  },
+  "native_stream_correction": {
+    "initial_patch": "/private/tmp/rustty-reintegrate.leadij/runtime-stale-tests-prep/native-stream-initial.patch",
+    "initial_patch_sha256": "daee23028360803392ee01225e2e20f07bba5c4f970a33d9416076354a4991ab",
+    "initial_count_assertion_invalid": "Concurrent receive releases credits while the owner refills; cumulative records consumed are not instantaneous channel occupancy.",
+    "diagnostic_cumulative_count": 257,
+    "diagnostic_log": "/private/tmp/rustty-reintegrate.leadij/runtime-qa-native-stream-count.log",
+    "existing_bound_tests": [
+      "delivery::tests::critical_backlog_and_final_barriers_share_finite_budgets",
+      "snapshots::native_byte_backlog_recovers_without_blocking_healthy_client"
+    ],
+    "final_implementation": "let (_, recovered) = snapshot(&slow);",
+    "validation": "Root is running final two integration tests and formatting; this agent performed read-only source/proof review only."
+  }
+}

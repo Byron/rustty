@@ -1,0 +1,1615 @@
+{
+  "binaries": {
+    "rust": "b06839784af6c3e279779e45413a14cf3906b45ae777c0599ebbf8ba591e0554",
+    "zig": "207c9e9b176ce9af981606c928be483dfe867c0a8e02a2a7702c2969b59166f3"
+  },
+  "cases": [
+    {
+      "id": "carry/capacity/80",
+      "equal": true,
+      "capacity": {
+        "cols": 80,
+        "rows": 592,
+        "styles": 128,
+        "hyperlink_bytes": 192,
+        "hyperlink_cells": 64,
+        "grapheme_bytes": 8192,
+        "string_bytes": 2048
+      }
+    },
+    {
+      "id": "carry/capacity/215",
+      "equal": true,
+      "capacity": {
+        "cols": 215,
+        "rows": 222,
+        "styles": 128,
+        "hyperlink_bytes": 192,
+        "hyperlink_cells": 64,
+        "grapheme_bytes": 8192,
+        "string_bytes": 2048
+      }
+    },
+    {
+      "id": "carry/styles-steady",
+      "equal": true,
+      "ok": {
+        "rust": true,
+        "zig": true
+      },
+      "response_keys": [
+        "capabilities",
+        "dnd_results",
+        "err",
+        "events",
+        "glyph_results",
+        "graphics_ticks",
+        "grid_results",
+        "id",
+        "mode_results",
+        "observations",
+        "ok",
+        "page_layout",
+        "page_results",
+        "parsed_colors",
+        "parser",
+        "snapshot_progress",
+        "snapshots",
+        "widths"
+      ],
+      "phase_info": [
+        {
+          "phase": "styles",
+          "lines": 1184,
+          "bytes": 170294,
+          "sha256": "40d97f48af5c7a7ff8c9cdc36d8da8dde969b48be3107ccd13f483c152df4f67"
+        },
+        {
+          "phase": "styles",
+          "lines": 1184,
+          "bytes": 170240,
+          "sha256": "546624243c58d72204dea60e20d97853812815148834b406cdb4b44d97e411de"
+        }
+      ],
+      "request_bytes": 681361,
+      "differences": [],
+      "page_observations": [
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 409600,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 24
+              }
+            ],
+            "total_rows": 24
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 819200,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 40
+              }
+            ],
+            "total_rows": 593
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 118
+              }
+            ],
+            "total_rows": 1224
+          }
+        }
+      ],
+      "complete_terminal_observations": 1,
+      "response_sha256": {
+        "rust": "cd046970492825c5c7b3a9479a9184629c349a05542d923c64307c93771d9119",
+        "zig": "9d76c21d7bd7afee8ae1eb441ff867bd607214c6f145f13bdeb74f73dd4af39e"
+      }
+    },
+    {
+      "id": "carry/links-steady",
+      "equal": true,
+      "ok": {
+        "rust": true,
+        "zig": true
+      },
+      "response_keys": [
+        "capabilities",
+        "dnd_results",
+        "err",
+        "events",
+        "glyph_results",
+        "graphics_ticks",
+        "grid_results",
+        "id",
+        "mode_results",
+        "observations",
+        "ok",
+        "page_layout",
+        "page_results",
+        "parsed_colors",
+        "parser",
+        "snapshot_progress",
+        "snapshots",
+        "widths"
+      ],
+      "phase_info": [
+        {
+          "phase": "links",
+          "lines": 1184,
+          "bytes": 56906,
+          "sha256": "1549aba5b07b534a9e9a7965f3ddc3a10c314ad0c8092e9d00af431f36d2a895"
+        },
+        {
+          "phase": "links",
+          "lines": 1184,
+          "bytes": 58016,
+          "sha256": "6e6e97f1c0f6f53b3d26c4d7cb8fd6d365aed3dd8d3db04d022d8061608dd785"
+        }
+      ],
+      "request_bytes": 230136,
+      "differences": [],
+      "page_observations": [
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 409600,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 24
+              }
+            ],
+            "total_rows": 24
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 819200,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 188
+              }
+            ],
+            "total_rows": 593
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 157
+              }
+            ],
+            "total_rows": 967
+          }
+        }
+      ],
+      "complete_terminal_observations": 1,
+      "response_sha256": {
+        "rust": "80243fb8295a1ef1ba800e3c91a18365602f72ccac8d390b9efd075196bf415e",
+        "zig": "3043789337f6a8b92c79c29ca9c88699dc4b6884fd28c1326318f9ccb155547f"
+      }
+    },
+    {
+      "id": "carry/styles-burst",
+      "equal": true,
+      "ok": {
+        "rust": true,
+        "zig": true
+      },
+      "response_keys": [
+        "capabilities",
+        "dnd_results",
+        "err",
+        "events",
+        "glyph_results",
+        "graphics_ticks",
+        "grid_results",
+        "id",
+        "mode_results",
+        "observations",
+        "ok",
+        "page_layout",
+        "page_results",
+        "parsed_colors",
+        "parser",
+        "snapshot_progress",
+        "snapshots",
+        "widths"
+      ],
+      "phase_info": [
+        {
+          "phase": "styles",
+          "lines": 1184,
+          "bytes": 170294,
+          "sha256": "40d97f48af5c7a7ff8c9cdc36d8da8dde969b48be3107ccd13f483c152df4f67"
+        },
+        {
+          "phase": "light",
+          "lines": 593,
+          "bytes": 82230,
+          "sha256": "71c77dcfc3edacab8b62ed786d1dc520c797efb0a3563f72e5f25e12ad40156c"
+        },
+        {
+          "phase": "plain",
+          "lines": 593,
+          "bytes": 4151,
+          "sha256": "b7a91674e739f094461145f1740d02a0b4168af109d70a617ca93d6ff2771cb6"
+        },
+        {
+          "phase": "plain",
+          "lines": 593,
+          "bytes": 4151,
+          "sha256": "b7a91674e739f094461145f1740d02a0b4168af109d70a617ca93d6ff2771cb6"
+        },
+        {
+          "phase": "plain",
+          "lines": 593,
+          "bytes": 4151,
+          "sha256": "b7a91674e739f094461145f1740d02a0b4168af109d70a617ca93d6ff2771cb6"
+        }
+      ],
+      "request_bytes": 530384,
+      "differences": [],
+      "page_observations": [
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 409600,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 24
+              }
+            ],
+            "total_rows": 24
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 819200,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 40
+              }
+            ],
+            "total_rows": 593
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 80
+              }
+            ],
+            "total_rows": 1186
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 120
+              }
+            ],
+            "total_rows": 1226
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 160
+              }
+            ],
+            "total_rows": 1266
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 553,
+                  "string_bytes": 2048,
+                  "styles": 556
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 553
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 200
+              }
+            ],
+            "total_rows": 1306
+          }
+        }
+      ],
+      "complete_terminal_observations": 1,
+      "response_sha256": {
+        "rust": "020905d91b262cba43bf315c34c0738c1a75a5dde5b8d01190fe7095f827d909",
+        "zig": "abf20da3febf89f28927245b5969a72d0fbe254fba266b93cda58a2a8ce1795d"
+      }
+    },
+    {
+      "id": "carry/links-burst",
+      "equal": true,
+      "ok": {
+        "rust": true,
+        "zig": true
+      },
+      "response_keys": [
+        "capabilities",
+        "dnd_results",
+        "err",
+        "events",
+        "glyph_results",
+        "graphics_ticks",
+        "grid_results",
+        "id",
+        "mode_results",
+        "observations",
+        "ok",
+        "page_layout",
+        "page_results",
+        "parsed_colors",
+        "parser",
+        "snapshot_progress",
+        "snapshots",
+        "widths"
+      ],
+      "phase_info": [
+        {
+          "phase": "links",
+          "lines": 1184,
+          "bytes": 56906,
+          "sha256": "1549aba5b07b534a9e9a7965f3ddc3a10c314ad0c8092e9d00af431f36d2a895"
+        },
+        {
+          "phase": "plain",
+          "lines": 593,
+          "bytes": 4151,
+          "sha256": "b7a91674e739f094461145f1740d02a0b4168af109d70a617ca93d6ff2771cb6"
+        },
+        {
+          "phase": "plain",
+          "lines": 593,
+          "bytes": 4151,
+          "sha256": "b7a91674e739f094461145f1740d02a0b4168af109d70a617ca93d6ff2771cb6"
+        },
+        {
+          "phase": "plain",
+          "lines": 593,
+          "bytes": 4151,
+          "sha256": "b7a91674e739f094461145f1740d02a0b4168af109d70a617ca93d6ff2771cb6"
+        }
+      ],
+      "request_bytes": 139101,
+      "differences": [],
+      "page_observations": [
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 409600,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 24
+              }
+            ],
+            "total_rows": 24
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 819200,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 188
+              }
+            ],
+            "total_rows": 593
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 376
+              }
+            ],
+            "total_rows": 1186
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 159
+              }
+            ],
+            "total_rows": 969
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 592
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 160
+              }
+            ],
+            "total_rows": 1157
+          }
+        }
+      ],
+      "complete_terminal_observations": 1,
+      "response_sha256": {
+        "rust": "4bfc64f200472b571821bc47d80cea0a3cd4522b1a7ab2db9b288b24e5acbd19",
+        "zig": "34548406fe7ded44bffa00014b6bc954fbeef9def39f9d80748dfea3ffb6de26"
+      }
+    },
+    {
+      "id": "carry/tall-style-floor",
+      "equal": true,
+      "ok": {
+        "rust": true,
+        "zig": true
+      },
+      "response_keys": [
+        "capabilities",
+        "dnd_results",
+        "err",
+        "events",
+        "glyph_results",
+        "graphics_ticks",
+        "grid_results",
+        "id",
+        "mode_results",
+        "observations",
+        "ok",
+        "page_layout",
+        "page_results",
+        "parsed_colors",
+        "parser",
+        "snapshot_progress",
+        "snapshots",
+        "widths"
+      ],
+      "phase_info": [
+        {
+          "phase": "styles",
+          "lines": 444,
+          "bytes": 122472,
+          "sha256": "cf831496cad782d6e21bf4f4cb44d89dcf774d8df31dd50a87c0dc530c0e7265"
+        },
+        {
+          "phase": "plain",
+          "lines": 223,
+          "bytes": 1561,
+          "sha256": "b1c74ea27b46cef8194b4ca23006072dc489a894112e702e74decdf876ed4b49"
+        },
+        {
+          "phase": "plain",
+          "lines": 223,
+          "bytes": 1561,
+          "sha256": "b1c74ea27b46cef8194b4ca23006072dc489a894112e702e74decdf876ed4b49"
+        },
+        {
+          "phase": "plain",
+          "lines": 223,
+          "bytes": 1561,
+          "sha256": "b1c74ea27b46cef8194b4ca23006072dc489a894112e702e74decdf876ed4b49"
+        }
+      ],
+      "request_bytes": 254694,
+      "differences": [],
+      "page_observations": [
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 409600,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 215,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 222,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 215,
+                "pooled": true,
+                "rows": 215
+              }
+            ],
+            "total_rows": 215
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 425984,
+            "pages": [
+              {
+                "allocation_bytes": 425984,
+                "capacity": {
+                  "cols": 215,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 222,
+                  "string_bytes": 2048,
+                  "styles": 512
+                },
+                "columns": 215,
+                "pooled": false,
+                "rows": 215
+              }
+            ],
+            "total_rows": 215
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 425984,
+            "pages": [
+              {
+                "allocation_bytes": 425984,
+                "capacity": {
+                  "cols": 215,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 222,
+                  "string_bytes": 2048,
+                  "styles": 512
+                },
+                "columns": 215,
+                "pooled": false,
+                "rows": 215
+              }
+            ],
+            "total_rows": 215
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 425984,
+            "pages": [
+              {
+                "allocation_bytes": 425984,
+                "capacity": {
+                  "cols": 215,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 222,
+                  "string_bytes": 2048,
+                  "styles": 512
+                },
+                "columns": 215,
+                "pooled": false,
+                "rows": 215
+              }
+            ],
+            "total_rows": 215
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 425984,
+            "pages": [
+              {
+                "allocation_bytes": 425984,
+                "capacity": {
+                  "cols": 215,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 222,
+                  "string_bytes": 2048,
+                  "styles": 512
+                },
+                "columns": 215,
+                "pooled": false,
+                "rows": 215
+              }
+            ],
+            "total_rows": 215
+          }
+        }
+      ],
+      "complete_terminal_observations": 1,
+      "response_sha256": {
+        "rust": "66180da29627b0fc292be269510129706260ffb390a210d595123a956b48430c",
+        "zig": "9cbdfb69c7adfda5a8d502abc39dfe3eaa6cc5cecc30d250486336ae289de211"
+      }
+    },
+    {
+      "id": "carry/link-byte-budget",
+      "equal": true,
+      "ok": {
+        "rust": true,
+        "zig": true
+      },
+      "response_keys": [
+        "capabilities",
+        "dnd_results",
+        "err",
+        "events",
+        "glyph_results",
+        "graphics_ticks",
+        "grid_results",
+        "id",
+        "mode_results",
+        "observations",
+        "ok",
+        "page_layout",
+        "page_results",
+        "parsed_colors",
+        "parser",
+        "snapshot_progress",
+        "snapshots",
+        "widths"
+      ],
+      "phase_info": [
+        {
+          "phase": "links",
+          "lines": 1184,
+          "bytes": 56906,
+          "sha256": "1549aba5b07b534a9e9a7965f3ddc3a10c314ad0c8092e9d00af431f36d2a895"
+        },
+        {
+          "phase": "links",
+          "lines": 1184,
+          "bytes": 58016,
+          "sha256": "6e6e97f1c0f6f53b3d26c4d7cb8fd6d365aed3dd8d3db04d022d8061608dd785"
+        },
+        {
+          "phase": "plain",
+          "lines": 593,
+          "bytes": 4151,
+          "sha256": "b7a91674e739f094461145f1740d02a0b4168af109d70a617ca93d6ff2771cb6"
+        },
+        {
+          "phase": "plain",
+          "lines": 593,
+          "bytes": 4151,
+          "sha256": "b7a91674e739f094461145f1740d02a0b4168af109d70a617ca93d6ff2771cb6"
+        },
+        {
+          "phase": "plain",
+          "lines": 593,
+          "bytes": 4151,
+          "sha256": "b7a91674e739f094461145f1740d02a0b4168af109d70a617ca93d6ff2771cb6"
+        }
+      ],
+      "request_bytes": 255184,
+      "differences": [],
+      "page_observations": [
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 409600,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 24
+              }
+            ],
+            "total_rows": 24
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 819200,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 188
+              }
+            ],
+            "total_rows": 593
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 157
+              }
+            ],
+            "total_rows": 967
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 345
+              }
+            ],
+            "total_rows": 1155
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 128
+              }
+            ],
+            "total_rows": 938
+          }
+        },
+        {
+          "alternate": null,
+          "primary": {
+            "allocation_bytes": 1228800,
+            "pages": [
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 43716,
+                  "hyperlink_cells": 6290,
+                  "rows": 405,
+                  "string_bytes": 23315,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 405
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 592
+              },
+              {
+                "allocation_bytes": 409600,
+                "capacity": {
+                  "cols": 80,
+                  "grapheme_bytes": 8192,
+                  "hyperlink_bytes": 192,
+                  "hyperlink_cells": 64,
+                  "rows": 592,
+                  "string_bytes": 2048,
+                  "styles": 128
+                },
+                "columns": 80,
+                "pooled": true,
+                "rows": 129
+              }
+            ],
+            "total_rows": 1126
+          }
+        }
+      ],
+      "complete_terminal_observations": 1,
+      "response_sha256": {
+        "rust": "31d9f540aca9f2222de98921ed930bc22c2abe116ce81c62ee623d6cb84ef9b6",
+        "zig": "7f193e9dd1067b7b6081b64931a09e4f54df96f808ed783fa07e792eb988a233"
+      }
+    }
+  ],
+  "matched": 8,
+  "total": 8,
+  "comparison": "complete parsed JSON except static capabilities array; capabilities have identical members in different advertised order, retained below and in raw replies. No page/state/accounting field removed or normalized",
+  "capabilities": {
+    "rust": [
+      "drag-and-drop",
+      "terminal.pages",
+      "graphics.glyphs",
+      "terminal.page-layout",
+      "terminal.selection",
+      "terminal.search",
+      "terminal.tracked",
+      "graphics.kitty",
+      "graphics.png",
+      "terminal.write",
+      "terminal.resize",
+      "terminal.reset",
+      "terminal.observe",
+      "terminal.cells",
+      "terminal.styles",
+      "terminal.screens",
+      "terminal.cursor",
+      "terminal.modes",
+      "terminal.colors",
+      "effects.pty",
+      "effects.title",
+      "effects.pwd",
+      "effects.bell",
+      "effects.host",
+      "clipboard",
+      "unicode.width",
+      "input.key",
+      "input.mouse",
+      "input.focus-paste",
+      "parser.raw-events",
+      "snapshot.cross-decode",
+      "snapshot.streaming",
+      "snapshot.fixtures",
+      "protocol.dcs"
+    ],
+    "zig": [
+      "drag-and-drop",
+      "terminal.pages",
+      "graphics.glyphs",
+      "terminal.page-layout",
+      "terminal.selection",
+      "terminal.search",
+      "terminal.tracked",
+      "graphics.kitty",
+      "graphics.png",
+      "protocol.dcs",
+      "terminal.write",
+      "terminal.resize",
+      "terminal.reset",
+      "terminal.observe",
+      "terminal.cells",
+      "terminal.styles",
+      "terminal.screens",
+      "terminal.cursor",
+      "terminal.modes",
+      "terminal.colors",
+      "effects.pty",
+      "effects.title",
+      "effects.pwd",
+      "effects.bell",
+      "effects.host",
+      "clipboard",
+      "unicode.width",
+      "input.key",
+      "input.mouse",
+      "input.focus-paste",
+      "parser.raw-events",
+      "snapshot.cross-decode",
+      "snapshot.streaming",
+      "snapshot.fixtures"
+    ]
+  },
+  "timings": "not measured"
+}

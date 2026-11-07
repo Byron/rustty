@@ -1,0 +1,7 @@
+All 289 original commits and parent relationships retained, including the merge fork.
+refs/heads/exp/mouse-hover a62cd5c315d6bbca4a8440c382111bb0271d9c35
+refs/heads/ghostty-adjustments-legacy e195531aae114f3ae898f7506a14df3c68ad0821
+refs/heads/main 5acdbf154369928eb228d2263cbe612d165f7569
+refs/heads/rustty 1efa03df53bfa6418bd595564db017aad8d02baa
+refs/heads/rustty-windows bfc18d8f83a3619af8135c910fa9c08a4d39fd32
+refs/tix/github/Byron/rustty/pull/1/head 7a10cab4bba2af88659668898a3bf001611afb77

@@ -1,0 +1,48 @@
+[
+  {
+    "request": {
+      "id": "preexisting/graphics/placed-priority",
+      "kind": "input",
+      "cols": 12,
+      "rows": 3,
+      "graphics_max_bytes": 8,
+      "observe_graphics": true,
+      "observe_graphics_placements": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5f47663d33322c733d312c763d312c693d392c613d542c433d313b415149442f773d3d1b5c1b5f47663d33322c733d312c763d312c693d312c613d743b415149442f773d3d1b5c1b5f47663d33322c733d312c763d312c693d332c613d743b415149442f773d3d1b5c"
+        },
+        {
+          "op": "observe"
+        }
+      ]
+    },
+    "covers": [
+      "graphics.kitty"
+    ]
+  },
+  {
+    "request": {
+      "id": "preexisting/graphics/transient-priority",
+      "kind": "input",
+      "cols": 12,
+      "rows": 3,
+      "graphics_max_bytes": 8,
+      "observe_graphics": true,
+      "observe_graphics_placements": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5f47663d33322c733d312c763d312c693d392c613d743b415149442f773d3d1b5c1b5f47663d33322c733d312c763d312c693d312c613d742c4e3d313b415149442f773d3d1b5c1b5f47663d33322c733d312c763d312c693d332c613d743b415149442f773d3d1b5c"
+        },
+        {
+          "op": "observe"
+        }
+      ]
+    },
+    "covers": [
+      "graphics.kitty"
+    ]
+  }
+]

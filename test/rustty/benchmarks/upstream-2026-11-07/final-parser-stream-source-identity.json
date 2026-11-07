@@ -1,0 +1,182 @@
+[
+  {
+    "ref": "c06197283",
+    "path": "crates/rustty-vt/src/terminal.rs::osc_text_width",
+    "sha256": "85fce92e3d773c182f1238f4643a93d90dddae76c72330b9c64c43cfc4607482",
+    "bytes": 3056
+  },
+  {
+    "ref": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683",
+    "path": "crates/rustty-vt/src/terminal.rs::osc_text_width",
+    "sha256": "85fce92e3d773c182f1238f4643a93d90dddae76c72330b9c64c43cfc4607482",
+    "bytes": 3056
+  },
+  {
+    "ref": "f2b7e134",
+    "path": "crates/rustty-vt/src/terminal.rs::osc_text_width",
+    "sha256": "85fce92e3d773c182f1238f4643a93d90dddae76c72330b9c64c43cfc4607482",
+    "bytes": 3056
+  },
+  {
+    "ref": "6ba144158",
+    "path": "src/terminal/osc.zig",
+    "sha256": "87044bfbde4738eb134d5407d9674e74f5aaa6a8640d8da67f15a6e10e90e6a9",
+    "bytes": 44926
+  },
+  {
+    "ref": "6ba144158",
+    "path": "src/terminal/Parser.zig",
+    "sha256": "92e0f0fe1939f2030c83a3d7e2f334d90fa6d5e4988760c4b465da54ef57c808",
+    "bytes": 36148
+  },
+  {
+    "ref": "6ba144158",
+    "path": "src/terminal/osc/parsers/kitty_text_sizing.zig",
+    "sha256": "dd52a34a9c1c18735eae6c20caeb0d38ed119ad3cd01ac9710452470ce25ceda",
+    "bytes": 7551
+  },
+  {
+    "ref": "6ba144158",
+    "path": "src/terminal/device_status.zig",
+    "sha256": "57605f5dc22687b1926654664475d3d05c74e0bff12bfe8a9cc955596e8fae92",
+    "bytes": 5033
+  },
+  {
+    "ref": "5acdbf154",
+    "path": "src/terminal/osc.zig",
+    "sha256": "87044bfbde4738eb134d5407d9674e74f5aaa6a8640d8da67f15a6e10e90e6a9",
+    "bytes": 44926
+  },
+  {
+    "ref": "5acdbf154",
+    "path": "src/terminal/Parser.zig",
+    "sha256": "92e0f0fe1939f2030c83a3d7e2f334d90fa6d5e4988760c4b465da54ef57c808",
+    "bytes": 36148
+  },
+  {
+    "ref": "5acdbf154",
+    "path": "src/terminal/osc/parsers/kitty_text_sizing.zig",
+    "sha256": "dd52a34a9c1c18735eae6c20caeb0d38ed119ad3cd01ac9710452470ce25ceda",
+    "bytes": 7551
+  },
+  {
+    "ref": "5acdbf154",
+    "path": "src/terminal/device_status.zig",
+    "sha256": "57605f5dc22687b1926654664475d3d05c74e0bff12bfe8a9cc955596e8fae92",
+    "bytes": 5033
+  },
+  {
+    "ref": "c06197283",
+    "path": "crates/rustty-parser/src/lib.rs",
+    "sha256": "baa8da773107b8918bcd749ebeff8ff2d6e895f085c86ff1b4e39afafe133511",
+    "bytes": 51124
+  },
+  {
+    "ref": "c06197283",
+    "path": "crates/rustty-parser/src/table.rs",
+    "sha256": "54b591dfcbfc0b7b6181259c5b27f0929899308d1ec004e9dbbaeaa15a7ea737",
+    "bytes": 8749
+  },
+  {
+    "ref": "c06197283",
+    "path": "test/rustty/zig-parser.zig",
+    "sha256": "2e95d2d1e248ff6d8089a5a9bfde4fcb229f98a89687baa98689beb2a2a73a6f",
+    "bytes": 5927
+  },
+  {
+    "ref": "c06197283",
+    "path": "test/rustty/rust-parser.rs",
+    "sha256": "2f488264e92c95c8d14ee63709f752efbc28e87b0052e8a2090646f747fc07d1",
+    "bytes": 5415
+  },
+  {
+    "ref": "c06197283",
+    "path": "crates/rustty-vt/src/terminal.rs::csi DSR branch",
+    "sha256": "9e33c943a8d69ddb691fc8c7a1f0650828474f6b2cf3c5f4323b42e9a3b574da",
+    "bytes": 968
+  },
+  {
+    "ref": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683",
+    "path": "crates/rustty-parser/src/lib.rs",
+    "sha256": "baa8da773107b8918bcd749ebeff8ff2d6e895f085c86ff1b4e39afafe133511",
+    "bytes": 51124
+  },
+  {
+    "ref": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683",
+    "path": "crates/rustty-parser/src/table.rs",
+    "sha256": "54b591dfcbfc0b7b6181259c5b27f0929899308d1ec004e9dbbaeaa15a7ea737",
+    "bytes": 8749
+  },
+  {
+    "ref": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683",
+    "path": "test/rustty/zig-parser.zig",
+    "sha256": "2e95d2d1e248ff6d8089a5a9bfde4fcb229f98a89687baa98689beb2a2a73a6f",
+    "bytes": 5927
+  },
+  {
+    "ref": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683",
+    "path": "test/rustty/rust-parser.rs",
+    "sha256": "2f488264e92c95c8d14ee63709f752efbc28e87b0052e8a2090646f747fc07d1",
+    "bytes": 5415
+  },
+  {
+    "ref": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683",
+    "path": "crates/rustty-vt/src/terminal.rs::csi DSR branch",
+    "sha256": "9e33c943a8d69ddb691fc8c7a1f0650828474f6b2cf3c5f4323b42e9a3b574da",
+    "bytes": 968
+  },
+  {
+    "ref": "f2b7e134",
+    "path": "crates/rustty-parser/src/lib.rs",
+    "sha256": "baa8da773107b8918bcd749ebeff8ff2d6e895f085c86ff1b4e39afafe133511",
+    "bytes": 51124
+  },
+  {
+    "ref": "f2b7e134",
+    "path": "crates/rustty-parser/src/table.rs",
+    "sha256": "54b591dfcbfc0b7b6181259c5b27f0929899308d1ec004e9dbbaeaa15a7ea737",
+    "bytes": 8749
+  },
+  {
+    "ref": "f2b7e134",
+    "path": "test/rustty/zig-parser.zig",
+    "sha256": "2e95d2d1e248ff6d8089a5a9bfde4fcb229f98a89687baa98689beb2a2a73a6f",
+    "bytes": 5927
+  },
+  {
+    "ref": "f2b7e134",
+    "path": "test/rustty/rust-parser.rs",
+    "sha256": "2f488264e92c95c8d14ee63709f752efbc28e87b0052e8a2090646f747fc07d1",
+    "bytes": 5415
+  },
+  {
+    "ref": "f2b7e134",
+    "path": "crates/rustty-vt/src/terminal.rs::csi DSR branch",
+    "sha256": "9e33c943a8d69ddb691fc8c7a1f0650828474f6b2cf3c5f4323b42e9a3b574da",
+    "bytes": 968
+  },
+  {
+    "ref": "6ba144158",
+    "path": "src/terminal/stream.zig::unimplemented OSC dispatch",
+    "sha256": "2194df3e3bbaf77478f0804d33a864d72e3f4a9011008e79bd212a5dba45bc4e",
+    "bytes": 583
+  },
+  {
+    "ref": "6ba144158",
+    "path": "src/terminal/stream_terminal.zig::deviceStatus cursor branches",
+    "sha256": "b22afc4c5ee147e7b55cf780bcc11e0da189f63da1356d4880f107f74877a91a",
+    "bytes": 1172
+  },
+  {
+    "ref": "5acdbf154",
+    "path": "src/terminal/stream.zig::unimplemented OSC dispatch",
+    "sha256": "2194df3e3bbaf77478f0804d33a864d72e3f4a9011008e79bd212a5dba45bc4e",
+    "bytes": 583
+  },
+  {
+    "ref": "5acdbf154",
+    "path": "src/terminal/stream_terminal.zig::deviceStatus cursor branches",
+    "sha256": "b22afc4c5ee147e7b55cf780bcc11e0da189f63da1356d4880f107f74877a91a",
+    "bytes": 1172
+  }
+]

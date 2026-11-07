@@ -1,0 +1,15 @@
+--- a/tmuxx/crates/tmuxx-terminal/src/lib.rs
++++ b/tmuxx/crates/tmuxx-terminal/src/lib.rs
+@@ -1008,7 +1008,11 @@
+         let owned = terminal.inner.primary_screen().owned_bytes();
+         assert!(owned < resident);
+         let screen = terminal.active_screen();
+-        assert!(screen.row_text(screen.row(0)).starts_with("active界 e\u{301}"));
++        assert!(
++            screen
++                .row_text(screen.row(0))
++                .starts_with("active界 e\u{301}")
++        );
+         assert!(screen.row_text(screen.row(1)).starts_with("second"));
+         assert_eq!(terminal.inner.primary_screen().owned_bytes(), owned);
+ 

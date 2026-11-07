@@ -1,0 +1,709 @@
+[
+  {
+    "hash": "9644c7571d43f988415b3ed38f40be76e5964dd4",
+    "title": "datastruct: fix clearing circular buffers with zero capacity",
+    "area": "performance/circular-buffer",
+    "merge": false,
+    "disposition": "Already equivalent",
+    "evidence": "Zero-capacity clear returns before modulo. Rust page lists, reflow and event queues use std::collections::VecDeque, including page_list.rs::PageList.pages; there is no matching handwritten modulo-clear loop. Shared native fix inherited."
+  },
+  {
+    "hash": "f040f0ab0ee30d77794b98d87e27fc9105ee6ab9",
+    "title": "datastruct: fix clearing circular buffers with zero capacity (#14958)",
+    "area": "performance/circular-buffer",
+    "merge": true,
+    "disposition": "Already equivalent",
+    "evidence": "Merge of 9644c7571. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": []
+  },
+  {
+    "hash": "b01ca003ca76687072b1cac6f1e3dd1bd0e27fa5",
+    "title": "benchmark: add shaper-rows benchmark",
+    "area": "performance/shaper-benchmark",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "test/rustty/shaper_rows.rs benchmarks the actual prepare.rs::row_text run loop through private const stages for runs, uncached shaping and ordinary production emission. Input feed, RenderView and per-row paints are prepared outside timing; 120x80 and 200 passes match the upstream work boundary. Uncached Renderer::shape bypasses only persistent lookup/insertion, while production retains caching. Native Inconsolata/Arabic fallback versus Rust JetBrains Mono defaults are disclosed; no cross-font speedup claim. 62 renderer tests, three native input comparisons, both native modes and repeated frame controls validate the port.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "ce920296c891d0f9e266cfb908057716304182ab",
+    "title": "terminal: skip the ED2 prompt scan when OSC 133 was never seen",
+    "area": "performance/erase-prompt-gate",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Screen.semantic_prompt_seen is a runtime-only sticky flag used by terminal.rs::erase_display. Actual public cursor Input/Prompt writes, index/wrap, OSC133, alternate-screen cursor copies, JSON/GHOSTSNP, streaming history attachment and visual imports maintain or derive it. The false state proves retained prompt rows absent; no wire change. The inherited deterministic Erase generator is consumed by the shared Rust/native file harness with ED2/22, rate, dimensions and text controls, exact bytes and independent correctness checks. ed-measurement.md records native comparisons and repeated paired results.",
+    "port_keys": [
+      "ed2-gate",
+      "sgr-admission"
+    ]
+  },
+  {
+    "hash": "9bfa8ee9a1d73f99208c1f056c4e4b5783402ead",
+    "title": "terminal: skip the ED2 prompt scan when OSC 133 was never seen (#14975)",
+    "area": "performance/erase-prompt-gate",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of ce920296c. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "ed2-gate",
+      "sgr-admission"
+    ]
+  },
+  {
+    "hash": "1461f068745a4b9524e197a38a876072a9a220f0",
+    "title": "benchmark: end a shaper frame after each shaper-rows pass",
+    "area": "performance/shaper-benchmark",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "The refinement ends each native shaper frame after a complete screen pass. The shared native benchmark inherits endFrame; Rust uses RAII and the existing actual shaping lifetime without a foreign autorelease-frame API. The private stage harness retains per-pass work boundaries, with no per-run cache clearing falsely labeled uncached shaping.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "3bd54e025cc3349ee76ab1af7ec1ff8f7353632b",
+    "title": "benchmark: add shaper-rows benchmark (#14965)",
+    "area": "performance/shaper-benchmark",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of b01ca003c, 1461f0687. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "a3b5946a59b94bf097da1aac889cf95f9c704675",
+    "title": "terminal: new pages keep the capacity recent pages needed",
+    "area": "performance/page-capacity",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "page_list/capacity.rs carries recent live resource demand, refined by 0d4418/f0d8cb/d20d. Page::usage reuses live counters and arena bitmaps; no duplicated cell scan or new telemetry. PageCapacity::fit_rows estimates from raw available bytes and verifies the complete aligned layout, matching the final adjust path; max_columns retains aligned-down grid space separately. Budget pruning follows successful allocation. Shared-file Config installs legacy/unicode grapheme width as a reset-preserved default, with both reset-boundary selfchecks.",
+    "port_keys": [
+      "capacity-carry",
+      "sgr-admission"
+    ]
+  },
+  {
+    "hash": "dc8f59943ce94b75ffadc45cc4f36eca6a7ed2ae",
+    "title": "terminal: new pages keep the capacity recent pages needed (#14985)",
+    "area": "performance/page-capacity",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of a3b5946a5. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "capacity-carry",
+      "sgr-admission"
+    ]
+  },
+  {
+    "hash": "5e7714e71cd41ac0095aefa2120838842dfeca48",
+    "title": "datastruct: prevent overflow in circular buffer arithmetic",
+    "area": "performance/circular-buffer",
+    "merge": false,
+    "disposition": "Already equivalent",
+    "evidence": "Native start/count arithmetic uses bounded modular subtraction and avoids overflow when moving/copying a wrapped buffer. Rust uses VecDeque operations, with no overflowing start+count arithmetic in an equivalent custom ring. Native allocation and wrap tests inherited."
+  },
+  {
+    "hash": "0aa2f7caf52988bbfa42290cd3afbfbf550c0ef6",
+    "title": "datastruct: use checked addition for buffer capacity",
+    "area": "performance/circular-buffer",
+    "merge": false,
+    "disposition": "Already equivalent",
+    "evidence": "Native checked capacity addition preserves OutOfMemory instead of overflowing before resize. Rust Vec/VecDeque capacity APIs own this check; no equivalent custom capacity addition to port. This refines 5e7714e71 rather than a separate container feature."
+  },
+  {
+    "hash": "c7eb3e8b96288e47e12f045056d270f8ba7f45f0",
+    "title": "datastruct: restore circular buffer explanations",
+    "area": "performance/circular-buffer",
+    "merge": false,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Restores explanatory comments for buffer logical order, wrapped copy segments and grow behavior after the arithmetic rewrite. Shared Zig comments inherited; no Rust behavior change."
+  },
+  {
+    "hash": "54d162da5bea1d95399574495bde4ddb91df0784",
+    "title": "terminal: apply every attribute of an SGR sequence at once",
+    "area": "performance/sgr-batching",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "terminal.rs::sgr applies every attribute to one local Style before set_cursor_style admits it once. Allocation failure keeps the presequence style, and tmux 221/222 flags and region editing remain intact. Four regressions include two meaningful pre-port failures. The inherited Styled generator sgr_attrs1..4 and quantized RGB/first-attribute resets feed identical checked bytes to native/Rust. Three paired rounds improve multi-attribute inputs21.4\u201337.5%, controls within1%; see sgr-measurement.md.",
+    "port_keys": [
+      "sgr-admission"
+    ]
+  },
+  {
+    "hash": "881fc68902a5d819fdac96bcb597a2d99feb9729",
+    "title": "terminal: skip clearing rows that are already blank",
+    "area": "performance/blank-rows",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "packed.rs::RowHeader::BLANK uses private bit42, distinct from Rust TEXT_SPANS bit41. It proves all active cell words zero and no managed resources. mark_written combines dirty plus not-blank; metadata-only mark_dirty preserves the proof. Page reset/erase skips existing zero work, while Screen graphics/tmux actions and Terminal unprotected metadata reset remain outside the skipped cells. Mutable cell/slice, scalar/batch, copy/reflow and direct spacer-head paths invalidate the hint; no text-empty/background-color inference.",
+    "port_keys": [
+      "blank-rows"
+    ]
+  },
+  {
+    "hash": "2f967e3a6ab231188c29a97fb422e479a254e97c",
+    "title": "terminal: apply every attribute of an SGR sequence at once (#14995)",
+    "area": "performance/sgr-batching",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of 54d162da5. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "sgr-admission"
+    ]
+  },
+  {
+    "hash": "a7e8e4d15bd0f12ad2a1123bf157b338e526c23e",
+    "title": "datastruct: prevent overflow in circular buffer arithmetic (#14987)",
+    "area": "performance/circular-buffer",
+    "merge": true,
+    "disposition": "Already equivalent",
+    "evidence": "Merge of 5e7714e71, 0aa2f7caf, c7eb3e8b9. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": []
+  },
+  {
+    "hash": "6573de67e9990ebf0308f5cb07e4e40895d748ec",
+    "title": "Replace std.ArrayListUnmanaged and std.ArrayListAligned",
+    "area": "performance/zig-container-api",
+    "merge": false,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Complete 35-file diff only renames std.ArrayListUnmanaged to std.ArrayList and std.ArrayListAligned to std.array_list.Aligned, retaining explicit allocators and alignment. Rust Vec/VecDeque has no matching alias migration. Shared Zig paths inherit modernization; native tool adapter commit handles compilation.",
+    "port_keys": [
+      "native-tools"
+    ]
+  },
+  {
+    "hash": "2178e635dffc71e0c679b143680665bf09857bb8",
+    "title": "terminal: mark reset rows blank and test the blank bit bookkeeping",
+    "area": "performance/blank-rows",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "New/exposed/recycled zero rows establish the proof, while generic header reset stays conservative because it can reset metadata on nonempty cells. Reset_row uses mark_dirty after resetting identity and metadata. Protected/partial erases, colored backgrounds, row movement, copies and reflow have invariant regressions; the shared resource-reference test now verifies every blank row is all-zero and unmanaged.",
+    "port_keys": [
+      "blank-rows"
+    ]
+  },
+  {
+    "hash": "59093e3aadb1478e6642061059b1882cfa1b6cf3",
+    "title": "terminal: skip clearing rows that are already blank (#14997)",
+    "area": "performance/blank-rows",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of 881fc6890, 2178e635d. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "blank-rows"
+    ]
+  },
+  {
+    "hash": "ada6e3d722fde00e7171e2d4e93c7392052f2720",
+    "title": "Replace std.ArrayListUnmanaged and std.ArrayListAligned (#15001)",
+    "area": "performance/zig-container-api",
+    "merge": true,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Merge of 6573de67e. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "native-tools"
+    ]
+  },
+  {
+    "hash": "0d4418ac20922475ebb40ef23a666898bbc91b67",
+    "title": "terminal: fix edge cases in carried page capacity",
+    "area": "performance/page-capacity",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Carry uses u64 products and bounded resource maxima, handles empty usage, never creates zero-row pages, stores a hint only after successful page installation and prunes against actual resulting allocation with the active-area floor. Fifteen tests include huge fit boundaries, burst decay, tall trimmed pages and native clone hint reset. 386 exact raw layouts and 28 exact native page-ledger observations pass.",
+    "port_keys": [
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "4747d7ff427480f75736dc207d14251b8eabd3c9",
+    "title": "terminal: fix edge cases in carried page capacity (#15005)",
+    "area": "performance/page-capacity",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of 0d4418ac2. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "9113da029815076cefbbc1ea7b1f63e8082e09ea",
+    "title": "terminal: project hyperlink and string capacity when growing a page",
+    "area": "performance/page-capacity",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Page::grow_capacity projects all resource classes from live usage per exposed row with25% headroom, bounded32x growth. Floors include one distinct link per row, one linked cell per row,64 string bytes per row and standard style/grapheme minima. HyperlinkAdmission exposes live set/map and arena usage. Fresh sustained-link native states and page allocations agree, including independent map resources.",
+    "port_keys": [
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "f0d8cb776254f5dec58b353811398c60fff2fd86",
+    "title": "terminal: carried pages compare usage per row",
+    "area": "performance/page-capacity",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "The final hint policy normalizes usage to target rows, clamps to actual request capacity, uses50% headroom below one-third occupancy and otherwise retains demand, while preserving standard minima. This survives shortened pages and later lower demand. Exact native style/link bursts return to standard after the final refined decay window. Timed retained-link workloads improve60\u201377%, plain/zero-history controls within0.9%.",
+    "port_keys": [
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "431d003c44e857f7ce273e3e209c9daac8eee85e",
+    "title": "terminal: project hyperlink and string capacity when growing a page (#15012)",
+    "area": "performance/page-capacity",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of 9113da029. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "7b267cd9ac7863b0bd72e808daa021381e72dc21",
+    "title": "terminal: carried pages compare usage per row (#15013)",
+    "area": "performance/page-capacity",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of f0d8cb776. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "41557e2ccf7f27b7ed6665b163bd467d4fa8691e",
+    "title": "terminal: store Style as a packed u128",
+    "area": "performance/style-hash-and-layout",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Style::native_hash forms canonical interleaved tag8/data24 colors, mixes low64 XOR(high64*0x9e3779b97f4a7c15), then applies native integer hashing. Public Rust enums/fields/serde/tmux metadata remain stable. page_layout.rs uses Style Item32/align16 and metadata16, while hyperlink/string arenas retain own alignment8. Native hash collision fixtures and exact resource/layout consumers were refreshed. The initial adjust alignment is subsequently refined by native a3b5946a5 into fit_rows; final carry uses that complete aligned-layout check. Snapshot explicit color wire bytes remain unchanged.",
+    "port_keys": [
+      "canonical-style",
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "73a2a1d06e9269b67257f4ab810f1a489f0d5b19",
+    "title": "terminal: move SGR attribute handling to Style",
+    "area": "performance/style-attribute-handling",
+    "merge": false,
+    "disposition": "Already equivalent",
+    "evidence": "Native moves its unchanged attribute switch into Style. Rust already applies corresponding attributes to a local Style, including SGR22 clearing bold+faint without clearing italic and ignoring unknowns. The SGR port makes that helper pure and admits the final style once, preserving tmux and region-edit consumers. A second public Style wrapper would add no behavior.",
+    "port_keys": [
+      "sgr-admission"
+    ]
+  },
+  {
+    "hash": "72bc97a9edf5df1080fa68fc8b38c45dc692c8ea",
+    "title": "terminal: simplify fillStyles to one vector store",
+    "area": "performance/native-render-style-fill",
+    "merge": false,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Replaces overlapping native16-byte stores with one vector store for packed16-byte Style; temporary inline is removed by de16f08dc. Rust render_view/RowView borrows page resources and rustty-render prepare::row_text reads row.style lazily, with no dense Style array to fill. Porting a duplicate native RenderState would add work rather than preserve a behavior.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "68750a1be2b99227328a6b185ae72719dea0428f",
+    "title": "terminal: support mixed narrow/wide in print fast path",
+    "area": "performance/mixed-width-print",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Ported in 1aa7813cdb93cf59cc9ac869654d705a9e1291db / Tix yppsryw. printing.rs::MixedRun and Screen::write_cursor_mixed_codepoints fill actual mixed narrow/wide rows while keeping combining/control/placeholder, charset, insert, margins, resources and pending-wrap fallback. A decoded-block width hint and outlined mixed-only restyling keep ordinary paths small; the uniform template is reused for marking. The measured Rust same-width cutoff is 4 versus native 32, with 3/4/5 boundary regressions. The inherited UTF8 generator CJK weights, space rate, wide-only weights and complete byte tails feed identical checked files in legacy/unicode modes. Final 11-workload / 117-record matrix improves intended feeds 37.7\u201346.6%, controls\u22120.7% to +1.5%; combined pre-blank gains 35.9\u201345.2% resolve the prior 3.1% cost. V1\u2013V8 rejected/superseded and V9 six-case tuning results are separate, not final evidence. Final evidence: mixed-completed.json, mixed-timings.json, mixed-measurement-summary.json and independently checked mixed-root-measurement-check.json. Measured stream SHA256 69b1bef6a065b80dc6846b7f4aa335dd18fb6b338479ad5690f18fd696eb96c7.",
+    "port_keys": [
+      "mixed-width",
+      "sgr-admission"
+    ],
+    "port_change_id": "yppsryw",
+    "measured_commit": "1aa7813cdb93cf59cc9ac869654d705a9e1291db",
+    "measured_stream_sha256": "69b1bef6a065b80dc6846b7f4aa335dd18fb6b338479ad5690f18fd696eb96c7"
+  },
+  {
+    "hash": "e2a3ba004d01ca1d0251c891544b97784a072c20",
+    "title": "terminal: support mixed narrow/wide in print fast path (#15021)",
+    "area": "performance/mixed-width-print",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of 68750a1be. Complete individual diff inspected and empty remerge diff verified. Underlying behavior is ported in 1aa7813cdb93cf59cc9ac869654d705a9e1291db / yppsryw, using the final 11-case / 117-record measurement matrix; no independent merge resolution. Measured source/binary identity follows the source row and mixed-completed.json.",
+    "port_keys": [
+      "mixed-width"
+    ],
+    "port_change_id": "yppsryw",
+    "measured_commit": "1aa7813cdb93cf59cc9ac869654d705a9e1291db",
+    "measured_stream_sha256": "69b1bef6a065b80dc6846b7f4aa335dd18fb6b338479ad5690f18fd696eb96c7"
+  },
+  {
+    "hash": "de16f08dcf7f3f4104e8722cb39a632a6a8a19f9",
+    "title": "terminal: assert canonical Style.Color bits, test hash and constructors",
+    "area": "performance/style-hash-tests",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Field-sensitive native-hash tests, canonical byte comparison and default-zero coverage accompany the canonical hash port. Rust typed Color variants cannot retain unused native payload bits; explicit snapshot encoding already zeros them. Native fillStyles inline removal has no borrowed Rust render counterpart. style-individual-audit.md records the complete individual refinement and connected consumers.",
+    "port_keys": [
+      "canonical-style"
+    ]
+  },
+  {
+    "hash": "d20d208c514661ca14b9935576d66655fa2a8be8",
+    "title": "terminal: size the hyperlink map independently of the hyperlink set",
+    "area": "performance/hyperlink-capacity-and-carry",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Independent PageCapacity.hyperlink_cells defaults64, uses exact80% map layout and separate Map/Set growth, and reaches reflow, exact accounting, JSON and GHOSTSNP. The existing single-u16 hint covers max(set,map requirement); hints65520..65535 derive full-page cells cappedu16. Legacy six-field JSON shape remains; old readers cannot preserve newly representable >26214 linked contents. Dense30000 snapshot and8192-record retained reflow tests pass. Final carry uses three remembered full pages plus the just-full page, discards old demand after two zero-use pages, and floors carried distinct-link sets at32items. Rust has no hidden native freelist. HyperlinkMap.zig only adapts existing native benchmark setup from coupled bytes to hyperlink_cells; that shared source is inherited, not a new operation. Valid map+carry timings and memory/retention caveats are recorded separately.",
+    "port_keys": [
+      "hyperlink-map",
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "687f37acd90462d451acd5f79042822d5d0255fb",
+    "title": "terminal: pack Style into 128 bits and simplify style updates (#15023)",
+    "area": "performance/style-hash-and-layout",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of 41557e2cc, 73a2a1d06, 72bc97a9e, de16f08dc. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "canonical-style",
+      "capacity-carry",
+      "sgr-admission",
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "298f8ecb9cd30471da7bca9933335e496a5882d1",
+    "title": "terminal: size the hyperlink map independently of the hyperlink set (#15028)",
+    "area": "performance/hyperlink-capacity-and-carry",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of d20d208c5. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "hyperlink-map",
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "a74bd243c03301a00a480035734aa1febbab2ea1",
+    "title": "Fix broken tests using old syntax",
+    "area": "performance/page-capacity-tests",
+    "merge": false,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Native test-only packed Style constructor syntax repair is inherited. Its carry cases are represented by Rust capacity regressions; no additional Rust runtime behavior is introduced.",
+    "port_keys": [
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "22b84514411aab13ce71c09052a10c76380eaf4b",
+    "title": "terminal: re-read the style per row in the mixed-width print fast path",
+    "area": "performance/mixed-width-print",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "The row-style refinement is implemented from the first accepted mixed version in 1aa7813cdb93cf59cc9ac869654d705a9e1291db / Tix yppsryw: each Screen row call reacquires the current page and verifies/rebuilds its cursor template; no page ID or cached cell borrow survives wrap. Long styled mixed input crosses pages under 10,000/50,000,000-byte budgets and checks actual styles, complete snapshots and exact resource refs, including resized retained rows. Full validation passes 243 library + 100 integration tests, 162 native cross-decoder comparisons across 54 cases, 39 shared selfchecks and strict Clippy. Final evidence: mixed-completed.json, mixed-timings.json, mixed-measurement-summary.json and independently checked mixed-root-measurement-check.json. Measured stream SHA256 69b1bef6a065b80dc6846b7f4aa335dd18fb6b338479ad5690f18fd696eb96c7.",
+    "port_keys": [
+      "mixed-width"
+    ],
+    "port_change_id": "yppsryw",
+    "measured_commit": "1aa7813cdb93cf59cc9ac869654d705a9e1291db",
+    "measured_stream_sha256": "69b1bef6a065b80dc6846b7f4aa335dd18fb6b338479ad5690f18fd696eb96c7"
+  },
+  {
+    "hash": "e0acea2753f84ec31c26cdc1c8837fad99cd83b9",
+    "title": "terminal: re-read the style per row in the mixed-width print fast path (#15032)",
+    "area": "performance/mixed-width-print",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of 22b845144. Complete individual diff inspected and empty remerge diff verified. Underlying behavior is ported in 1aa7813cdb93cf59cc9ac869654d705a9e1291db / yppsryw, using the final 11-case / 117-record measurement matrix; no independent merge resolution. Measured source/binary identity follows the source row and mixed-completed.json.",
+    "port_keys": [
+      "mixed-width"
+    ],
+    "port_change_id": "yppsryw",
+    "measured_commit": "1aa7813cdb93cf59cc9ac869654d705a9e1291db",
+    "measured_stream_sha256": "69b1bef6a065b80dc6846b7f4aa335dd18fb6b338479ad5690f18fd696eb96c7"
+  },
+  {
+    "hash": "4c92f80954b1d563c148d77a051394fd2d39de60",
+    "title": "terminal: print fast stays active while a hyperlink is open",
+    "area": "performance/hyperlink-print-batching",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Ported in measured cc309adab78b012fc15200306eab5883268eb31d / Tix nnwzqpm; current replayed commit f2b7e1344a57dda204355a541d6a811e89891b64. Page::set_hyperlink_run and bulk retain attach each occupied narrow/wide cell within available map capacity, preserving identity/display overrides and reacquiring cursor resources per row. Already-linked repaint retains the original scalar event path, except pending wrap resolves the next destination. One private MAYBE_LINKED UTF8 specialization removes link setup from ordinary runs while retaining stale-reference cleanup and dynamic link-drop fallback. Final validation: 247 library + 102 integration tests, 132 fresh Rust-runner native comparisons / 44 cases, 87 shared checks / 29 inputs, 22 upstream corpora across both engines and both 8192-record retained-history/reflow checks; strict Clippy/format pass. Final 29-workload / 261-record matrix improves short-link feed time 9.1\u201322.8%, full-link 65.3\u201384.9%, linked-wide about 86%, linked-mixed 74.4\u201375.5%. Largest median control cost is linked emoji +1.70%; ordinary/repaint median costs stay at or below +0.90%. Comparable output, page accounting and Rust-owned storage are unchanged. Final evidence: linked-completed.json, linked-timings.json, linked-measurement-summary.json, linked-root-measurement-check.json; V1\u2013V7 and shorter V8 controls are retained separately as tuning evidence.",
+    "port_keys": [
+      "open-link-batching"
+    ],
+    "port_change_id": "nnwzqpm",
+    "current_commit": "f2b7e1344a57dda204355a541d6a811e89891b64",
+    "measured_commit": "cc309adab78b012fc15200306eab5883268eb31d",
+    "measured_stream_sha256": "819376fbd18a180a9babba4e1fe5f0f355f5a2e29ab2aeb5c4f7e3bdf8c39237"
+  },
+  {
+    "hash": "91973f2b29be42a2a8713406e18c56238b5f6c19",
+    "title": "terminal: print fast stays active while a hyperlink is open (#15034)",
+    "area": "performance/hyperlink-print-batching",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of 4c92f8095. Complete individual source diff and empty remerge diff inspected; no independent merge resolution. Final implementation is Tix nnwzqpm / measured cc309adab78b012fc15200306eab5883268eb31d, with current replayed hash resolved through completed-ports.json. The source row and linked-completed.json preserve final 29-case / 261-record measurement and correctness provenance.",
+    "port_keys": [
+      "open-link-batching"
+    ],
+    "port_change_id": "nnwzqpm",
+    "current_commit": "f2b7e1344a57dda204355a541d6a811e89891b64",
+    "measured_commit": "cc309adab78b012fc15200306eab5883268eb31d",
+    "measured_stream_sha256": "819376fbd18a180a9babba4e1fe5f0f355f5a2e29ab2aeb5c4f7e3bdf8c39237"
+  },
+  {
+    "hash": "8484146c74ef4b075b68c9cf8767019b2b3c738c",
+    "title": "terminal: skip erasing and scanning rows that are already blank",
+    "area": "performance/blank-rows",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Known-blank EL/ECH/ED22 and RowView::used/resize-tail scans avoid redundant cells; private eight-cell has_text_any/is_empty_all predicates cover codepoint/background/wide distinctions with mixed-background scalar fallback. Public Cell::is_empty remains unchanged; scroll_clear preserves managed-style background detection. Value-pair/vector-tail and semantic metadata regressions cover the boundary. Inherited Erase line_clears40 (alternating EL2/EL0) is replayed through shared-file harness; all12 erase workload/dimension combinations receive full-byte before/after/native correctness checks.",
+    "port_keys": [
+      "blank-rows",
+      "sgr-admission"
+    ]
+  },
+  {
+    "hash": "a0c092868ded132033c85104e9ab3a266c52f2d4",
+    "title": "terminal: skip erasing and scanning rows that are already blank (#15035)",
+    "area": "performance/blank-rows",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of 8484146c7. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "blank-rows",
+      "sgr-admission"
+    ]
+  },
+  {
+    "hash": "25de649dde19bb96c7ad8ec4f7d28441a865da09",
+    "title": "terminal: write the blank row once when scrolling a region up",
+    "area": "performance/row-scroll-store",
+    "merge": false,
+    "disposition": "Already equivalent",
+    "evidence": "Native change avoids partial packed Row field stores followed by full-row load by constructing the cleared row once at its destination. Rust screen.rs::rotate_rows rotates page header slices first and then calls page.rs::reset_row on the final blank row; packed.rs::RowHeader::reset assigns the whole u64. It does not perform native pre-rotation partial-field reset sequence. Keep region-scroll controls when adding the blank bit; no speculative architecture-specific rewrite.",
+    "port_keys": [
+      "blank-rows"
+    ]
+  },
+  {
+    "hash": "18e645ea22a5ef4793a2008275eb6f98e5d039bb",
+    "title": "terminal: write the blank row once when scrolling a region up (#15042)",
+    "area": "performance/row-scroll-store",
+    "merge": true,
+    "disposition": "Already equivalent",
+    "evidence": "Merge of 25de649dd. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "blank-rows"
+    ]
+  },
+  {
+    "hash": "c12d42eaf877b996cc798f9dd54b2a79ba630db9",
+    "title": "terminal: print ASCII runs as u8 slices from input instead of u32",
+    "area": "performance/ascii-print-and-blank",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Borrowed ASCII was already equivalent through PrintAscii -> Terminal::print_ascii -> printing::store_ascii, without u32 widening. The applicable extra behavior is now ported: newly exposed rows are blank and both ASCII and uniform codepoint writers use count=len for a proven blank destination, preserving style retains and unconditional mark_cell invalidation. Twelve scalar-equivalence cases cover ASCII/Latin1/wide, default/styled-protected, partial-column starts, overwrite cleanup and erase. Native SIMD signature changes are inherited through adapted tools; old duplicate ASCII guard was removed in the wrap port.",
+    "port_keys": [
+      "native-tools",
+      "blank-rows"
+    ]
+  },
+  {
+    "hash": "a227276b770c450ab0e5704a42a773c952e4991b",
+    "title": "terminal: clear the blank hint where a snapshot test writes cells",
+    "area": "performance/blank-snapshot-test",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Rust direct cell-mutating native_metadata_sparse_tabs test now calls mark_cell; all raw-write reachability was audited. Snapshot binary/JSON restore derives the private hint after resources and cells are installed, and later text spans invalidate it. No snapshot wire flag or version changes.",
+    "port_keys": [
+      "blank-rows"
+    ]
+  },
+  {
+    "hash": "091beb99250bc4c1a255d3617b54630c115d0f27",
+    "title": "terminal: print ASCII runs as u8 slices from input instead of u32 (#15046)",
+    "area": "performance/ascii-print-and-blank",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of c12d42eaf, a227276b7. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "native-tools",
+      "blank-rows"
+    ]
+  },
+  {
+    "hash": "fad1133619a98a1bb60e99baac2d5460dfb33985",
+    "title": "terminal: pass the style to fillStyles as a vector",
+    "area": "performance/native-render-style-fill",
+    "merge": false,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Pass packed native Style into fillStyles as a two-u64 vector, eliminating conversion for every cell write. Rust borrowed RenderView/RowView does not materialize matching dense styles. No applicable operation to rewrite; shaper run benchmark remains separately required.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "4a2d77ebb2d8d6973e1808bff1ca3e4f13b0a67b",
+    "title": "terminal: reserve style runs once per row in RowBuilder.scan",
+    "area": "performance/native-render-runs",
+    "merge": false,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Native RowBuilder.scan reserves style_runs once per row and uses appendAssumeCapacity while denormalizing. Rust RenderView stores borrowed Screen and rows yield borrowed RowView; there is no equivalent eager per-cell Style denormalization/style_runs list. Keep actual row_text run finder as shaper benchmark subject.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "7ea52a29c5a91fa9a832aa6205add0a4311862da",
+    "title": "terminal: pass the style to fillStyles as a vector (#15053)",
+    "area": "performance/native-render-style-fill",
+    "merge": true,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Merge of fad113361. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "6fba0873efb7765e9d0f79de449063f3214b3d75",
+    "title": "terminal: reserve style runs once per row in RowBuilder.scan (#15054)",
+    "area": "performance/native-render-runs",
+    "merge": true,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Merge of 4a2d77ebb. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "020a0a0998e084d457cf3d1604fb62de4647525f",
+    "title": "terminal: find style runs with one scan in RowBuilder.scan",
+    "area": "performance/native-render-runs",
+    "merge": false,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Native Page.styleRuns iterator replaces repeated full cell style scans; RowBuilder.scan uses one pass, optionally defers dense style expansion and fills only used rows. Rust borrowed rendering already resolves styles during actual row_text scan without a second dense expansion array. Background-only native cells intentionally produce no nonzero StyleRun; Rust row.style resolves inline backgrounds. No duplicate RowBuilder abstraction is warranted.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "d1ce0c46573472d6f961d8b04a03868640c4af93",
+    "title": "terminal: fix performance regression, apply some fixes",
+    "area": "performance/native-render-runs",
+    "merge": false,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Refines020a: native eqlEnd vector scan starts at first already-checked position, still advances at least one when first group fails; plain run starts at x rather than x+1, avoiding scalar group_len-1 tails. Dense style expansion only when requested and Style.bg returns inline background. Rust has no shared Page.styleRuns/eqlEnd helper or dense native array, and existing row_text scan handles backgrounds. No literal SIMD port without an equivalent measured Rust bottleneck.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "171a4e0444959e1938084b5db803dd83c16591b6",
+    "title": "terminal: find style runs with one scan in RowBuilder.scan (#15111)",
+    "area": "performance/native-render-runs",
+    "merge": true,
+    "disposition": "Inherited or not applicable",
+    "evidence": "Merge of 020a0a099, d1ce0c465. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "shaper-benchmark"
+    ]
+  },
+  {
+    "hash": "d03983f02cbffc51b2d661facadab50dc2a209be",
+    "title": "terminal: RefCountedSet reuses dead IDs instead of rehashing",
+    "area": "performance/refset-and-hyperlink-workload",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Bounded dead-ID reuse with PSL-safe membership, passed-over ID retention and serde-default normalized cursor is ported in SetAdmission, with regression-first failures and repeated resource churn measurements. The inherited implicit Hyperlink generator is now consumed by shared Rust/native file harness: URI count, min/max line length, implicit identity per line, short4/full120 streams,120x80/215x215 and byte limits0/10000/50000000. Fixed bytes and seed provenance are retained. Dense retained-history correctness complements the visible checksum. Invalid pre-map full-link history ratios are excluded; final map+carry controls are explicitly measured.",
+    "port_keys": [
+      "resource-admission",
+      "sgr-admission",
+      "hyperlink-map",
+      "capacity-carry"
+    ]
+  },
+  {
+    "hash": "636c1d780568db5c5fe299b7105fcf6b4c74c068",
+    "title": "terminal: RefCountedSet only reaps dead items it may displace",
+    "area": "performance/refset",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "66db9e1f2 / ttmoqly: only reap dead resident when resident PSL <= held PSL, preserving Robin Hood early-termination lookup. live_set_preserves_lookup_through_dead_longer_probe fails before fix and passes after; full core/native validations and resource churn measurements recorded in refset-measurement.md.",
+    "port_keys": [
+      "resource-admission"
+    ]
+  },
+  {
+    "hash": "738d8f7f5b574b2348e0ba635a0f00a0d51c35fe",
+    "title": "terminal: RefCountedSet checks table membership, not a sentinel bucket",
+    "area": "performance/refset-membership",
+    "merge": false,
+    "disposition": "Already equivalent",
+    "evidence": "Rust SetEntry bucket is Option<usize>, so an unlinked item cannot alias live maximum-index bucket. Reinforced in66db9e1f2 with live_set_reaped_membership_preserves_last_bucket_and_payloads covering dead-tail trim and bounded reclaim, maximum capacity255 and exactly-once payload cleanup. New reuse implementation preserves this existing structural guarantee.",
+    "port_keys": [
+      "resource-admission"
+    ]
+  },
+  {
+    "hash": "38f4a710e3e6a218342915bf9d29eab10281a702",
+    "title": "terminal: RefCountedSet.releaseMultiple asserts n > 0",
+    "area": "performance/refset",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "66db9e1f2 / ttmoqly adds positive release_many count assertion for nonzero IDs; focused rejection regression verifies upstream releaseMultiple contract. Default zero-style ID remains no-op as in native.",
+    "port_keys": [
+      "resource-admission"
+    ]
+  },
+  {
+    "hash": "31a52992f12710f0382661a481fce46a966a7ea1",
+    "title": "terminal: RefCountedSet reclaims the dead ID insert passed over",
+    "area": "performance/refset",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "66db9e1f2 / ttmoqly remembers reclaimed ID passed over if probe insertion chooses a lower dead ID. Distinguishes bounded Reclaimed from explicit addWithId preferred insertion; live_set_reclaims_id_passed_over_during_insert covers distinct values with controlled hashes. free_cursor has serde default and out-of-range normalization for older state.",
+    "port_keys": [
+      "resource-admission"
+    ]
+  },
+  {
+    "hash": "aef8b7b38d281784108f1ab1f03d6ecb9c5246d3",
+    "title": "terminal: tighten the RefCountedSet dead ID reuse tests",
+    "area": "performance/refset-tests",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "66db9e1f2 / ttmoqly carries stronger tiny-capacity repeated churn, live ID/refcount preservation, exact payload cleanup, and hyperlink URI+explicit-ID reclamation checks. Read full page and set test refinements, not just cumulative algorithm; no old resource-ID fixtures failed in selected validations.",
+    "port_keys": [
+      "resource-admission"
+    ]
+  },
+  {
+    "hash": "5d3f653329fc62f04625f1952d88282d93df8b29",
+    "title": "terminal: update RefCountedSet docs for dead ID reuse",
+    "area": "performance/refset-docs",
+    "merge": false,
+    "disposition": "Ported",
+    "evidence": "Final bounded reuse semantics and resource growth fallback implemented and documented in66db9e1f2 / ttmoqly: ordinary dead reuse no longer forces rehash; NeedRehash remains load/budget fallback. Shared Zig PageList/Screen documentation inherited. Full individual docs diff inspected.",
+    "port_keys": [
+      "resource-admission"
+    ]
+  },
+  {
+    "hash": "b5d9c93da1b045593a88c846ac8fed0f3835f2f3",
+    "title": "terminal: RefCountedSet reuses dead IDs instead of rehashing (#15121)",
+    "area": "performance/refset-and-hyperlink-workload",
+    "merge": true,
+    "disposition": "Ported",
+    "evidence": "Merge of d03983f02, 636c1d780, 738d8f7f5, 38f4a710e, 31a52992f, aef8b7b38, 5d3f65332. Every underlying individual full diff was inspected, including refinements later changed again. Empty remerge diff verified; there is no independent merge resolution. Final dispositions and port keys follow those source entries.",
+    "port_keys": [
+      "resource-admission",
+      "sgr-admission",
+      "hyperlink-map",
+      "capacity-carry"
+    ]
+  }
+]

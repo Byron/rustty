@@ -1,0 +1,5 @@
+# Optional fresh blank-row parity cases
+
+`native-review-cases.json` contains six ordinary existing parity requests (no new harness): repeated blank EL/ECH/ED, a blank Prompt row through EL/selective ED/ED, erased soft-wrap metadata, released style/grapheme/link resources, nondefault black backgrounds and protected text, and reflow/recycling. Each mutation is followed by an observation. These are prepared inputs only; this child has not replayed or validated them. They can be folded into `grid_requests.requests()` using its existing `case` helper and `observe_semantic=True` if root wants permanent coverage. Cell/protection/style/wrap state use normal parity output; semantic observations opt in explicitly.
+
+The new scratch unit regressions already cover most of this. The native inputs mainly add an independently observed reference for metadata behavior; they are not prerequisites or claims of missing implementation. No native sixel request was added because the current Ghostty oracle has Kitty graphics but no corresponding Rust tmux sixel mode. The Rust call graph proves those side effects precede the optimized Page return.

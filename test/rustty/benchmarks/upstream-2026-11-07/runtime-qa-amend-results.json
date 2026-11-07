@@ -1,0 +1,36 @@
+{
+  "head": "03be726e243bdc235bd641420f511fc2b7792f8e",
+  "starting_head": "a61c9bf0207d5e0c5e805de1dc7196bb5ffa3390",
+  "fixture_change": {
+    "id": "ptynqok",
+    "current": "03be726e243bdc235bd641420f511fc2b7792f8e",
+    "original": "a61c9bf0207d5e0c5e805de1dc7196bb5ffa3390"
+  },
+  "amendments": [
+    {
+      "change_id": "myywtyl",
+      "before": "5eabf465c2acd2575f972b27f0f896d30322676f",
+      "after": "e464c8c147ff46f8308fe4845e7ac9562c888b27",
+      "focused_tests": 1,
+      "checks": [
+        "runtime-qa-drag-test.log"
+      ]
+    },
+    {
+      "change_id": "vmwpzyz",
+      "before_travel": "61b0f838e50383a2c1a9de8ecf825b521ee3167b",
+      "before_amend": "eaa7fde9df781c67a5868c3b0790b8b6e2374fdd",
+      "after": "9cdc21ca60730a19c215f8c746e5a81325db695d",
+      "focused_tests": 2,
+      "checks": [
+        "runtime-qa-native-stream-final-tests.log",
+        "runtime-qa-native-stream-final-format.log"
+      ]
+    }
+  ],
+  "exact_two_test_files_only": true,
+  "all_linked_source_hashes_preserved": true,
+  "all_final_binary_hashes_preserved": true,
+  "all_fixture_bytes_preserved": true,
+  "authors_subjects_parents_preserved": true
+}

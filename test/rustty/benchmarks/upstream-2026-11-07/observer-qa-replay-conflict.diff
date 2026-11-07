@@ -1,0 +1,22 @@
+diff --cc test/rustty/zig-parser.zig
+index d245279e1,edc03933b..000000000
+--- a/test/rustty/zig-parser.zig
++++ b/test/rustty/zig-parser.zig
+@@@ -50,12 -50,8 +50,17 @@@ pub fn run(alloc: Allocator, operations
+                      }
+                      continue;
+                  }
+++<<<<<<< rebased parent
+ +                const transition = vt.parse_table.table[byte][@intFromEnum(parser.state)];
+ +                // CAN/SUB cancel raw OSC capture too, including overflow.
+ +                if (parser.state == .osc_string and
+ +                    transition.state != .osc_string and
+ +                    byte != 0x18 and byte != 0x1a)
+ +                {
+++=======
++                 const transition = vt.parse_table.table[byte][@backingInt(parser.state)];
++                 if (parser.state == .osc_string and transition.state != .osc_string) {
+++>>>>>>> commit
+                      try events.append(alloc, if (overflow) .{ .kind = "osc_overflow" } else .{
+                          .kind = "osc",
+                          .data = try hex(alloc, osc.items),

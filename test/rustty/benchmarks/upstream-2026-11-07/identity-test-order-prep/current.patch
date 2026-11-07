@@ -1,0 +1,36 @@
+--- a/crates/rustty/src/tmuxx.rs
++++ b/crates/rustty/src/tmuxx.rs
+@@ -4147,11 +4147,13 @@
+             peer.read_to_end(&mut requests).unwrap();
+             assert!(requests.is_empty(), "requests escaped rejected handshake");
+             let deadline = Instant::now() + Duration::from_secs(5);
+-            while !connection.is_closed() {
++            let mut errors = connection.errors();
++            while errors.is_empty() {
+                 assert!(Instant::now() < deadline, "rejected handshake stayed open");
+                 thread::sleep(Duration::from_millis(5));
+-            }
+-            assert!(!connection.errors().is_empty());
++                errors = connection.errors();
++            }
++            assert!(connection.is_closed());
+         }
+     }
+ 
+@@ -4248,11 +4250,14 @@
+                     peer.read_to_end(&mut requests).unwrap();
+                     assert!(requests.is_empty(), "wrong owner received mutations");
+                     let deadline = Instant::now() + Duration::from_secs(5);
+-                    while !connection.is_closed() {
++                    let mut errors = connection.errors();
++                    while errors.is_empty() {
+                         assert!(Instant::now() < deadline, "wrong owner was accepted");
+                         thread::sleep(Duration::from_millis(5));
++                        errors = connection.errors();
+                     }
+-                    assert!(connection.errors().join(";").contains("incarnation"));
++                    assert!(connection.is_closed());
++                    assert!(errors.join(";").contains("incarnation"));
+                     assert!(
+                         reply
+                             .recv_timeout(Duration::from_secs(5))

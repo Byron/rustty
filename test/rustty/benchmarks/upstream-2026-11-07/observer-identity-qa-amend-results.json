@@ -1,0 +1,57 @@
+{
+  "starting_head": "03be726e243bdc235bd641420f511fc2b7792f8e",
+  "return_branch": "rustty",
+  "amendments": [
+    {
+      "change_id": "vvnxupx",
+      "before": "8fcf08e0dafe8c935248009a204215dd0684f580",
+      "after": "903fe78845a6450c70f8ac068f0780665bb19dee",
+      "focused_tests": 2,
+      "checks": [
+        "observer-qa-ancestor-osc-tests.log"
+      ],
+      "static_validation": "Exact ancestor source hashes and AST-extracted regression payload passed. New Zig fmt migrates historical @intFromEnum to @backingInt only; retained later compatibility change for replay/native validation."
+    },
+    {
+      "change_id": "nuqtxqt",
+      "before_travel": "397c3883498d538b38a0ff4fcc8591e9c0608c6a",
+      "before_amend": "0099f2494d6acaaa0fe8d02a7310b841ece2a362",
+      "after": "20515bff58457c00c290daeccb295350ee96ca6a",
+      "focused_tests": 18,
+      "checks": [
+        "identity-qa-ancestor-native-sessions-tests.log",
+        "identity-qa-ancestor-file-format.log"
+      ],
+      "other_attempts": {
+        "identity-qa-ancestor-native-tests.log": "No sessions feature: zero tests, not validation.",
+        "identity-qa-ancestor-format.log": "Two pre-existing renderer formatting differences outside edited file; file-specific rustfmt passed, cumulative final format follows replay."
+      }
+    }
+  ],
+  "status": "replayed",
+  "head": "6ad34306f7477ccad2f7fbd53f066b679b5aaf15",
+  "exact_restored_file_hashes": {
+    "crates/rustty/src/tmuxx.rs": "1e4c540ca4ca1edcfb3d1223d6bcc0e32e4a4c30b7768660167c5d7c8b2ed37d",
+    "test/rustty/parity_reference.py": "9376b165308830235dac2783c3e2873ba098c8707ec72bed5c1e669280efbc17",
+    "test/rustty/zig-parser.zig": "dde782eaa29d7b783385e7592d04131853dd9b385525d4e509aa5e1b614e0cc5"
+  },
+  "only_expected_three_files_changed": true,
+  "vt_source_unchanged": true,
+  "fixture_bytes_unchanged": true,
+  "authors_subjects_parents_preserved": true,
+  "replay_resolutions": [
+    {
+      "change_id": "zozpokk",
+      "conflict_head": "023b317d568a56fcecf1ec12ddd1cd7d0b60c1ea",
+      "resolved_head": "34d3728c01be1ddf84fd301231f441fb7bd6e66b",
+      "current": "34d3728c01be1ddf84fd301231f441fb7bd6e66b",
+      "validation": "1 native owner-identity regression passed; exact final source hash preserves later reply assertion; zero-test initial name mismatch is retained separately."
+    },
+    {
+      "change_id": "wwkmqxz",
+      "conflict_head": "60684c0404b689171c26d38f0436a665cd8a09df",
+      "current": "cdb6887691046224f74a3ec499ceae9e38106fad",
+      "validation": "Zig formatting and exact final observer hash passed; native build follows restored reference adapters."
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "started": 1794035246.48428,
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "argv": [
+    "--bench",
+    "rustty/resource_churn",
+    "--noplot",
+    "--sample-size",
+    "20",
+    "--warm-up-time",
+    "1",
+    "--measurement-time",
+    "2"
+  ],
+  "binaries": {
+    "before": "f914294b571fcc7ae03372ebb01b4e5b8fe70b0e18cf98aa9bc074a02284fb35",
+    "after": "a3478b48808f7a4ddc9e843d8135e0d1fa94265e92db717e5a3de348facca6ff"
+  },
+  "runs": [
+    {
+      "round": 1,
+      "version": "before",
+      "status": 0,
+      "log": "style-before-1.log"
+    },
+    {
+      "round": 1,
+      "version": "after",
+      "status": 0,
+      "log": "style-after-1.log"
+    },
+    {
+      "round": 2,
+      "version": "after",
+      "status": 0,
+      "log": "style-after-2.log"
+    },
+    {
+      "round": 2,
+      "version": "before",
+      "status": 0,
+      "log": "style-before-2.log"
+    },
+    {
+      "round": 3,
+      "version": "before",
+      "status": 0,
+      "log": "style-before-3.log"
+    },
+    {
+      "round": 3,
+      "version": "after",
+      "status": 0,
+      "log": "style-after-3.log"
+    }
+  ],
+  "finished": 1794035308.227732
+}

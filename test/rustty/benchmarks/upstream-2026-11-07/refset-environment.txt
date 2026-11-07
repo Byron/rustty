@@ -1,0 +1,20 @@
+rustc 1.95.0 (59807616e 2026-04-14)
+binary: rustc
+commit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860
+commit-date: 2026-04-14
+host: aarch64-apple-darwin
+release: 1.95.0
+LLVM version: 22.1.2
+Darwin arm64
+winit = { path = "vendor/winit" }
+portable-pty = { path = "tmuxx/vendor/portable-pty" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+Verified CPU metadata after explicit sandbox escalation (same task session):
+hw.model=Mac16,5
+hw.ncpu=16
+hw.memsize=68719476736 (64GiB)
+machdep.cpu.brand_string=Apple M4 Max

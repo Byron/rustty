@@ -1,0 +1,15 @@
+{
+  "started": 1794035960.41937,
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "zig_version": "0.17.0\n",
+  "profile": "release thinLTO/codegen-units1; cargo --locked --offline",
+  "before": "373586cfd",
+  "binary_sha256": {
+    "sgr-before-stream": "015df00d570e8092ac5fc3676fd366979434075c05517492df08f715039f417a",
+    "sgr-after-stream": "7167f045289a57f919c9c147a2c2704dff4a0ed4a03492e50a26e36c0ee43759",
+    "sgr-native-primitives": "1bbb6960f2a3f36d8eccb410f59e9621f528cdc44ef21760246cc2d8b2e2b772",
+    "sgr-before-controlled": "0a53504b6a374eee57bd06e9bb469397679b49ce11cfe36339b8ed4eed117896",
+    "sgr-after-controlled": "2a21f39417e0ece63762a670abf652dafe309f34fccf216c2f517b3005b3cafd"
+  },
+  "finished": 1794036025.9437509
+}

@@ -1,0 +1,44 @@
+Rustty Cell: 8 bytes
+Benchmarking rustty/resource_churn/plain
+Benchmarking rustty/resource_churn/plain: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/plain: Collecting 20 samples in estimated 2.0000 s (2.0M iterations)
+Benchmarking rustty/resource_churn/plain: Analyzing
+rustty/resource_churn/plain
+                        time:   [1.0149 µs 1.0196 µs 1.0261 µs]
+                        thrpt:  [1.2475 Gelem/s 1.2553 Gelem/s 1.2613 Gelem/s]
+                 change:
+                        time:   [−3.1756% −2.4468% −1.5816%] (p = 0.00 < 0.05)
+                        thrpt:  [+1.6070% +2.5081% +3.2797%]
+                        Performance has improved.
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking rustty/resource_churn/style
+Benchmarking rustty/resource_churn/style: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/style: Collecting 20 samples in estimated 2.0233 s (14k iterations)
+Benchmarking rustty/resource_churn/style: Analyzing
+rustty/resource_churn/style
+                        time:   [138.70 µs 139.26 µs 140.00 µs]
+                        thrpt:  [9.1428 Melem/s 9.1914 Melem/s 9.2287 Melem/s]
+                 change:
+                        time:   [−5.1120% −4.6173% −4.0985%] (p = 0.00 < 0.05)
+                        thrpt:  [+4.2737% +4.8409% +5.3874%]
+                        Performance has improved.
+Found 2 outliers among 20 measurements (10.00%)
+  1 (5.00%) high mild
+  1 (5.00%) high severe
+Benchmarking rustty/resource_churn/hyperlink
+Benchmarking rustty/resource_churn/hyperlink: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/hyperlink: Collecting 20 samples in estimated 2.1075 s (3360 iterations)
+Benchmarking rustty/resource_churn/hyperlink: Analyzing
+rustty/resource_churn/hyperlink
+                        time:   [625.86 µs 629.47 µs 633.23 µs]
+                        thrpt:  [2.0214 Melem/s 2.0335 Melem/s 2.0452 Melem/s]
+                 change:
+                        time:   [−9.8909% −8.8756% −7.8470%] (p = 0.00 < 0.05)
+                        thrpt:  [+8.5152% +9.7401% +10.977%]
+                        Performance has improved.
+
+kitty_upload/unique_256px_4_terminals: sources=4, source_bytes=1048576
+kitty_upload/duplicate_256px_4_terminals: sources=1, source_bytes=262144
+kitty_upload/unique_1024px_4_terminals: sources=4, source_bytes=16777216
+kitty_upload/duplicate_1024px_4_terminals: sources=1, source_bytes=4194304

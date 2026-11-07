@@ -1,0 +1,33 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+warning: unused import: `super::*`
+ --> crates/rustty-vt/src/screen/hyperlink_capacity_tests.rs:1:5
+  |
+1 | use super::*;
+  |     ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rustty-vt` (lib test) generated 1 warning (run `cargo fix --lib -p rustty-vt --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.49s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 1 test
+test screen::hyperlink_capacity_tests::printing_one_long_link_does_not_grow_the_distinct_link_set ... FAILED
+
+failures:
+
+---- screen::hyperlink_capacity_tests::printing_one_long_link_does_not_grow_the_distinct_link_set stdout ----
+
+thread 'screen::hyperlink_capacity_tests::printing_one_long_link_does_not_grow_the_distinct_link_set' (96460746) panicked at crates/rustty-vt/src/screen/hyperlink_capacity_tests.rs:15:5:
+assertion `left == right` failed
+  left: 384
+ right: 192
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    screen::hyperlink_capacity_tests::printing_one_long_link_does_not_grow_the_distinct_link_set
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 205 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p rustty-vt --lib`

@@ -1,0 +1,84 @@
+{
+  "source_context_head": "b57fb615033447b4662ed7a603d714555a90cda9",
+  "upstream_reference": "5acdbf154",
+  "zig_version": "0.17.0",
+  "commands": [
+    [
+      "zig",
+      "build",
+      "vt-primitives",
+      "test-vt-primitives",
+      "-Demit-lib-vt=true",
+      "-Demit-macos-app=false",
+      "-Doptimize=ReleaseFast"
+    ],
+    [
+      "zig",
+      "build",
+      "-Demit-lib-vt=true",
+      "-Demit-bench=true",
+      "-Demit-macos-app=false",
+      "-Doptimize=ReleaseFast"
+    ]
+  ],
+  "build_status": "both succeeded per root; root retained native-primitives-build.log and native-bench-build.log",
+  "tools": {
+    "zig-out/bin/vt-primitives": {
+      "bytes": 1866672,
+      "sha256": "85ae63f596e08f724070fbeffbd61efe6971fcdd9a263715d7bee6a4f94b83a3"
+    },
+    "zig-out/bin/ghostty-gen": {
+      "bytes": 496136,
+      "sha256": "8d5955f78510cf400d40cc7ee49b9783604dc319873b600c587687f12933b5f5"
+    },
+    "zig-out/bin/ghostty-bench": {
+      "bytes": 5186832,
+      "sha256": "e333426024a778b0e65a11d40cdaf66368d818701e15f434af352177e3ce89c7"
+    }
+  },
+  "source_sha256": {
+    "build.zig": "0097a85bad3c05451513664a373ad4ce2460a9d6bf497ed553cd1dd8f8385de4",
+    "build.zig.zon": "92aea5525c62d63a20b4041faf1af92c337f700e65b7cbedcf518c3b8b52c566",
+    "src/benchmark/AGENTS.md": "28128d8d834f93edcf09817151ac308be510511b5631562d70717351292239e7",
+    "src/benchmark/ApcParser.zig": "19acd0bd3c0303af82730126eb0557528f353d001417043c63b2dc2efd159765",
+    "src/benchmark/Benchmark.zig": "fff82b5527de4e31d8c43bacf4b8044c9c133d5e6173dc22e85ed7a85fc53ccc",
+    "src/benchmark/CApi.zig": "9ca5c60c9fb017af72dff697a4be446e0e7f615bc06d5d5d39dca582413f8160",
+    "src/benchmark/CodepointWidth.zig": "605ec0d844d481a5f9d19df7a266f26d7a5eb4ed680abaa08bf74b1521f0a09c",
+    "src/benchmark/GraphemeBreak.zig": "6fc9ddd5111561a070da3a191a457da6b037006e7ada44d2c52e98989d100e4a",
+    "src/benchmark/HyperlinkMap.zig": "69eaed3f9203c63815354093ed8803f3a61d5e7f65a0332fdd93d72d8b4ebc49",
+    "src/benchmark/IsSymbol.zig": "3fa26e6b5969efbd132bbb0f848f962f02f169116a490e66d72e7037bac98aa2",
+    "src/benchmark/OscParser.zig": "a6200e69c483ab4aceeb456a522bad973352be5d1b446ec648728f3262bdac0c",
+    "src/benchmark/PageCompression.zig": "c354902615d05aea9745e3e884ba1e87158fdd7d0e057443616277bed6a4fb72",
+    "src/benchmark/ScreenClone.zig": "45da38909034d8d67cbe36a9cdbedf39c77bc23868bbdd7abe0ab39dee2d0683",
+    "src/benchmark/ScrollbackCompression.zig": "6c8aa5ebece0eabf93f8af7684d1a04c8994b5f7a61a2a21e8e2354bca00fad0",
+    "src/benchmark/ShaperRows.zig": "c3c9239729012ddf16114dbcf0def0f44b3460af9e46d76bfe1a3fabe6f75058",
+    "src/benchmark/TerminalFormatter.zig": "4c9bb3a669ffa85abd6e30d11b35c1f27e1009307dd14b62be1a6b33eb1985ae",
+    "src/benchmark/TerminalParser.zig": "b451d20f85acaa67de386328542c925ca0ca2f81d72d6a25aed277dc7ce6744b",
+    "src/benchmark/TerminalResize.zig": "23bfdbb4e3862672d3e2eba3f82f7d11682c236892b002c1b3065a0db3b83bde",
+    "src/benchmark/TerminalSnapshot.zig": "043518f8b4b3bd0eac4f7965bc605244e52ee246d8a49b6f50d6363d951a6ecc",
+    "src/benchmark/TerminalStream.zig": "d09abf0589f52b4356873148cd683c5490e9a2d93db9f93cbb1b070e98624e47",
+    "src/benchmark/cli.zig": "67758daa36d68348c166d8114d3244597e469d79459731df204cb472d973eae5",
+    "src/benchmark/main.zig": "8d8b0d352beaae94d9ede98f1bf2ae41aa3374fe65afc7544eb59d9e15b01a55",
+    "src/benchmark/options.zig": "5829e6eea9f004d30a31699e6c11ecc86a6f486f1c0bf0b2ed044b5fbe016f1f",
+    "src/build/Config.zig": "966af32662fe20ee072480b16b580ee6fdd63a2f69c662a2414bf5cfd3ce0603",
+    "src/build/GhosttyBench.zig": "3927c4ee7a544621da6645f7f728b8c71f0744953c4bde15417b79dd02f2abfd",
+    "src/build/SharedDeps.zig": "b52bfaef106f6fc5829d90fe763404dc5e9e56e7f86d9dbdf302c5af91f1ba1c",
+    "src/main_bench.zig": "778cf86f25f34f0e12b77a1d297d47b62d29f9689cae9a898a5171b7bbcea5d2",
+    "src/main_gen.zig": "17bbd0a6fcc3b5df9433838e4a2fce840fa67343d3accc1e49d5751748dda9c3",
+    "src/synthetic/Bytes.zig": "d6817ffca0b222dc78e9e4048660bdc3882aa544b9f374651ffa892526c99222",
+    "src/synthetic/Generator.zig": "204f765a4c6b8c7f40a0041bdf474c504ab53b7c7d84acb2ce09f11f4fa5eb68",
+    "src/synthetic/Kitty.zig": "4ab67b5e5c89ef9ab93fbdca6f865957ba47faece2d643fc88f53664ad8020b1",
+    "src/synthetic/Osc.zig": "300cc7de770cb2f7b3d629aa6fd552ff7e873a0e2369bf6ac26a34af5575d3eb",
+    "src/synthetic/Utf8.zig": "486741fdd66acf6e9e4929a9e2b1f296f64fc95e59016b839b118839bbcf89d5",
+    "src/synthetic/cli.zig": "8f34e77cda76f9c576895db53febd463dadde710226c731904ac4b8c43314f2f",
+    "src/synthetic/cli/Ascii.zig": "fd25a83acf4fe0628ac7f7a206741cf488e183065e7931be95af36fb2c9a2102",
+    "src/synthetic/cli/Erase.zig": "b5c25ed7fd90496f5a8cee2bb342bf9149bc8485cf9dd698887d9da003308f08",
+    "src/synthetic/cli/Hyperlink.zig": "5c3c1a5ef2460ebaa6fa7db68cb60650d8211c25b0f65fc3d150e05ddba44d0a",
+    "src/synthetic/cli/Kitty.zig": "624ebc7f6166da569de0931043154f121ce9a65bdca3aa1c5f5c1b01210ce38d",
+    "src/synthetic/cli/Osc.zig": "333f9eac6a4fa1b3ddee8d4db8fed0009e411abad65b28eb926a5294ad07d58b",
+    "src/synthetic/cli/Styled.zig": "4bbd5ff137c13d475627751a06f2438a1f178eb615c05c6deb869cba93cd244e",
+    "src/synthetic/cli/Utf8.zig": "f286cbaf3a416e6c67b3e46f24537246795f194cc140e9ac30eb2d74d1b4a92e",
+    "src/synthetic/main.zig": "bcda486cc95e6bdb88afa596665942e39556b8d36a9cae6cffe3e80147581047",
+    "test/rustty/zig-primitives.zig": "ea7527e7fcd8ecf6d84b3942696176be0868cfae99cb425d981bb5b7695c0f35"
+  }
+}

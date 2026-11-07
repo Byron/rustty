@@ -1,0 +1,12 @@
+input: 3300 fixtures, 9900 comparisons, 785,700 bytes
+parser: 676 fixtures, 2028 comparisons, 614,099 bytes
+grid: 2592 fixtures, 7752 comparisons, 112,905 bytes
+page-layout: 386 fixtures, 386 comparisons, 5,926 bytes
+pages: 785 fixtures, 2355 comparisons, 180,121 bytes
+thorough: 79 fixtures, 237 comparisons, 13,384 bytes
+unicode: 276 fixtures, 276 comparisons, 2,360,843 bytes
+snapshots: 112 fixtures, 336 comparisons, 4,096 bytes
+snapshot-wire: 2186 fixtures, 3712 comparisons, 151,034 bytes
+protocols: 8042 fixtures, 24066 comparisons, 511,407 bytes
+corpus: 3295 fixtures, 9885 comparisons, 303,924 bytes
+osc: 216 fixtures, 648 comparisons, 3,481 bytes

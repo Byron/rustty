@@ -1,0 +1,11 @@
+{
+  "mode": "smoke",
+  "checked": 162,
+  "failures": 0,
+  "coverage_gaps": [],
+  "covered": [
+    "terminal.cells",
+    "terminal.pages"
+  ],
+  "full_parity": false
+}

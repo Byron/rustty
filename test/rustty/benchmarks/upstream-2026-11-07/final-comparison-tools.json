@@ -1,0 +1,36 @@
+{
+  "head": "f2b7e1344a57dda204355a541d6a811e89891b64",
+  "binaries": {
+    "target/release/examples/parity": {
+      "sha256": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5",
+      "bytes": 2816912
+    },
+    "target/release/examples/parity-runner": {
+      "sha256": "0a2dbe6ec2d5a01aad642a689d49727ea9a699279a2fe0b54d64c67db5e14de7",
+      "bytes": 2257664
+    },
+    "target/release/examples/stream-file": {
+      "sha256": "819376fbd18a180a9babba4e1fe5f0f355f5a2e29ab2aeb5c4f7e3bdf8c39237",
+      "bytes": 1738784
+    },
+    "zig-out/bin/vt-oracle": {
+      "sha256": "9107e2e57f503b7e081091651be1342d892e6a6a48052c6efe4770af52aa8b89",
+      "bytes": 9951112
+    },
+    "zig-out/bin/vt-primitives": {
+      "sha256": "dfeb7a211480ededc6957f23a38335285505721c31ab3a9deb3427cbd4b34d67",
+      "bytes": 1884448
+    }
+  },
+  "equal_to_accepted_linked_binaries": {
+    "target/release/examples/parity": true,
+    "target/release/examples/stream-file": true,
+    "zig-out/bin/vt-primitives": false
+  },
+  "logs": [
+    "final-rust-tools-build.log",
+    "final-native-oracle-build.log",
+    "final-native-primitives-build.log"
+  ],
+  "initial_native_sandbox_attempt": "manifest_create PermissionDenied; retried with existing cache access and succeeded"
+}

@@ -1,0 +1,24 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.99s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 1 test
+test screen::tests::repeated_blank_erases_preserve_clean_rows_and_revisions_before ... FAILED
+
+failures:
+
+---- screen::tests::repeated_blank_erases_preserve_clean_rows_and_revisions_before stdout ----
+
+thread 'screen::tests::repeated_blank_erases_preserve_clean_rows_and_revisions_before' (96514549) panicked at crates/rustty-vt/src/screen/tests.rs:1408:5:
+assertion `left == right` failed
+  left: [12, 14, 16, 18]
+ right: [0, 0, 0, 0]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    screen::tests::repeated_blank_erases_preserve_clean_rows_and_revisions_before
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 233 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p rustty-vt --lib`

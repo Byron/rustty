@@ -1,0 +1,12 @@
+{
+  "command": [
+    "python3",
+    "/private/tmp/rustty-reintegrate.leadij/run-final-parity.py",
+    "--selfcheck"
+  ],
+  "exit_status": 0,
+  "stdout": "Shard membership/count selfchecks passed; no binaries invoked",
+  "stderr": "",
+  "script_sha256": "4ab21e2989683b2120a19a33d168a7e5d3ff7f2a116327060c1d7fa4b36e0104",
+  "scope": "pure shard membership, fixture variants, configured invocation and configured/all-suite unique counts, plus repeated-smoke physical accounting; no comparison or fixture execution"
+}

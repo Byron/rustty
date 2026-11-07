@@ -1,0 +1,9 @@
+{
+  "measurement_sha256": "fdc063436464494cc0a9ee8078f6ab89440d666a1a9e82a6d87e794725af217d",
+  "files_rehashed": 192,
+  "medians_recomputed": {
+    "before": 236291709,
+    "after": 19955083
+  },
+  "root_review": "All complete known-failure artifacts and summaries match; timing excludes file hashing and remains whole CLI/comparison/retention only."
+}

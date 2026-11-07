@@ -1,0 +1,72 @@
+{
+  "scope": "Windows MSVC compile checks only; no Windows runtime available",
+  "cwd": "/Users/byron/dev/github.com/ghostty-org/ghostty",
+  "commit": "f2b7e1344a57dda204355a541d6a811e89891b64",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "environment_overrides": {},
+  "relevant_inherited_environment": {
+    "CC": null,
+    "TARGET_CC": null,
+    "CC_x86_64_pc_windows_msvc": null,
+    "CC_x86_64-pc-windows-msvc": null,
+    "CFLAGS": null,
+    "TARGET_CFLAGS": null,
+    "CFLAGS_x86_64_pc_windows_msvc": null,
+    "CFLAGS_x86_64-pc-windows-msvc": null,
+    "VCINSTALLDIR": null,
+    "INCLUDE": null,
+    "CARGO_TARGET_DIR": null,
+    "RUSTFLAGS": null,
+    "CARGO_ENCODED_RUSTFLAGS": null
+  },
+  "all_targets_limit": "The original combined VT/app/render all-targets command failed in Criterion 0.8.2 -> alloca 0.4.0 C compilation: Windows malloc.h unavailable. No prepared real MSVC C SDK setup was located; no SDK install, fabricated header, source edit, dependency substitution, or compiler macro workaround was used.",
+  "preserved_failure_log": "final-windows-check.log",
+  "preserved_failure_log_sha256": "0487edd88c43f1eec034a0ca15435dda80ad3eadf186a10174fa55572354421d",
+  "runs": [
+    {
+      "name": "vt-lib",
+      "argv": [
+        "cargo",
+        "+1.95.0",
+        "check",
+        "--locked",
+        "--offline",
+        "-p",
+        "rustty-vt",
+        "--lib",
+        "--target",
+        "x86_64-pc-windows-msvc"
+      ],
+      "log": "final-windows-vt-lib.log",
+      "started": 1794049035.32269,
+      "finished": 1794049037.002756,
+      "exit_status": 0,
+      "log_sha256": "5decb9f5a6021bea2bc4a7d6a1bf5daa308493f9c8e6aa2fdc87ba9ec24d20b3"
+    },
+    {
+      "name": "app-render-all-targets",
+      "argv": [
+        "cargo",
+        "+1.95.0",
+        "check",
+        "--locked",
+        "--offline",
+        "-p",
+        "rustty-app",
+        "-p",
+        "rustty-render",
+        "--all-targets",
+        "--target",
+        "x86_64-pc-windows-msvc"
+      ],
+      "log": "final-windows-app-render-all-targets.log",
+      "started": 1794049037.003052,
+      "finished": 1794049043.14099,
+      "exit_status": 0,
+      "log_sha256": "38d08e5b8a4b018300d3485aa72f9c79ee57f32b282d3200fcdbdc2851308af4"
+    }
+  ],
+  "supported_checks_passed": true,
+  "vt_all_targets_passed": false,
+  "runtime_tested": false
+}

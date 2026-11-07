@@ -1,0 +1,23 @@
+{
+  "scope": "Lossless packaging copies only; original executed review/classification files remain unchanged. Hashes in review records refer to decompressed original bytes. Nine other retained classification files remain plain JSON.",
+  "files": [
+    {
+      "original_path": "final-parity-review.json",
+      "archive_path": "final-parity-review.json.gz",
+      "original_bytes": 2943579,
+      "original_sha256": "28f33376fbed32a9850509d3da336999a9703e8ae618e0b5a3823bf77809f2f5",
+      "archive_bytes": 341930,
+      "archive_sha256": "1d5979c8962f8505b81ada090386a32007b84f11e657845840ea4f644967cede",
+      "compression": "gzip, mtime=0; byte-exact decompression"
+    },
+    {
+      "original_path": "final-parity-buffered-rest/rest/classification.json",
+      "archive_path": "final-parity-buffered-rest/rest/classification.json.gz",
+      "original_bytes": 23447269,
+      "original_sha256": "3e641212377de639090a800cd1565561ec57ee3e866cfa717847c876d988a124",
+      "archive_bytes": 468279,
+      "archive_sha256": "5b766c5029dbe1f4082b0af819d762c7b4735f93f91f381cefa69b82601e2fd3",
+      "compression": "gzip, mtime=0; byte-exact decompression"
+    }
+  ]
+}

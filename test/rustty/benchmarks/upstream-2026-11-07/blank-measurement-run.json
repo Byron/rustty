@@ -1,0 +1,14 @@
+{
+  "started": 1794040093.7931619,
+  "before": "db4827ff87215ff3be8fa892eac3f6ac4c4b484d / movrxsk",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "profile": "release thinLTO codegen-units=1 locked/offline",
+  "binaries": {
+    "blank-before-stream": "7ece381a718172123121328a3dfac5616f3372d697602fed0d220defb02c23fa",
+    "blank-after-stream": "0f189d0bd44f999f8a7ac1141ddf1ab4a65037e3778a3d4c3c4589e7c97a65d9",
+    "blank-before-controlled": "74a8f827e39540a9595af0c234501dac070f1b3b0e343963983a70516ab74b9f",
+    "blank-after-controlled": "f806d7fa39e59f5015885e9df0da4fa42e3fd47637b38fee2d9cd273483108f9",
+    "sgr-native-primitives": "1bbb6960f2a3f36d8eccb410f59e9621f528cdc44ef21760246cc2d8b2e2b772"
+  },
+  "finished": 1794040246.7531781
+}

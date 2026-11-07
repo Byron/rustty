@@ -1,0 +1,173 @@
+{
+  "after_commit": "6ad34306f7477ccad2f7fbd53f066b679b5aaf15",
+  "before_commit": "03be726e243bdc235bd641420f511fc2b7792f8e",
+  "before_provenance_sha256": "69ae299e4fd2df79d0f2937a2834d3d94808791e585d7c3e34b970195f782412",
+  "errors": [],
+  "expected_case_sha256": "5aa50cc47bb226a28913838f58c2dea9ed17dc59df3e82d74741d37582215baf",
+  "groups": {
+    "corpus": {
+      "archive_sha256": {
+        "after": "2b665e6bf4119411121ebdd825d3e497b2fc45013ecb900ce9164c020217643e",
+        "before": "72052fc62a46fe4d0b4a630b30660a2006709085dfee7b7d2cf240637189dcbe"
+      },
+      "cases": 3295,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 9885,
+      "errors": []
+    },
+    "grid": {
+      "archive_sha256": {
+        "after": "bca3b5f3bc9198452baa8f0c7600d9eb85a72e69a2fc26990ff02ba935d51abb",
+        "before": "eb4f5cb426b197e31847e5af6dceaaa00109a342d8ee08594317aaf917a90a45"
+      },
+      "cases": 2592,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 7752,
+      "errors": []
+    },
+    "input": {
+      "archive_sha256": {
+        "after": "6d2a4e9d4f748eef8753509fa7670e7ff2ed1ef66bc85ca994697ccde1f6a752",
+        "before": "5a066c12c8ac9c011568fc0a7d5e2e7cea71be26ea4abb8a1f7796db1f69f11a"
+      },
+      "cases": 3300,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 9900,
+      "errors": []
+    },
+    "osc": {
+      "archive_sha256": {
+        "after": "17db8d52333e4e570ad741544cb6a37a4ae4ebe6fed314f13f70def06ab6e0bc",
+        "before": "76cc6fa3e5549bd91ec382f995f809b573fd43af7f65bd0c3b45f8f5e9b9f45f"
+      },
+      "cases": 216,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 648,
+      "errors": []
+    },
+    "page-layout": {
+      "archive_sha256": {
+        "after": "56511c741137bee19c26c1fc213dc48e46967978e75e757d09b5901fcaa25156",
+        "before": "dd0e417ffbcc3a3df960b1bae7c44d740468c11676b73b19a065d758aed041d2"
+      },
+      "cases": 386,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 386,
+      "errors": []
+    },
+    "pages": {
+      "archive_sha256": {
+        "after": "11f6e90ac05e9bdf80f88e439f9c6213010676cc1d39ee916d3ce76bad1c190b",
+        "before": "9cd6feea60a2142cd13c14691b1a3a74dc8c159f1a670baea99479a9412f681d"
+      },
+      "cases": 785,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 2355,
+      "errors": []
+    },
+    "parser": {
+      "archive_sha256": {
+        "after": "a9f5a4ad6de97097db0da3f474062d4dc6fe9e64e76c0e43d367ec78149ba6c0",
+        "before": "a55f0ecdf46d59c98021a89078d9dcbb4fa402d01aba1abe08533e398d842b91"
+      },
+      "cases": 676,
+      "changed_cases": [
+        "parser/osc-cancel"
+      ],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 2028,
+      "errors": []
+    },
+    "protocols": {
+      "archive_sha256": {
+        "after": "f58a28931b2bdb2e71baf82fdb7beb62b2467a06fabdeca4b86f4a1e59516ae6",
+        "before": "329972e24fd33a03721118867bc47bbb3a3fa8a81fd10408827b3732042746a9"
+      },
+      "cases": 8042,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 24066,
+      "errors": []
+    },
+    "snapshot-wire": {
+      "archive_sha256": {
+        "after": "6315fe597667a632c291d92bcc8570545bf72aafd21e072c2f4b6a36e3e76812",
+        "before": "338ce515d64b586aa566fe762fbcc2eaed38ab1812b4929e737a495e7aa06880"
+      },
+      "cases": 2186,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 3712,
+      "errors": []
+    },
+    "snapshots": {
+      "archive_sha256": {
+        "after": "251eb6913e71004bb8c600f607e3afd2981bf0e2295bea862fb75c3e01eda668",
+        "before": "bdd4ce7903153e764eb758518fbe88ceab7e52dc7926a2371f5267cdcb4c9cae"
+      },
+      "cases": 112,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 336,
+      "errors": []
+    },
+    "thorough": {
+      "archive_sha256": {
+        "after": "40fbbd6264ce0038bbee78988c5d78a8d17d8b1dc53214357a0a2a538f025b0a",
+        "before": "4aeb3e7d1dff5494bdb523f2877c93dd7fb28ec4ffc6688a9a806bd42c0b304e"
+      },
+      "cases": 79,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 237,
+      "errors": []
+    },
+    "unicode": {
+      "archive_sha256": {
+        "after": "5fcb213de140d4c6e38027c42c2ad37496b7faf732dc98f288133f0ff25cbe17",
+        "before": "d3db0c5633d981b048de36120aa3886a83b25e68b018ec2c7cedd80c956af762"
+      },
+      "cases": 276,
+      "changed_cases": [],
+      "changed_source_inputs": [
+        "test/rustty/parity_reference.py"
+      ],
+      "comparisons": 276,
+      "errors": []
+    }
+  },
+  "oracles": {
+    "rust": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5",
+    "zig": "ffed07e73c1a44e3cae1cec05308a47aeb60bf7e990d763faba96ddca1234ccc"
+  },
+  "scope": "Strict saved-archive/source audit; no oracle or runtime-parity claim.",
+  "status": "preserved_with_exact_parser_regression"
+}

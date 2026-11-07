@@ -1,0 +1,118 @@
+[
+  {
+    "request": {
+      "cols": 6,
+      "id": "pages/wide-cut/primary/1/wide/False",
+      "kind": "input",
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "data": "1b5b3f376c1b5b313b3148e7958c",
+          "op": "write"
+        },
+        {
+          "cell_size": [
+            8,
+            16
+          ],
+          "cols": 1,
+          "op": "resize",
+          "rows": 2
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "snapshot"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "data": "1b5b481b5b4058",
+          "op": "write"
+        },
+        {
+          "cell_size": [
+            8,
+            16
+          ],
+          "cols": 6,
+          "op": "resize",
+          "rows": 2
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "snapshot"
+        },
+        {
+          "op": "pages"
+        }
+      ],
+      "rows": 2
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "cols": 6,
+      "id": "pages/wide-cut/primary/1/wide/True",
+      "kind": "input",
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "data": "1b5b3f376c1b5b313b3148e7958c1b5b3f343768",
+          "op": "write"
+        },
+        {
+          "cell_size": [
+            8,
+            16
+          ],
+          "cols": 1,
+          "op": "resize",
+          "rows": 2
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "snapshot"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "data": "1b5b3f34376c1b5b481b5b4058",
+          "op": "write"
+        },
+        {
+          "cell_size": [
+            8,
+            16
+          ],
+          "cols": 6,
+          "op": "resize",
+          "rows": 2
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "snapshot"
+        },
+        {
+          "op": "pages"
+        }
+      ],
+      "rows": 2
+    },
+    "covers": []
+  }
+]

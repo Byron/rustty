@@ -1,0 +1,134 @@
+{
+  "checkpoint": {
+    "head": "3882d7da60158d3042ae33efeb5bca72fcc4b085",
+    "branch": "rustty",
+    "base": "5acdbf154369928eb228d2263cbe612d165f7569",
+    "original_changes_retained": 289,
+    "new_local_commits": 19,
+    "all_original_parents_authors_subjects_preserved": true,
+    "refs": {
+      "refs/heads/exp/mouse-hover": "a62cd5c315d6bbca4a8440c382111bb0271d9c35",
+      "refs/heads/ghostty-adjustments-legacy": "e195531aae114f3ae898f7506a14df3c68ad0821",
+      "refs/heads/main": "5acdbf154369928eb228d2263cbe612d165f7569",
+      "refs/heads/rustty": "3882d7da60158d3042ae33efeb5bca72fcc4b085",
+      "refs/heads/rustty-windows": "bfc18d8f83a3619af8135c910fa9c08a4d39fd32"
+    },
+    "dictation_fork": "7a10cab4bba2af88659668898a3bf001611afb77"
+  },
+  "patches": [
+    {
+      "change": "pzqlpkv",
+      "commit": "98eeb3c062e5094e2a27929fbbf09c52662a87dc",
+      "old_commit": "a09eaf481af3ffb405cef025763669685981ad6c",
+      "lint": "double_ended_iterator_last",
+      "subject": "feat(rustty-vt): restore scrollback with unscroll",
+      "author": "Sebastian Thiel <sebastian.thiel@icloud.com>",
+      "patch": "pzqlpkv.patch",
+      "files": [
+        {
+          "path": "crates/rustty-vt/tests/snapshot.rs",
+          "target_before_sha256": "f8bd1bc8bd0c43de944ab5b38f7ef872f39e492273491bdfb4a8e4bddab8efed",
+          "target_after_sha256": "78a53ad231b973e606d6cda4d593ce88109681f7d73563b7e541029b14dc3d6b",
+          "current_before_sha256": "394be7e4c65b172668639c0605db4eadee1fc41deac61f6d7c5c531a88e350da",
+          "current_after_sha256": "adb99378954f052bf24871af41f13e5f68ece5b996cba0521ce7e42941ce243f"
+        },
+        {
+          "path": "crates/rustty-vt/tests/unscroll.rs",
+          "target_before_sha256": "ba585ffd520f3c310776320e2ab198babe3f99cb021fb68c3c3d3dd378f660e7",
+          "target_after_sha256": "e05b03612c5cf717fe3aaec569395ec2528cc089e4fe4337e27896a54a152d5a",
+          "current_before_sha256": "ba585ffd520f3c310776320e2ab198babe3f99cb021fb68c3c3d3dd378f660e7",
+          "current_after_sha256": "e05b03612c5cf717fe3aaec569395ec2528cc089e4fe4337e27896a54a152d5a"
+        }
+      ]
+    },
+    {
+      "change": "qkrlxpx",
+      "commit": "47a3cd345d7cc6df6af4a427689de3bf73fbba36",
+      "old_commit": "9f8e2a258cb3953d2eca0d27143c1c53ff7d6bf0",
+      "lint": "cloned_ref_to_slice_refs",
+      "subject": "fix(rustty-vt): complete terminal mode status replies",
+      "author": "Sebastian Thiel <sebastian.thiel@icloud.com>",
+      "patch": "qkrlxpx.patch",
+      "files": [
+        {
+          "path": "crates/rustty-vt/tests/modes.rs",
+          "target_before_sha256": "4e23d499ed2d8dc8180cf59e541e1243b69e4ede05d9e98225bdf48d6c0a9781",
+          "target_after_sha256": "6b4f2cbc42e195bd95b618fffc92b64ca24c4cf72168eaf4d1a800066724d304",
+          "current_before_sha256": "4e23d499ed2d8dc8180cf59e541e1243b69e4ede05d9e98225bdf48d6c0a9781",
+          "current_after_sha256": "6b4f2cbc42e195bd95b618fffc92b64ca24c4cf72168eaf4d1a800066724d304"
+        }
+      ]
+    },
+    {
+      "change": "unwwnxk",
+      "commit": "7fe765940f08ee9dade746d824bf8ef4f93fba25",
+      "old_commit": "5c33c2f5b003124d5fd33168de2004d191d06d0e",
+      "lint": "unnecessary_lazy_evaluations",
+      "subject": "feat(rustty-vt): retain complete program status records",
+      "author": "Sebastian Thiel <sebastian.thiel@icloud.com>",
+      "patch": "unwwnxk.patch",
+      "files": [
+        {
+          "path": "crates/rustty-vt/src/program_status.rs",
+          "target_before_sha256": "f2fa3e47be17e6d03c135601ebddf062f0f5bf599b5dca92ecf8682574ef506f",
+          "target_after_sha256": "184a30e5d04905ea06b4aab20b54c2d8d0db85ca3e0b479f0d8c0752d8beead5",
+          "current_before_sha256": "c24ca98087561463f31c0fb9c955dde8f81e0d64ca564482b9426769fdb8e23b",
+          "current_after_sha256": "2e83cdd762282993e6aec129316ccf97b9f6aef1e83701522267ef978987db23"
+        }
+      ]
+    },
+    {
+      "change": "myywtyl",
+      "commit": "96997fc3c93cac0655e4d0ab9d20074f02eb94dd",
+      "old_commit": "d11361e94a0c80afb077d2ad8cbdc5de5a21a774",
+      "lint": "collapsible_if",
+      "subject": "feat(rustty): support actionable desktop notifications",
+      "author": "Codex <codex@openai.com>",
+      "patch": "myywtyl.patch",
+      "files": [
+        {
+          "path": "crates/rustty-app/src/platform/windows/notifications/tui.rs",
+          "target_before_sha256": "14ef1f524cc303c73599f9a477f3c732f0261e60dbc3a2971ba04832c1ecfd12",
+          "target_after_sha256": "e2ded19d33f36ce85420e3aa471d7e4be81712d3910f1032811d41fe88084095",
+          "current_before_sha256": "14ef1f524cc303c73599f9a477f3c732f0261e60dbc3a2971ba04832c1ecfd12",
+          "current_after_sha256": "e2ded19d33f36ce85420e3aa471d7e4be81712d3910f1032811d41fe88084095"
+        }
+      ]
+    },
+    {
+      "change": "vmwpzyz",
+      "commit": "559b5f2f4a01ac1f6b3bc94bd3e6c5b10cffc207",
+      "old_commit": "bb21efa5e552aa654dab984ab33a6eb327c95a2a",
+      "lint": "manual_inspect",
+      "subject": "fix(tmuxx): recover lagging native subscribers",
+      "author": "Sebastian Thiel <sebastian.thiel@icloud.com>",
+      "patch": "vmwpzyz.patch",
+      "files": [
+        {
+          "path": "tmuxx/crates/tmuxx-runtime/src/delivery.rs",
+          "target_before_sha256": "2ad712f9e5d9f5c7f56bec511fa7ed0f78e1b58f6d328aab835ea1a71e142a7e",
+          "target_after_sha256": "f10436a9ad3c5e5b13d2f1ce4feb6a1d6655644ac7bd6ad30aaafb6bd967f944",
+          "current_before_sha256": "2ad712f9e5d9f5c7f56bec511fa7ed0f78e1b58f6d328aab835ea1a71e142a7e",
+          "current_after_sha256": "f10436a9ad3c5e5b13d2f1ce4feb6a1d6655644ac7bd6ad30aaafb6bd967f944"
+        }
+      ]
+    }
+  ],
+  "iterator_prerequisite": {
+    "commit": "13be7aed6b41df3116aaedb16f171e82f3f935c6",
+    "old_commit": "47d6425ab8d1634ccebee452ca0a317c4457240b",
+    "change": "ksrntwr",
+    "subject": "perf(rustty): pack terminal pages and vectorize printing",
+    "evidence": "Introduces public Rows with DoubleEndedIterator::next_back and public history()->Rows; both already present in pzqlpkv. Later13214f05f2/yxqyqpl adds nth/nth_back optimization only.",
+    "ancestor_of_unscroll_target": true
+  },
+  "validation": {
+    "rustfmt": "all six changed target/current files parsed/formatted with edition2024, skip_children=true",
+    "builds_run": false,
+    "tests_run": false,
+    "repository_mutation": false,
+    "target_patch_apply_checks": "all five passed against immutable target-file snapshots, using git apply --check outside repository",
+    "current_combined_apply_check": "passed against shared checkout; no files applied"
+  },
+  "recommendation": "All nine lint sites can be repaired by source-equivalent changes at the five introducing Tix commits; no report-only exception needed. Compile/test execution remains with root after sole-writer handoff."
+}

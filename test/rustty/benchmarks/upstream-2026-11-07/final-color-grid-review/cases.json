@@ -1,0 +1,2040 @@
+[
+  {
+    "request": {
+      "color_inputs": [
+        "",
+        "23",
+        "2331",
+        "233132",
+        "23313233",
+        "313233",
+        "2331323334",
+        "233132333435",
+        "23313233343536",
+        "313233343536",
+        "23313233343536373839",
+        "313233343536373839",
+        "23313233343536373839616263",
+        "313233343536373839616263",
+        "2366666666666666666666666666",
+        "524544",
+        "677265656e",
+        "677265793530",
+        "6c6967687420626c7565",
+        "6c696768742020626c7565",
+        "626164",
+        "6e6f742d612d636f6c6f72",
+        "ff",
+        "72656400",
+        "7267623a662f302f38",
+        "7267623a66662f30302f3838",
+        "7267623a6666662f3030302f383838",
+        "7267623a666666662f303030302f38383838",
+        "7267623a662f30302f383838",
+        "7267623a2f302f30",
+        "7267623a30303030302f302f30",
+        "7267623a302f30",
+        "7267623a302f302f302f30",
+        "5247423a662f302f38",
+        "7267623a2b662f302f38",
+        "7267623a665f662f302f38",
+        "7267623a665f5f662f302f38",
+        "7267623a5f662f302f38",
+        "7267623a665f2f302f38",
+        "7267623a3078662f302f38",
+        "23665f66303030303030",
+        "23665f5f663030303030303030",
+        "726762693a302f302e352f31",
+        "726762693a312f302e352f31",
+        "726762693a2e352f302e352f31",
+        "726762693a312e2f302e352f31",
+        "726762693a2b302e352f302e352f31",
+        "726762693a2d302f302e352f31",
+        "726762693a2d302e3030302f302e352f31",
+        "726762693a2d302e312f302e352f31",
+        "726762693a312e303030303030312f302e352f31",
+        "726762693a322f302e352f31",
+        "726762693a2f302e352f31",
+        "726762693a2e2f302e352f31",
+        "726762693a2b2f302e352f31",
+        "726762693a6e616e2f302e352f31",
+        "726762693a696e662f302e352f31",
+        "726762693a31652d312f302e352f31",
+        "726762693a3078302e382f302e352f31",
+        "726762693a302e2e352f302e352f31",
+        "726762693a20302e352f302e352f31",
+        "726762693a302e35202f302e352f31",
+        "726762693a302e3132333435363738393031323334352f302e352f31",
+        "726762693a302e3132333435363738393031323334353939392f302e352f31",
+        "726762693a302e333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333332f302e352f31",
+        "726762693a312e303030303030303030303030303030312f302e352f31",
+        "726762693a2d302e303030303030303030303030303030312f302e352f31",
+        "726762693a313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131312f302e352f31",
+        "2023313233343536",
+        "2331323334353620",
+        "2072656420",
+        "0923313233343536",
+        "2331323334353609",
+        "0972656409",
+        "0a23313233343536",
+        "233132333435360a",
+        "0a7265640a",
+        "0d23313233343536",
+        "233132333435360d",
+        "0d7265640d",
+        "0b23313233343536",
+        "233132333435360b",
+        "0b7265640b",
+        "0c23313233343536",
+        "233132333435360c",
+        "0c7265640c",
+        "0023313233343536",
+        "2331323334353600",
+        "0072656400",
+        "c2a023313233343536",
+        "23313233343536c2a0",
+        "c2a0726564c2a0",
+        "23303066663535",
+        "7267623a30302f3066662f30303535",
+        "23303166653534",
+        "7267623a30312f3066652f30303534",
+        "23303266643537",
+        "7267623a30322f3066642f30303537",
+        "23303366633536",
+        "7267623a30332f3066632f30303536",
+        "23303466623531",
+        "7267623a30342f3066622f30303531",
+        "23303566613530",
+        "7267623a30352f3066612f30303530",
+        "23303666393533",
+        "7267623a30362f3066392f30303533",
+        "23303766383532",
+        "7267623a30372f3066382f30303532",
+        "23303866373564",
+        "7267623a30382f3066372f30303564",
+        "23303966363563",
+        "7267623a30392f3066362f30303563",
+        "23306166353566",
+        "7267623a30612f3066352f30303566",
+        "23306266343565",
+        "7267623a30622f3066342f30303565",
+        "23306366333539",
+        "7267623a30632f3066332f30303539",
+        "23306466323538",
+        "7267623a30642f3066322f30303538",
+        "23306566313562",
+        "7267623a30652f3066312f30303562",
+        "23306666303561",
+        "7267623a30662f3066302f30303561",
+        "23313065663435",
+        "7267623a31302f3065662f30303435",
+        "23313165653434",
+        "7267623a31312f3065652f30303434"
+      ],
+      "id": "protocol/colors/parser/forms/0",
+      "kind": "colors"
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/osc-form/35",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d31303b7267623a665f662f302f3807",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b333b7267623a665f662f302f3807",
+          "op": "write"
+        },
+        {
+          "data": "1b5d32313b343d7267623a665f662f302f3807",
+          "op": "write"
+        },
+        {
+          "data": "1b5d31303b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f071b5d32313b666f726567726f756e643d3f3b6261636b67726f756e643d3f3b637572736f723d3f3b73656c656374696f6e5f666f726567726f756e643d3f07",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b333b3f3b343b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/osc-form/36",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d31303b7267623a665f5f662f302f3807",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b333b7267623a665f5f662f302f3807",
+          "op": "write"
+        },
+        {
+          "data": "1b5d32313b343d7267623a665f5f662f302f3807",
+          "op": "write"
+        },
+        {
+          "data": "1b5d31303b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f071b5d32313b666f726567726f756e643d3f3b6261636b67726f756e643d3f3b637572736f723d3f3b73656c656374696f6e5f666f726567726f756e643d3f07",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b333b3f3b343b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/osc-form/40",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d31303b23665f6630303030303007",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b333b23665f6630303030303007",
+          "op": "write"
+        },
+        {
+          "data": "1b5d32313b343d23665f6630303030303007",
+          "op": "write"
+        },
+        {
+          "data": "1b5d31303b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f071b5d32313b666f726567726f756e643d3f3b6261636b67726f756e643d3f3b637572736f723d3f3b73656c656374696f6e5f666f726567726f756e643d3f07",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b333b3f3b343b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/osc-form/41",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d31303b23665f5f66303030303030303007",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b333b23665f5f66303030303030303007",
+          "op": "write"
+        },
+        {
+          "data": "1b5d32313b343d23665f5f66303030303030303007",
+          "op": "write"
+        },
+        {
+          "data": "1b5d31303b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f071b5d32313b666f726567726f756e643d3f3b6261636b67726f756e643d3f3b637572736f723d3f3b73656c656374696f6e5f666f726567726f756e643d3f07",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b333b3f3b343b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/palette-list/11",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d343b2b313b7265643b313b3f07",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d343b303b3f3b313b3f3b323b3f3b31303b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/palette-list/12",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d343b2d303b7265643b303b3f07",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d343b303b3f3b313b3f3b323b3f3b31303b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/palette-list/15",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d343b315f303b7265643b31303b3f07",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d343b303b3f3b313b3f3b323b3f3b31303b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/palette-list/16",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d343b315f5f303b7265643b31303b3f07",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d343b303b3f3b313b3f3b323b3f3b31303b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/reset-list/104/9",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d343b303b7265643b313b626c75653b323b677265656e3b31303b79656c6c6f77071b5d31303b7265643b677265656e3b626c756507",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d3130343b2b3107",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d31303b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f071b5d32313b666f726567726f756e643d3f3b6261636b67726f756e643d3f3b637572736f723d3f3b73656c656374696f6e5f666f726567726f756e643d3f07",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b303b3f3b313b3f3b323b3f3b31303b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/reset-list/104/10",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d343b303b7265643b313b626c75653b323b677265656e3b31303b79656c6c6f77071b5d31303b7265643b677265656e3b626c756507",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d3130343b2d3007",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d31303b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f071b5d32313b666f726567726f756e643d3f3b6261636b67726f756e643d3f3b637572736f723d3f3b73656c656374696f6e5f666f726567726f756e643d3f07",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b303b3f3b313b3f3b323b3f3b31303b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/reset-list/104/11",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d343b303b7265643b313b626c75653b323b677265656e3b31303b79656c6c6f77071b5d31303b7265643b677265656e3b626c756507",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d3130343b315f3007",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d31303b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f071b5d32313b666f726567726f756e643d3f3b6261636b67726f756e643d3f3b637572736f723d3f3b73656c656374696f6e5f666f726567726f756e643d3f07",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b303b3f3b313b3f3b323b3f3b31303b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/kitty-list/17",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d343b313b2361626364656607",
+          "op": "write"
+        },
+        {
+          "data": "1b5d32313b315f303d7265643b31303d3f07",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d31303b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f071b5d32313b666f726567726f756e643d3f3b6261636b67726f756e643d3f3b637572736f723d3f3b73656c656374696f6e5f666f726567726f756e643d3f07",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b303b3f3b313b3f3b323b3f3b31303b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "protocol/colors/kitty-list/18",
+      "observe_colors": true,
+      "operations": [
+        {
+          "data": "1b5d343b313b2361626364656607",
+          "op": "write"
+        },
+        {
+          "data": "1b5d32313b315f5f303d7265643b31303d3f07",
+          "op": "write"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "data": "1b5d31303b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f3b3f071b5d32313b666f726567726f756e643d3f3b6261636b67726f756e643d3f3b637572736f723d3f3b73656c656374696f6e5f666f726567726f756e643d3f07",
+          "op": "write"
+        },
+        {
+          "data": "1b5d343b303b3f3b313b3f3b323b3f3b31303b3f07",
+          "op": "write"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "cols": 8,
+      "id": "grid/selectors/line-options/5/0",
+      "operations": [
+        {
+          "data": "1b5d3133333b410770726f6d70741b5d3133333b42072020201b5d3133333b43076f7574",
+          "op": "write"
+        },
+        {
+          "grid": {
+            "action": "select",
+            "end": {
+              "tag": "active",
+              "x": 0,
+              "y": 0
+            },
+            "start": {
+              "tag": "active",
+              "x": 0,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 1,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 2,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 3,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 4,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 5,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 6,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 7,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 1
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 1,
+              "y": 1
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 2,
+              "y": 1
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 3,
+              "y": 1
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 4,
+              "y": 1
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 5,
+              "y": 1
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 6,
+              "y": 1
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 7,
+              "y": 1
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 2
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 1,
+              "y": 2
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 2,
+              "y": 2
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 3,
+              "y": 2
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 4,
+              "y": 2
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 5,
+              "y": 2
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 6,
+              "y": 2
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 7,
+              "y": 2
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 3
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 1,
+              "y": 3
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 2,
+              "y": 3
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 3,
+              "y": 3
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 4,
+              "y": 3
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 5,
+              "y": 3
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 6,
+              "y": 3
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 7,
+              "y": 3
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "observe"
+          },
+          "op": "grid"
+        }
+      ],
+      "rows": 4
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "cols": 8,
+      "id": "grid/selectors/line-options/5/3",
+      "operations": [
+        {
+          "data": "1b5d3133333b410770726f6d70741b5d3133333b42072020201b5d3133333b43076f7574",
+          "op": "write"
+        },
+        {
+          "grid": {
+            "action": "select",
+            "end": {
+              "tag": "active",
+              "x": 0,
+              "y": 0
+            },
+            "start": {
+              "tag": "active",
+              "x": 0,
+              "y": 0
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 0
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 1,
+              "y": 0
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 2,
+              "y": 0
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 3,
+              "y": 0
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 4,
+              "y": 0
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 5,
+              "y": 0
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 6,
+              "y": 0
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 7,
+              "y": 0
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 1
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 1,
+              "y": 1
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 2,
+              "y": 1
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 3,
+              "y": 1
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 4,
+              "y": 1
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 5,
+              "y": 1
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 6,
+              "y": 1
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 7,
+              "y": 1
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 2
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 1,
+              "y": 2
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 2,
+              "y": 2
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 3,
+              "y": 2
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 4,
+              "y": 2
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 5,
+              "y": 2
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 6,
+              "y": 2
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 7,
+              "y": 2
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 0,
+              "y": 3
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 1,
+              "y": 3
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 2,
+              "y": 3
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 3,
+              "y": 3
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 4,
+              "y": 3
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 5,
+              "y": 3
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 6,
+              "y": 3
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select_line",
+            "point": {
+              "tag": "active",
+              "x": 7,
+              "y": 3
+            },
+            "whitespace": [
+              32,
+              97
+            ]
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "observe"
+          },
+          "op": "grid"
+        }
+      ],
+      "rows": 4
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "cols": 8,
+      "id": "grid/terminal-format/contents/empty",
+      "kind": "input",
+      "operations": [
+        {
+          "data": "",
+          "op": "write"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "plain",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "plain",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "plain",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "plain",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "vt",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "vt",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "vt",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "vt",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "html",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "html",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "html",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "html",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "plain",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "plain",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "plain",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "plain",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "html",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "html",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "html",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "html",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "all",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "select",
+            "end": {
+              "x": 6,
+              "y": 2
+            },
+            "start": {
+              "x": 1
+            }
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "plain",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "plain",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "plain",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "plain",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "vt",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "vt",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "vt",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "vt",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "html",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "html",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "html",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_screen",
+            "format": {
+              "emit": "html",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "plain",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "plain",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "plain",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "plain",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "vt",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "html",
+              "trim": false,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "html",
+              "trim": true,
+              "unwrap": false
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "html",
+              "trim": false,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        },
+        {
+          "grid": {
+            "action": "format_terminal",
+            "format": {
+              "emit": "html",
+              "trim": true,
+              "unwrap": true
+            },
+            "format_content": "selection",
+            "format_map": true
+          },
+          "op": "grid"
+        }
+      ],
+      "rows": 4
+    },
+    "covers": []
+  }
+]

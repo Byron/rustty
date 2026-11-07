@@ -1,0 +1,472 @@
+{
+  "generator": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/ghostty-gen",
+  "generator_sha256": "8d5955f78510cf400d40cc7ee49b9783604dc319873b600c587687f12933b5f5",
+  "upstream_range": "6ba144158..5acdbf154",
+  "status": "generator structural checks only; terminal replay checks pending",
+  "corpora": [
+    {
+      "file": "plain.vt",
+      "argv": [
+        "+styled",
+        "--seed=42",
+        "--style-rate=0",
+        "--line-min=40",
+        "--line-max=80"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "5a832d9dcf029133153c38f521bcd5464c9cffe5843f1356cf497fead44e9b92",
+      "sha256": "4cdd7b374bee9cd459a51cb1440d33c0ba48097b280a3ecfb8bb89910301a700",
+      "trimmed_bytes": 21,
+      "checks": {
+        "bytes": 8388587,
+        "lines": 135334,
+        "sgr_sequences": 0
+      },
+      "stderr": ""
+    },
+    {
+      "file": "styled-1.vt",
+      "argv": [
+        "+styled",
+        "--seed=42",
+        "--sgr-attrs=1",
+        "--style-rate=1",
+        "--line-min=40",
+        "--line-max=80",
+        "--run-min=4",
+        "--run-max=16"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "af259e81d386ff8ac0adbddf3c63777e6c9e55f510f4f3db11753d5683b5f0d1",
+      "sha256": "51854f3b4b2a481794bd1826b50d30fb49bd90f29f124af62f89df6849c6f464",
+      "trimmed_bytes": 4,
+      "checks": {
+        "bytes": 8388604,
+        "lines": 66379,
+        "sgr_sequences": 432812
+      },
+      "stderr": ""
+    },
+    {
+      "file": "styled-2.vt",
+      "argv": [
+        "+styled",
+        "--seed=42",
+        "--sgr-attrs=2",
+        "--style-rate=1",
+        "--line-min=40",
+        "--line-max=80",
+        "--run-min=4",
+        "--run-max=16"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "c4e92049228598bfe9999111a39d05d8afdc0724c5bacd4931de9a7f8eb5a248",
+      "sha256": "f26f8ac9bccd54338ee498e7cf729d6d716f4ceb1554f4f8f478e1fcdb07bcb8",
+      "trimmed_bytes": 98,
+      "checks": {
+        "bytes": 8388510,
+        "lines": 46729,
+        "sgr_sequences": 304463
+      },
+      "stderr": ""
+    },
+    {
+      "file": "styled-3.vt",
+      "argv": [
+        "+styled",
+        "--seed=42",
+        "--sgr-attrs=3",
+        "--style-rate=1",
+        "--line-min=40",
+        "--line-max=80",
+        "--run-min=4",
+        "--run-max=16"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "30e4a4c7f0b2bb8a0ff7d0eab55f35f49771798fdee1530e9196660c70c6ed3a",
+      "sha256": "2e60267fc1f768019aba52f11b62ebd95587db1bc23cd9822f8e42c340321cf5",
+      "trimmed_bytes": 13,
+      "checks": {
+        "bytes": 8388595,
+        "lines": 36138,
+        "sgr_sequences": 235663
+      },
+      "stderr": ""
+    },
+    {
+      "file": "styled-4.vt",
+      "argv": [
+        "+styled",
+        "--seed=42",
+        "--sgr-attrs=4",
+        "--style-rate=1",
+        "--line-min=40",
+        "--line-max=80",
+        "--run-min=4",
+        "--run-max=16"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "16d09731412f78dc4cf77ceba0c38a2fe3c5f10b010f6ca2c109204e725881c1",
+      "sha256": "577fac0ce91c4892413461e3ce7c227f8e25eab7b0b857025485d5dff3e644c3",
+      "trimmed_bytes": 25,
+      "checks": {
+        "bytes": 8388583,
+        "lines": 29493,
+        "sgr_sequences": 191930
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-2-120x80.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--rows=80",
+        "--cols=120"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "c382bb6ef859d0008bbe3dab0fdc09087ab616c4ca5d951245aa9ab4ef0b94e6",
+      "sha256": "4d6d61fa457e0e63af0cc19cca86885537f4ee625690a14824524d7f4cb2f1de",
+      "trimmed_bytes": 32,
+      "checks": {
+        "bytes": 8388576,
+        "lines": 141302,
+        "erase_iterations": 141302
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-2-120x12.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--rows=12",
+        "--cols=120"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "9b73ee97a8210d0a3790a356846981404fd2721a30dc6e9268d5e07880651280",
+      "sha256": "87f8e1359b5e4bc22442bd8b87e24e93a373cefaa6458a92459d8345c8cdc943",
+      "trimmed_bytes": 32,
+      "checks": {
+        "bytes": 8388576,
+        "lines": 144412,
+        "erase_iterations": 144412
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-2-300x100.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--rows=100",
+        "--cols=300"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "d42e63978eb612e21b4068a0c66ad311f6b0de1f7347eecbeeeef8dc7e11b163",
+      "sha256": "111864ad45a6bb6fc5d053c1f13ad719db004eb390035b72a6f865203691877d",
+      "trimmed_bytes": 4,
+      "checks": {
+        "bytes": 8388604,
+        "lines": 139873,
+        "erase_iterations": 139873
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-22-120x80.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--scroll-clear=true",
+        "--rows=80",
+        "--cols=120"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "b5760a121e7532ea9060747a16252519a5a38967f2b4d7b60a83bdfa0d20cbf7",
+      "sha256": "d836fd4ebe4b75fabf71bc13d4d0630ce12c43e69d1800144085741d2e10fc72",
+      "trimmed_bytes": 53,
+      "checks": {
+        "bytes": 8388555,
+        "lines": 138961,
+        "erase_iterations": 138961
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-22-120x12.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--scroll-clear=true",
+        "--rows=12",
+        "--cols=120"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "82a46f5f7d9a3f238125220c3953c3b591f6c993a17989a99b94686aa2058f89",
+      "sha256": "453e79a6cfccc5173c16e6e5f70bbb2cac2cb2f334f215d22b9bce704d4ff395",
+      "trimmed_bytes": 14,
+      "checks": {
+        "bytes": 8388594,
+        "lines": 141965,
+        "erase_iterations": 141965
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-22-300x100.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--scroll-clear=true",
+        "--rows=100",
+        "--cols=300"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "8b20116302d11e788c69e8da09aadff3db00579b6d7130d83420f071cf7b462e",
+      "sha256": "5ef266dbd623feb7b4bd9cbc379a12f00ae4e3627ff8702a18c5cd30f7569283",
+      "trimmed_bytes": 33,
+      "checks": {
+        "bytes": 8388575,
+        "lines": 137582,
+        "erase_iterations": 137582
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-rate-120x80.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--erase-rate=0.1",
+        "--rows=80",
+        "--cols=120"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "b2c03c828a3620aa9e97f504e21e38ac9e6ef8a5eba2c173162e9bf9a0edc74a",
+      "sha256": "56634756c5b4ad723320f4c482a21952cdb1d4698dec835836e6df2c98abcf0b",
+      "trimmed_bytes": 2,
+      "checks": {
+        "bytes": 8388606,
+        "lines": 579323,
+        "erase_iterations": 57876
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-rate-120x12.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--erase-rate=0.1",
+        "--rows=12",
+        "--cols=120"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "41ea6db492bf8ae504b0085f524d5b9f9f236273cfcbbcbae25976605eb076a1",
+      "sha256": "a3492ee7933b19448877abf36688d136bcb9b2dbf4054f9ef31d6a23f359b253",
+      "trimmed_bytes": 9,
+      "checks": {
+        "bytes": 8388599,
+        "lines": 584505,
+        "erase_iterations": 58384
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-rate-300x100.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--erase-rate=0.1",
+        "--rows=100",
+        "--cols=300"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "e01110c0829ba4c6419c18961ddb53e388655534bc1a5d2a7fd696330a4c9cb0",
+      "sha256": "fef0e9a1ea47c2912ed5fc952ad57f3ff84334b7e4e86241b7f236e6f04cd309",
+      "trimmed_bytes": 30,
+      "checks": {
+        "bytes": 8388578,
+        "lines": 576871,
+        "erase_iterations": 57647
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-lines-120x80.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--line-clears=40",
+        "--rows=80",
+        "--cols=120"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "61e1b75288a3bb90a60b9faebe19b0db6d127dd2613b81dafd2c4963b5d212d9",
+      "sha256": "20d4db7ff81d467cc2056d577576182128221b43defcbbc2c53af0cdf4c839e6",
+      "trimmed_bytes": 450,
+      "checks": {
+        "bytes": 8388158,
+        "lines": 16881,
+        "erase_iterations": 16881
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-lines-120x12.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--line-clears=40",
+        "--rows=12",
+        "--cols=120"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "82d127a42e2dab9990a0cb1482d7cb4635f5f1c3fcfe7922873e8b32da1db64a",
+      "sha256": "5a9e3ae88a70a98518a06615be952a19d6f374f6acc85693f394b20509e6310c",
+      "trimmed_bytes": 336,
+      "checks": {
+        "bytes": 8388272,
+        "lines": 17844,
+        "erase_iterations": 17844
+      },
+      "stderr": ""
+    },
+    {
+      "file": "erase-lines-300x100.vt",
+      "argv": [
+        "+erase",
+        "--seed=42",
+        "--line-clears=40",
+        "--rows=100",
+        "--cols=300"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "1ee891ceca11d723acea6112eeac4cd7f67bffa1e52bd36afbf2daea1b346c96",
+      "sha256": "662ae22f1db4750d03dee2ac5db5e4e04bf5fc06a82d0926efee94cc6e9ca211",
+      "trimmed_bytes": 454,
+      "checks": {
+        "bytes": 8388154,
+        "lines": 16461,
+        "erase_iterations": 16461
+      },
+      "stderr": ""
+    },
+    {
+      "file": "links-short.vt",
+      "argv": [
+        "+hyperlink",
+        "--seed=42",
+        "--uris=1",
+        "--line-min=4",
+        "--line-max=4"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "5defedb1eff74e2026d63fdfc0f914ad5345140e46b11646af10c701842c2ca4",
+      "sha256": "11cbd4f03b23d3891ebd786474d7cb5cba30cadfc8ef263a0009fa088a97c6e7",
+      "trimmed_bytes": 8,
+      "checks": {
+        "bytes": 8388600,
+        "lines": 204600,
+        "unique_uris": 1
+      },
+      "stderr": ""
+    },
+    {
+      "file": "links-full.vt",
+      "argv": [
+        "+hyperlink",
+        "--seed=42",
+        "--uris=1000",
+        "--line-min=120",
+        "--line-max=120"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "dced8930bf6ae863d24e04d86eb21104b4288f024142f8d66f4f005f741a6172",
+      "sha256": "7399ec089525a1211c6c9225c9292051ad89a2abc9d44dfbb00a691e31bb526d",
+      "trimmed_bytes": 151,
+      "checks": {
+        "bytes": 8388457,
+        "lines": 52794,
+        "unique_uris": 1000
+      },
+      "stderr": ""
+    },
+    {
+      "file": "wide.vt",
+      "argv": [
+        "+utf8",
+        "--seed=42",
+        "--weight-wide=1",
+        "--weight-one=0",
+        "--weight-two=0",
+        "--weight-three=0",
+        "--weight-four=0",
+        "--ascii-printable-only=true",
+        "--space-rate=0"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "41cee5d4b161b8a220d0e6780e4a5f7fdb2cfab17d224c6b43ca7dee8cd5f9c3",
+      "sha256": "41cee5d4b161b8a220d0e6780e4a5f7fdb2cfab17d224c6b43ca7dee8cd5f9c3",
+      "trimmed_bytes": 0,
+      "checks": {
+        "bytes": 8388608,
+        "codepoints": 2801664,
+        "wide": 2793472,
+        "spaces": 8192
+      },
+      "stderr": ""
+    },
+    {
+      "file": "wide-spaces.vt",
+      "argv": [
+        "+utf8",
+        "--seed=42",
+        "--weight-wide=1",
+        "--weight-one=0",
+        "--weight-two=0",
+        "--weight-three=0",
+        "--weight-four=0",
+        "--ascii-printable-only=true",
+        "--space-rate=0.3"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "214085e7d9a594a8dce7aa9c2385a9e9a3f8a94ce0b1f9fa742484b1641fc262",
+      "sha256": "214085e7d9a594a8dce7aa9c2385a9e9a3f8a94ce0b1f9fa742484b1641fc262",
+      "trimmed_bytes": 0,
+      "checks": {
+        "bytes": 8388608,
+        "codepoints": 3308078,
+        "wide": 2540265,
+        "spaces": 767813
+      },
+      "stderr": ""
+    },
+    {
+      "file": "mixed-wide.vt",
+      "argv": [
+        "+utf8",
+        "--seed=42",
+        "--weight-wide=1",
+        "--weight-one=0.3",
+        "--weight-two=0",
+        "--weight-three=0",
+        "--weight-four=0",
+        "--ascii-printable-only=true",
+        "--space-rate=0.3"
+      ],
+      "requested_bytes": 8388608,
+      "raw_sha256": "db971032476c9e51e7d99793403f18c19074980f3690c0916a951e1d8789b089",
+      "sha256": "db971032476c9e51e7d99793403f18c19074980f3690c0916a951e1d8789b089",
+      "trimmed_bytes": 0,
+      "checks": {
+        "bytes": 8388608,
+        "codepoints": 3846204,
+        "wide": 2271202,
+        "spaces": 892976
+      },
+      "stderr": ""
+    }
+  ]
+}

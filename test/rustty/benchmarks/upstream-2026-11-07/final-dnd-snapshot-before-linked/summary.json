@@ -1,0 +1,10 @@
+{
+  "aborted": false,
+  "checked": 27,
+  "coverage_gaps": [],
+  "covered": [],
+  "error": null,
+  "failures": 27,
+  "full_parity": false,
+  "mode": "smoke"
+}

@@ -1,0 +1,273 @@
+{
+  "scope": "Read-only preserved archive/source attribution; no oracle execution",
+  "fixture_commit": "a61c9bf0207d5e0c5e805de1dc7196bb5ffa3390",
+  "before_archive_sha256": "bd0a3a606bd3212ddf1d53240dcb33d771e7fc0263705c138a4410c82894b28f",
+  "after_archive_sha256": "9cd6feea60a2142cd13c14691b1a3a74dc8c159f1a670baea99479a9412f681d",
+  "raw_counts": {
+    "removed": 3,
+    "added": 5,
+    "changed": 7
+  },
+  "disposition": "All deltas explained; three removals have exact capacity-derived replacements, two additional batching probes; seven responses only change page_layout.",
+  "invariants": "Native allocation remains409600 bytes; default hyperlink map remains128 buckets; independent hyperlink_cells64 becomes explicit.",
+  "source_evidence": [
+    "test/rustty/page_lifecycle_requests.py:84-93,125-129",
+    "test/rustty/grapheme_lifecycle_requests.py mixed-batch/capacity",
+    "test/rustty/hyperlink_lifecycle_requests.py linked-batch/capacity"
+  ],
+  "records": [
+    {
+      "kind": "changed layout response",
+      "request_sha256": "354317e509d504e29d93fa3a31799f4e45e2368fe682f73d1053a67d749b9181",
+      "id": "pages/capacity",
+      "columns": 2,
+      "response_sha256_before": "e4d142d372d2c65df132da00be0a0624904af1de17c21c174fa719aa91988c5a",
+      "response_sha256_after": "661e0ea01999636e2da0ee3efe76e4b6e8a83a95f2a87f2ad55bb885a832782c",
+      "row_capacity": [
+        15975,
+        15993
+      ],
+      "style_item_bytes": [
+        36,
+        32
+      ],
+      "style_arena_bytes": [
+        4000,
+        3584
+      ],
+      "metadata_bytes": [
+        26124,
+        25708
+      ],
+      "only_page_layout_changed": true,
+      "disposition": "Packed style storage/alignment and additive independent hyperlink_cells capacity; direct layout query does not exercise capacity carry."
+    },
+    {
+      "kind": "changed layout response",
+      "request_sha256": "43c5309b9e0d4ad676a3c5c95541398ff4e6f84b398a7d230e7a6c4ce5e8e7b6",
+      "id": "pages/capacity",
+      "columns": 80,
+      "response_sha256_before": "445b50f01682617a715303f520593e6b776169d1d56e2c9ec3187254a20a619a",
+      "response_sha256_after": "fa9f3a875d591a3f429fb18edd5d4c8a8c3d9d19464f5269407da0062d695532",
+      "row_capacity": [
+        591,
+        592
+      ],
+      "style_item_bytes": [
+        36,
+        32
+      ],
+      "style_arena_bytes": [
+        4000,
+        3584
+      ],
+      "metadata_bytes": [
+        26124,
+        25708
+      ],
+      "only_page_layout_changed": true,
+      "disposition": "Packed style storage/alignment and additive independent hyperlink_cells capacity; direct layout query does not exercise capacity carry."
+    },
+    {
+      "kind": "changed layout response",
+      "request_sha256": "86a2d4e6657ff8a49046b17118f50cc42a3c695ac6a9178ac204ac21e67508de",
+      "id": "pages/styles/capacity",
+      "columns": 80,
+      "response_sha256_before": "a7f86f15d415ef75d302b9e2f948343b80b5c078803eefab33ebb3bb60183215",
+      "response_sha256_after": "1018978c3dca483b84c901d36cb8fc917390408430957ef7e4ca8c08febe99a6",
+      "row_capacity": [
+        591,
+        592
+      ],
+      "style_item_bytes": [
+        36,
+        32
+      ],
+      "style_arena_bytes": [
+        4000,
+        3584
+      ],
+      "metadata_bytes": [
+        26124,
+        25708
+      ],
+      "only_page_layout_changed": true,
+      "disposition": "Packed style storage/alignment and additive independent hyperlink_cells capacity; direct layout query does not exercise capacity carry."
+    },
+    {
+      "kind": "changed layout response",
+      "request_sha256": "ac6e117d87ec09fefd30038bdc688aeb19e6ec377f15a8e9d37f8018a0e5045a",
+      "id": "pages/styles/capacity",
+      "columns": 1024,
+      "response_sha256_before": "78a1c95367f9eafeeb93207ad75c3c30fa414b012c553006609cf5b69a71b8ae",
+      "response_sha256_after": "b610879e3655d91f21b381f198603cc8de97056f32f9dd0ef0a50a10f517c271",
+      "row_capacity": [
+        46,
+        46
+      ],
+      "style_item_bytes": [
+        36,
+        32
+      ],
+      "style_arena_bytes": [
+        4000,
+        3584
+      ],
+      "metadata_bytes": [
+        26124,
+        25708
+      ],
+      "only_page_layout_changed": true,
+      "disposition": "Packed style storage/alignment and additive independent hyperlink_cells capacity; direct layout query does not exercise capacity carry."
+    },
+    {
+      "kind": "changed layout response",
+      "request_sha256": "b12e5ca476cf9008aeddbe0689985dcf776ec41455a15fff4b79c7a878fa4ca9",
+      "id": "pages/capacity",
+      "columns": 215,
+      "response_sha256_before": "a8369adc14ca8569e8fd838af54f01118ec22894f5d103d0dc201a2aae7c11a1",
+      "response_sha256_after": "5746198c7cf9fc612695efc2df9d5c4bb42e8094b32c0847e5f49d7e1e5e8e3d",
+      "row_capacity": [
+        221,
+        222
+      ],
+      "style_item_bytes": [
+        36,
+        32
+      ],
+      "style_arena_bytes": [
+        4000,
+        3584
+      ],
+      "metadata_bytes": [
+        26124,
+        25708
+      ],
+      "only_page_layout_changed": true,
+      "disposition": "Packed style storage/alignment and additive independent hyperlink_cells capacity; direct layout query does not exercise capacity carry."
+    },
+    {
+      "kind": "changed layout response",
+      "request_sha256": "d25860a537548f670fca06e798d6d28daa3ad8b50245fabf2ddb1819f52a30e8",
+      "id": "pages/capacity",
+      "columns": 8,
+      "response_sha256_before": "c5fd943b0add61302cb0de84a707aa30d6a979138513fed82c46fcc7a1d5cf76",
+      "response_sha256_after": "ab834ec02040dabd563601ef378a9512cde1891aba348a8f5d2040007b19f888",
+      "row_capacity": [
+        5325,
+        5330
+      ],
+      "style_item_bytes": [
+        36,
+        32
+      ],
+      "style_arena_bytes": [
+        4000,
+        3584
+      ],
+      "metadata_bytes": [
+        26124,
+        25708
+      ],
+      "only_page_layout_changed": true,
+      "disposition": "Packed style storage/alignment and additive independent hyperlink_cells capacity; direct layout query does not exercise capacity carry."
+    },
+    {
+      "kind": "changed layout response",
+      "request_sha256": "ea76642e85e5a3f35c12afbe780a2e937dd8639dfdc570ffcb11c71f6b10f590",
+      "id": "pages/capacity",
+      "columns": 1024,
+      "response_sha256_before": "3f84c03310491e1fadd49707ff1f55d912ea47ee9eb44b322494859438e87c4c",
+      "response_sha256_after": "0ad97d31492300670c95458e78c5c79a7577430d82c7dd5338591529d9885769",
+      "row_capacity": [
+        46,
+        46
+      ],
+      "style_item_bytes": [
+        36,
+        32
+      ],
+      "style_arena_bytes": [
+        4000,
+        3584
+      ],
+      "metadata_bytes": [
+        26124,
+        25708
+      ],
+      "only_page_layout_changed": true,
+      "disposition": "Packed style storage/alignment and additive independent hyperlink_cells capacity; direct layout query does not exercise capacity carry."
+    },
+    {
+      "kind": "replaced capacity-derived snapshot probe",
+      "removed_request_sha256": "319b837da19521c1f7a4706f601d8824dc4322a30f5e4adc2f8f382990990ae8",
+      "added_request_sha256": "9bd2ebc3954ac7f98279399b662ad5dc1fe4ac6e1212ae66587efccf1ca27650",
+      "id": "pages/snapshot/source",
+      "columns": 80,
+      "line_count": [
+        622,
+        623
+      ],
+      "response_sha256_before": "32b407301821289f45503442291445968aa8cc69cf0bfa3b1d224586bdb3d307",
+      "response_sha256_after": "c45f6c952bcac23806320ca088428a62c47e5854ef9e6fb6a48668e04ef0ff1c",
+      "disposition": "Same capacity+31 source formula and snapshot scenario, with current native capacity; no probe coverage removed.",
+      "source": "test/rustty/page_lifecycle_requests.py:125-129"
+    },
+    {
+      "kind": "replaced capacity-derived snapshot probe",
+      "removed_request_sha256": "97163d017ded83f2f1bb99926cdf548501dd36933125904d01acbf2ec7a7af47",
+      "added_request_sha256": "8d401fb3807b73095dd726c53f2140aa6494954237649417d04271ae98fb19ce",
+      "id": "pages/snapshot/source",
+      "columns": 8,
+      "line_count": [
+        5356,
+        5361
+      ],
+      "response_sha256_before": "11506d6856a1d6a5bf0b83c0d23305d6f4bb9d0429a20feccf955f66d26ea133",
+      "response_sha256_after": "ea8ec790f36286434c4a1e6d44cfcf9d1d0578b0d1600fbe8c680018f3fcdffb",
+      "disposition": "Same capacity+31 source formula and snapshot scenario, with current native capacity; no probe coverage removed.",
+      "source": "test/rustty/page_lifecycle_requests.py:125-129"
+    },
+    {
+      "kind": "replaced capacity-derived snapshot probe",
+      "removed_request_sha256": "a741965ef14184060b8b72ecd83bb377d9c2de4d81c11396323ebabffcfe48f2",
+      "added_request_sha256": "178d68ecddc147eb5483f6022b68174d3c1368ac4c140d589dcb20349fb9bf3b",
+      "id": "pages/snapshot/source",
+      "columns": 215,
+      "line_count": [
+        252,
+        253
+      ],
+      "response_sha256_before": "b02658b8b1af7aee3e70253050eaa264422a07db1f3a2bb0eff2684b0838c38a",
+      "response_sha256_after": "f2553e79ec2d5b8cbb2eb14b6f77cebb9fa204d3896039db81cdf195cd4c5a07",
+      "disposition": "Same capacity+31 source formula and snapshot scenario, with current native capacity; no probe coverage removed.",
+      "source": "test/rustty/page_lifecycle_requests.py:125-129"
+    },
+    {
+      "kind": "new batching capacity probe",
+      "request_sha256": "5dd71b454d6855a6ea014b52074f0182e80456f58c287be089ccec1beea8bba8",
+      "request": {
+        "id": "mixed-batch/capacity",
+        "kind": "page_layout",
+        "page_layout": {
+          "columns": 200
+        }
+      },
+      "response_sha256": "b8ff37fc6b5fbcdad7058241d74b71fdca8080363ff0e71ee0eed3f188344fe0",
+      "disposition": "Added native capacity boundary coverage for new mixed-width or open-link batching regression generators."
+    },
+    {
+      "kind": "new batching capacity probe",
+      "request_sha256": "cc533eab795dc87ad4015d6e67fba6b160956926626d70505ca87e4172a921b9",
+      "request": {
+        "id": "linked-batch/capacity",
+        "kind": "page_layout",
+        "page_layout": {
+          "columns": 200
+        }
+      },
+      "response_sha256": "dd38f8727e5ea125249f377c1315bbe73e039fce11c647b0e2c060dbd7e116fa",
+      "disposition": "Added native capacity boundary coverage for new mixed-width or open-link batching regression generators."
+    }
+  ]
+}

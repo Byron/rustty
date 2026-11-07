@@ -1,0 +1,24 @@
+Diff in /Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-render/src/graphics.rs:459:
+         let mut terminal = Terminal::new(20, 4, 100);
+         terminal.tmux_graphics = true;
+         terminal.set_tmux_strings(true);
+[31m-        terminal.feed(b"\x1bP9;1q\"1;1;8;1#0;2;100;0;0!8@\x1b\\\x1b[H\x1bP9;1q\"1;1;4;1#0;2;0;0;100!4@\x1b\\");
+(B[m[32m+        terminal.feed(
+(B[m[32m+            b"\x1bP9;1q\"1;1;8;1#0;2;100;0;0!8@\x1b\\\x1b[H\x1bP9;1q\"1;1;4;1#0;2;0;0;100!4@\x1b\\",
+(B[m[32m+        );
+(B[m         let (mut renderer, options) = renderer();
+         let mut images = terminal.graphics().images.values().collect::<Vec<_>>();
+         images.sort_by_key(|image| image.tmux_order);
+Diff in /Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-render/src/graphics.rs:468:
+         let before = renderer.image_tile(images[0], 0, 0).unwrap().uv;
+         let after = renderer.image_tile(images[1], 0, 0).unwrap().uv;
+         let frame = renderer.prepare(terminal.screen(), &options).unwrap();
+[31m-        let sprites = frame.quads.iter().filter(|q| q.paint == Paint::Color).collect::<Vec<_>>();
+(B[m[32m+        let sprites = frame
+(B[m[32m+            .quads
+(B[m[32m+            .iter()
+(B[m[32m+            .filter(|q| q.paint == Paint::Color)
+(B[m[32m+            .collect::<Vec<_>>();
+(B[m         assert_eq!(sprites.len(), 2);
+         assert_eq!(sprites[0].uv, before);
+         assert_eq!(sprites[1].uv, after);

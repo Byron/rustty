@@ -1,0 +1,54 @@
+{
+  "as_of_utc": "2026-11-07T11:57:34.682764+00:00",
+  "status": "permanently incomplete second rest attempt; coordinator exited130; rest PID16572 terminated with-15 and waited",
+  "partial_run_evidence_only": true,
+  "full_archive_completion_claimed": false,
+  "highest_complete_artifact_directory_index": 11683,
+  "completed_comparison_lower_bound_definition": "Highest completed failure artifact index proves at least that many comparisons reached artifact completion; not an exact all-attempt execution count.",
+  "runner_summary": {
+    "aborted": true,
+    "full_parity": false
+  },
+  "reused_previous_complete_count": 600,
+  "newly_validated_complete_count": 4,
+  "complete_failure_count": 604,
+  "counts": {
+    "existing-pointer-shape-record-only": 604
+  },
+  "incomplete_directories": [
+    {
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/rest/failures/011684",
+      "id": "pages/graphemes/wrap/1024/48/46/alternate/scalar",
+      "problems": [
+        "rust.json: Expecting property name enclosed in double quotes: line 969566 column 17 (char 30992053)",
+        "difference.txt: missing"
+      ],
+      "retained_files": {
+        "request.json": {
+          "bytes": 3670,
+          "sha256": "e7c7531b0a1d1c903122a0f67927327f93b9fb7101b5dadf117ba34a10434d2e"
+        },
+        "zig.json": {
+          "bytes": 97458025,
+          "sha256": "1beac253e8ff8d1fe07f97558e9c52eaee87d26b768ccc2605373922e3a26965"
+        },
+        "rust.json": {
+          "bytes": 30992053,
+          "sha256": "d81d8c6ac23ee0ef6360af79393ca30fbd57e287d010656f6a3ffd3dd1f9c74c"
+        }
+      },
+      "counted_as_complete": false
+    }
+  ],
+  "all_saved_directories_accounted_for": true,
+  "prior_audit": {
+    "path": "/private/tmp/rustty-reintegrate.leadij/final-rest-independent-attribution.json",
+    "sha256": "021c85cfefb9efd9ecce4c8752794eb5a9fc3179c9d34325e4988b4a602b7e88"
+  },
+  "classification_source": {
+    "path": "/private/tmp/rustty-reintegrate.leadij/classify-final-parity.py",
+    "sha256": "e94ff33449f805f3d672b4d1c169c4bdf6746a160a145689f91ff77ab12edee4"
+  },
+  "source_identity": "final-rest-pointer-source-identity.json",
+  "attribution_sha256": "d6045673e60c9efa362f9745cbf681835448229dcf02464677125b7d3367f4b6"
+}

@@ -1,0 +1,12 @@
+{
+  "revision": "595623207b12eafe0d178e15ac26d67a1aabf472",
+  "change": "krlvrvl",
+  "compiler": "1.95.0",
+  "profile": "workspace release",
+  "command": "cargo +1.95.0 build --locked --offline -p rustty-vt --release --example parity --example stream-file",
+  "binaries": {
+    "mixed-before-stream": "c71eba2292d4c2ffbe66c3be31f8771551bfc9ac8ed99557742c18dccc58125c",
+    "mixed-before-parity": "ecc9ac5a922b82e3508f385d65a75b7508bdb0881b10b06f486346520117f4a2",
+    "blank-before-stream": "7ece381a718172123121328a3dfac5616f3372d697602fed0d220defb02c23fa"
+  }
+}

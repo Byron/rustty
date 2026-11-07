@@ -1,0 +1,71 @@
+   Compiling rustty-render v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-render)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.69s
+     Running unittests src/lib.rs (target/debug/deps/rustty_render-377ef52ec0cb3d52)
+
+running 63 tests
+test prepare::graphics::tests::placeholder_cache_is_bounded_over_edits ... ok
+test prepare::graphics::tests::rounded_placeholder_overhang_keeps_its_area_and_samples_the_last_texel ... ok
+test prepare::graphics::tests::kitty_layers_preserve_straight_alpha_and_native_size ... ok
+test prepare::graphics::tests::identical_images_share_tiles_without_sharing_placements_or_lifetimes ... ok
+test prepare::graphics::tests::kitty_protocol_lifecycle_refreshes_pixels_and_reuses_unchanged_frames ... ok
+test prepare::graphics::tests::moving_cropped_sprites_reuses_the_uploaded_atlas ... ok
+test prepare::graphics::tests::pending_virtual_parent_keeps_the_completed_child_positioned ... ok
+test prepare::graphics::tests::placeholder_cache_reparses_only_edited_rows_across_viewport_snapshots ... ok
+test prepare::graphics::tests::images_fill_the_cell_grid_with_asymmetric_padding ... ok
+test prepare::graphics::tests::relative_descendants_past_eight_links_are_omitted_after_replacement ... ok
+test prepare::graphics::tests::indexed_palette_variants_follow_retained_panes_and_old_frames_still_replay ... ok
+test prepare::graphics::tests::exited_game_images_are_not_retained_by_shell_frames ... ok
+test prepare::graphics::tests::rgba_tiles_are_independent_of_indexed_palette_changes ... ok
+test prepare::graphics::tests::placeholder_cache_matches_fresh_geometry_through_edits_moves_and_restores ... ok
+test prepare::graphics::tests::repeated_image_sessions_release_page_metadata_without_resetting_text ... ok
+test prepare::shaper_rows::benchmark_shaper_rows ... ignored, set RUSTTY_SHAPER_DATA to a VT file; see test/rustty/shaper_rows.rs
+test prepare::graphics::tests::scrolled_image_roots_survive_viewport_snapshots ... ok
+test prepare::graphics::tests::shared_image_animation_and_edits_leave_the_other_terminal_unchanged ... ok
+test prepare::graphics::tests::shared_image_pages_keep_complete_upload_history_until_unused ... ok
+test prepare::graphics::tests::deleting_an_image_preserves_other_panes_and_text_pages ... ok
+test prepare::graphics::tests::tiny_placeholder_fragments_sample_clamped_texels_after_source_rounding ... ok
+test prepare::graphics::tests::staged_or_malformed_indexed_sources_use_the_static_rgba_fallback ... ok
+test prepare::graphics::tests::tiled_images_keep_neighbor_pixels_and_animation_buffers_are_distinct ... ok
+test prepare::graphics::tests::unicode_placeholder_runs_and_relative_children_share_visible_origins ... ok
+test prepare::graphics::tests::unicode_placeholder_targets_choose_stably_and_position_relative_children ... ok
+test prepare::graphics::tests::unicode_placeholders_use_native_whole_pixel_source_and_destination_rectangles ... ok
+test prepare::graphics::tests::tmux_sixel_overlap_renders_in_owner_creation_order ... ok
+test prepare::graphics::tests::scrollback_images_survive_cache_cleanup_and_return_to_view ... ok
+test prepare::tests::blank_tail_paint_matches_explicit_spaces ... ok
+test prepare::tests::explicit_width_clipping_adjusts_texture_coordinates ... ok
+test prepare::tests::blink_metadata_matches_visible_text_and_decorations ... ok
+test prepare::tests::cached_extra_cursors_rebuild_only_affected_rows_and_main_cursor_wins_overlap ... ok
+test prepare::tests::cached_rows_admit_geometry_after_repaint_and_resize_settle ... ok
+test prepare::tests::cached_rows_rebuild_after_atlas_capacity_retry ... ok
+test prepare::tests::cursor_row_bounds_follow_cursor_visibility_except_blink_phase ... ok
+test prepare::tests::cursor_row_bounds_include_ligature_overhang_outside_the_cell_row ... ok
+test prepare::tests::explicit_width_cursors_selection_search_and_decorations_cover_the_span ... ok
+test prepare::tests::explicit_width_metadata_invalidates_cached_rows_with_identical_fallback_cells ... ok
+test prepare::tests::extra_cursor_colors_follow_defaults_palette_and_cell_local_reverse_video ... ok
+test prepare::tests::extra_cursor_shapes_blink_and_host_visibility_ignore_main_visibility_and_preedit ... ok
+test prepare::graphics::tests::indexed_tiles_resolve_every_color_alpha_and_neighbor_texel ... ok
+test prepare::tests::extra_cursors_stay_in_viewport_coordinates_and_cover_short_history_rows ... ok
+test prepare::tests::focused_cursor_blinks_without_blinking_the_unfocused_outline ... ok
+test prepare::tests::glyph_anchors_preserve_marks_wide_cells_and_unordered_clusters ... ok
+test prepare::tests::selection_and_unfocused_cursor_have_explicit_geometry ... ok
+test prepare::tests::viewport_snapshots_preserve_selection_paint_while_scrolling ... ok
+test tests::pane_composition_clips_texture_coordinates_and_shares_atlas_updates ... ok
+test tests::srgb_colors_are_linearized_before_blending ... ok
+test prepare::tests::sprites_fill_cells_without_entering_native_shaping_runs ... ok
+test prepare::tests::cached_rows_track_cursor_and_text_blink_with_fresh_preedit_and_graphics ... ok
+test prepare::tests::styled_unicode_frame_is_self_contained_and_cache_can_be_recreated ... ok
+test prepare::tests::extra_cursor_recolors_a_wide_tail_when_the_main_beam_covers_its_head ... ok
+test prepare::tests::unchanged_runs_reuse_shaping_without_caching_color_or_cell_positions ... ok
+test prepare::tests::cached_rows_scroll_and_keep_two_panes_with_overlapping_row_ids_independent ... ok
+test prepare::tests::selection_on_a_wide_tail_paints_the_whole_glyph ... ok
+test prepare::tests::empty_tails_skip_shaping_without_moving_unicode_cursor_or_selection ... ok
+test prepare::tests::explicit_width_runs_keep_native_shaping_and_clip_before_the_next_cell ... ok
+test prepare::tests::extra_cursors_cover_wide_and_explicit_tails_and_deduplicate_adjacent_shapes ... ok
+test prepare::tests::cursor_row_bounds_cover_both_phases_unicode_decorations_and_clipping ... ok
+test prepare::preedit::tests::multilingual_preedit_tracks_native_caret_without_mutating_terminal ... ok
+test prepare::preedit::tests::composition_moves_left_at_the_edge_and_keeps_long_carets_visible ... ok
+test prepare::tests::cached_rows_follow_edits_selection_settings_sources_and_atlas_resets ... ok
+test prepare::shaper_rows::shaper_modes_keep_style_sprite_and_wide_boundaries_without_rasterizing ... ok
+
+test result: ok. 62 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.44s
+

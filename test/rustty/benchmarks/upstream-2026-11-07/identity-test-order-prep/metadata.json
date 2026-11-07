@@ -1,0 +1,63 @@
+{
+  "scope": "Two test polling loops only; no production API or behavior changes.",
+  "path": "crates/rustty/src/tmuxx.rs",
+  "target_id": "nuqtxqt",
+  "original_introducer": "c9e114292c9c0c740675712605732d52184c2b81",
+  "target": "397c3883498d538b38a0ff4fcc8591e9c0608c6a",
+  "author": "Codex <codex@openai.com>",
+  "target_subject": "fix(rustty): keep size clients bound to their original tmuxx owner",
+  "handshake_sibling_introducer": "72ebba997eaa9c2114f7c712828fe08e307fffcc",
+  "sources": {
+    "ancestor": {
+      "commit": "397c3883498d538b38a0ff4fcc8591e9c0608c6a",
+      "before_sha256": "24588ace6087eda707d6f3c4e4b2be198c61a03db543c5808a9a3af1986fdc36",
+      "after_sha256": "819b4e163140c028a7d8ee3387fff1387d302d05e2585dff15f066cf626421ad",
+      "patch_sha256": "00cf3240660a06cf71bf5f05b25862fdfd83a919d157da62b2724c740e9b3d96",
+      "patch_apply_check": "passed against a scratch copy of this exact immutable source",
+      "production_prefix_sha256": "7b9769d0410ba983917a36e1dd2ea292a18eb3eb9ea716c47bf52d86991ec18d"
+    },
+    "current": {
+      "commit": "03be726e243bdc235bd641420f511fc2b7792f8e",
+      "before_sha256": "277bd9fcc888553bbb027d87e88e0aa145e37d938334bd54ff45d6b9cc218f24",
+      "after_sha256": "1e4c540ca4ca1edcfb3d1223d6bcc0e32e4a4c30b7768660167c5d7c8b2ed37d",
+      "patch_sha256": "9de3656550f96202f0af8f43071ac800553d7e0888912491a6d5d45daeff401f",
+      "patch_apply_check": "passed against a scratch copy of this exact immutable source",
+      "production_prefix_sha256": "cd83873d0857794c4403a80202566d72c931aa10539faf5f0470cd602dbdfcad"
+    }
+  },
+  "validation_status": "Prepared and source/patch checked only; no builds or test executions performed.",
+  "current_tip_assertion_preserved": "reply.recv_timeout(...).unwrap().unwrap_err().to_string().contains(\"incarnation\") remains unchanged",
+  "ancestor_test": "native_size_identity_checks_current_and_legacy_peers_before_commands",
+  "current_test": "native_command_identity_is_required_before_mutations",
+  "first_test": "native_handshake_rejection_never_submits_queued_requests",
+  "provenance": {
+    "mwvuznl": {
+      "hash": "2cda7e3d5e8c270b3909bce8fbd98446835110fe",
+      "full_id": "mwvuznlkutryqmmymuzyyvuoyrzsvvupysozyozs",
+      "parents": [
+        "1ee52fc3262cf82626d1de82510bc14acd0c3c64"
+      ],
+      "author": "Codex <codex@openai.com> 1792605361 +0200",
+      "subject": "perf(tmuxx)!: compress native protocol records"
+    },
+    "nuqtxqt": {
+      "hash": "397c3883498d538b38a0ff4fcc8591e9c0608c6a",
+      "full_id": "nuqtxqtlutnololkqoxoxqukkultvuotoynknnzr",
+      "parents": [
+        "72ebba997eaa9c2114f7c712828fe08e307fffcc"
+      ],
+      "author": "Codex <codex@openai.com> 1792509927 +0200",
+      "subject": "fix(rustty): keep size clients bound to their original tmuxx owner"
+    },
+    "wlxpyrk": {
+      "hash": "72ebba997eaa9c2114f7c712828fe08e307fffcc",
+      "full_id": "wlxpyrkqypztvlkllkrtrnysnxnsowpoowtkkwxu",
+      "parents": [
+        "c9e3724729ca33b71f45f848e13312b5cf435414"
+      ],
+      "author": "Codex <codex@openai.com> 1792509436 +0200",
+      "subject": "fix(rustty): validate native tmuxx hello before sending requests"
+    }
+  },
+  "target_parent_is_handshake_introducer": true
+}

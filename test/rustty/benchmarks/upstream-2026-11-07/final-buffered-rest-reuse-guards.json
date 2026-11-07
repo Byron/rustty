@@ -1,0 +1,15 @@
+{
+  "expected_start_head": "96776a92676c59a40638b97621b160f72e64159a",
+  "expected_runner_sha256": "c45d897330f1faf16c3ed43d7bab4f3f51ed4aa41bd05bef058c1e9c45587a08",
+  "expected_fixture_manifest_sha256": "a69509af64b161c78bc796ac20691332de82fea89c8d0e6f269c3a56e1a7adf6",
+  "runner_source": {
+    "path": "test/rustty/parity-runner.rs",
+    "before_sha256": "6831e8a2f2d5b37be8b897f3d518ca498794cbdc2d0b5ed9c43c65e944add0a4",
+    "after_sha256": "606240e31b17b07e129ffd1057ada7136c876786e4e89dacfdb8ba8337ac25fd",
+    "diff_sha256": "41f08ef0115d8f5071ed7ebb04ae645bc3880961d5de4966a896f539b0627b0f"
+  },
+  "artifact_io_witness": {
+    "path": "artifact-buffering-witness/measurement.json",
+    "sha256": "fdc063436464494cc0a9ee8078f6ab89440d666a1a9e82a6d87e794725af217d"
+  }
+}

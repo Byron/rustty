@@ -1,0 +1,8 @@
+{
+  "key": "blank-rows",
+  "commit": "f8e484e0ac8edf5916717ea51c12b14b4a4f83e4",
+  "change": "krlvrvl",
+  "subject": "perf(vt): skip cell work for conservatively blank rows",
+  "result": "Maintain conservative blank-row hints across all writes and restoration; skip redundant erase/destination scans while retaining metadata, resources and host side effects.",
+  "validation": "241 library and 139 integration tests; 181 smoke and21 fresh native comparisons; 20 shared before/after/native input checks and10 controlled selfchecks. Three alternating rounds show34\u201394% faster erase work,9.2% faster shared plain text, unchanged memory/retention; preserve consistent3.1% mixed-print cost for final batching comparison."
+}

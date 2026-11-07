@@ -1,0 +1,18 @@
+[
+  {
+    "name": "pty-bench",
+    "path": "test/rustty/pty-bench.rs",
+    "target": "kksklpy",
+    "before_sha256": "208f182a51e4b7b6e8f1db605114f6693d2d6609b3d6679b4fdc2cefc4a57702",
+    "after_sha256": "fb6024e2bdab2c236f0a4709ab922588ea110b95ec32fbdd0e5e7a69f04ae8ed",
+    "patch_sha256": "8aeb83cc6cd72e29bfecbf163033a6d72f1e34d0f76a0cd424764286a6acee74"
+  },
+  {
+    "name": "format",
+    "path": "tmuxx/crates/tmuxx-terminal/src/lib.rs",
+    "target": "psorvoo",
+    "before_sha256": "54b6da9ac1e9a3e88b14d381d96ba7f8b25afa3dde1e9435afcb1cc4d0a96f9c",
+    "after_sha256": "44ae3e30c3b2e9baf96c33c93975fcb470a2645bab657ddb66f86622c7bc0104",
+    "patch_sha256": "81a944b3bc90e209f9aa8a7b13b1e51300ec4d6e69327873a8f5d5aaacb7dba3"
+  }
+]

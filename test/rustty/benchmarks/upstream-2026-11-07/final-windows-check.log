@@ -1,0 +1,69 @@
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+    Checking rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+   Compiling winapi v0.3.9
+   Compiling alloca v0.4.0
+    Checking ciborium-io v0.2.2
+    Checking itertools v0.13.0
+    Checking cast v0.3.0
+    Checking windows-sys v0.52.0
+    Checking oorandom v11.1.5
+    Checking anes v0.1.6
+   Compiling rustty-app v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-app)
+    Checking ciborium-ll v0.2.2
+warning: alloca@0.4.0: alloca.c:5:10: fatal error: 'malloc.h' file not found
+warning: alloca@0.4.0:     5 | #include <malloc.h>
+warning: alloca@0.4.0:       |          ^~~~~~~~~~
+warning: alloca@0.4.0: 1 error generated.
+error: failed to run custom build command for `alloca v0.4.0`
+
+Caused by:
+  process didn't exit successfully: `/Users/byron/dev/github.com/ghostty-org/ghostty/target/debug/build/alloca-52b17c6700bc428b/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=CC_FORCE_DISABLE
+  CC_FORCE_DISABLE = None
+  cargo:rerun-if-env-changed=VCINSTALLDIR
+  VCINSTALLDIR = None
+  cargo:rerun-if-env-changed=CC_x86_64-pc-windows-msvc
+  CC_x86_64-pc-windows-msvc = None
+  cargo:rerun-if-env-changed=CC_x86_64_pc_windows_msvc
+  CC_x86_64_pc_windows_msvc = None
+  cargo:rerun-if-env-changed=TARGET_CC
+  TARGET_CC = None
+  cargo:rerun-if-env-changed=CC
+  CC = None
+  cargo:rerun-if-env-changed=CROSS_COMPILE
+  CROSS_COMPILE = None
+  cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+  cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+  CRATE_CC_NO_DEFAULTS = None
+  cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+  CRATE_CC_NO_DEFAULTS = None
+  cargo:rerun-if-env-changed=CFLAGS
+  CFLAGS = None
+  cargo:rerun-if-env-changed=TARGET_CFLAGS
+  TARGET_CFLAGS = None
+  cargo:rerun-if-env-changed=CFLAGS_x86_64_pc_windows_msvc
+  CFLAGS_x86_64_pc_windows_msvc = None
+  cargo:rerun-if-env-changed=CFLAGS_x86_64-pc-windows-msvc
+  CFLAGS_x86_64-pc-windows-msvc = None
+  cargo:rerun-if-env-changed=CFLAGS
+  CFLAGS = None
+  cargo:rerun-if-env-changed=TARGET_CFLAGS
+  TARGET_CFLAGS = None
+  cargo:rerun-if-env-changed=CFLAGS_x86_64_pc_windows_msvc
+  CFLAGS_x86_64_pc_windows_msvc = None
+  cargo:rerun-if-env-changed=CFLAGS_x86_64-pc-windows-msvc
+  CFLAGS_x86_64-pc-windows-msvc = None
+  cargo:warning=alloca.c:5:10: fatal error: 'malloc.h' file not found
+  cargo:warning=    5 | #include <malloc.h>
+  cargo:warning=      |          ^~~~~~~~~~
+  cargo:warning=1 error generated.
+
+  --- stderr
+
+
+  error occurred in cc-rs: command did not execute successfully (status code exit status: 1): LC_ALL="C" "cc" "-O2" "-ffunction-sections" "-fdata-sections" "-g" "-fno-omit-frame-pointer" "-mno-omit-leaf-frame-pointer" "-m64" "--target=x86_64-pc-windows-msvc" "-Wall" "-Wextra" "-o" "/Users/byron/dev/github.com/ghostty-org/ghostty/target/x86_64-pc-windows-msvc/debug/build/alloca-17ec5275e08c546b/out/db3b6bfb95261072-alloca.o" "-c" "alloca.c"
+
+
+warning: build failed, waiting for other jobs to finish...

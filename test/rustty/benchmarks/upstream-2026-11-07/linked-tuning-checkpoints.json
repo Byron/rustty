@@ -1,0 +1,94 @@
+{
+  "baseline": "1aa7813cdb93cf59cc9ac869654d705a9e1291db / yppsryw",
+  "versions": [
+    {
+      "version": 1,
+      "status": "rejected",
+      "note": "Initial implementation retained large intended gains but taxed emoji and styled controls.",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/linked-v1.patch",
+      "timings": "/private/tmp/rustty-reintegrate.leadij/linked-v1-timings.json",
+      "measurement-summary": "/private/tmp/rustty-reintegrate.leadij/linked-v1-measurement-summary.json",
+      "measurement-run": "/private/tmp/rustty-reintegrate.leadij/linked-v1-measurement-run.json"
+    },
+    {
+      "version": 2,
+      "status": "superseded without timing",
+      "note": "Page attachment was already outlined; the annotation did not change the intended call boundary.",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/linked-v2.patch"
+    },
+    {
+      "version": 3,
+      "status": "rejected",
+      "note": "Restored inline unlinked resource matching; linked repaint still cost18.6%/46.9%.",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/linked-v3.patch",
+      "timings": "/private/tmp/rustty-reintegrate.leadij/linked-v3-timings.json",
+      "measurement-summary": "/private/tmp/rustty-reintegrate.leadij/linked-v3-measurement-summary.json",
+      "measurement-run": "/private/tmp/rustty-reintegrate.leadij/linked-v3-measurement-run.json"
+    },
+    {
+      "version": 4,
+      "status": "rejected after full matrix",
+      "note": "Short control repeat was provisional; authoritative full29 run exposed sustained combining/mixed-width costs and linked emoji cost.",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/linked-v4.patch",
+      "timings": "/private/tmp/rustty-reintegrate.leadij/linked-v4-timings.json",
+      "measurement-summary": "/private/tmp/rustty-reintegrate.leadij/linked-v4-measurement-summary.json",
+      "measurement-run": "/private/tmp/rustty-reintegrate.leadij/linked-v4-measurement-run.json",
+      "paired-controls": "/private/tmp/rustty-reintegrate.leadij/linked-v4-paired-controls.json",
+      "authoritative_rejected_full_matrix": {
+        "timings": "/private/tmp/rustty-reintegrate.leadij/linked-v4-final-timings.json",
+        "measurement-summary": "/private/tmp/rustty-reintegrate.leadij/linked-v4-final-measurement-summary.json",
+        "measurement-run": "/private/tmp/rustty-reintegrate.leadij/linked-v4-final-measurement-run.json",
+        "root-measurement-check": "/private/tmp/rustty-reintegrate.leadij/linked-v4-final-root-measurement-check.json"
+      }
+    },
+    {
+      "version": 5,
+      "status": "rejected",
+      "note": "Inline repaint fast guard, block property filter and linked ZWJ rejection improved some controls, but wide-space cost remained.",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/linked-v5.patch",
+      "timings": "/private/tmp/rustty-reintegrate.leadij/linked-v5-timings.json",
+      "measurement-summary": "/private/tmp/rustty-reintegrate.leadij/linked-v5-measurement-summary.json",
+      "measurement-run": "/private/tmp/rustty-reintegrate.leadij/linked-v5-measurement-run.json",
+      "paired-controls": "/private/tmp/rustty-reintegrate.leadij/linked-v5-paired-controls.json"
+    },
+    {
+      "version": 6,
+      "status": "rejected",
+      "note": "Shared outlined attachment kept behavior; wide-spaces cost remained4.4\u20135.1% in paired rounds.",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/linked-v6.patch",
+      "timings": "/private/tmp/rustty-reintegrate.leadij/linked-v6-timings.json",
+      "measurement-summary": "/private/tmp/rustty-reintegrate.leadij/linked-v6-measurement-summary.json",
+      "measurement-run": "/private/tmp/rustty-reintegrate.leadij/linked-v6-measurement-run.json",
+      "paired-controls": "/private/tmp/rustty-reintegrate.leadij/linked-v6-paired-controls.json"
+    },
+    {
+      "version": 7,
+      "status": "provisional, superseded",
+      "note": "Reused inlined Style::same_as; improved default-style controls, but wide-spaces and mixed-width costs persisted.",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/linked-v7.patch",
+      "timings": "/private/tmp/rustty-reintegrate.leadij/linked-v7-timings.json",
+      "measurement-summary": "/private/tmp/rustty-reintegrate.leadij/linked-v7-measurement-summary.json",
+      "measurement-run": "/private/tmp/rustty-reintegrate.leadij/linked-v7-measurement-run.json",
+      "paired-controls": "/private/tmp/rustty-reintegrate.leadij/linked-v7-paired-controls.json"
+    },
+    {
+      "version": 8,
+      "status": "accepted after 349 tests, 132 native comparisons, and the final 29-workload matrix",
+      "note": "Private UTF8 event specialization removes linked setup from ordinary text; preserved runtime options and original stale-resource guard.",
+      "patch": "/private/tmp/rustty-reintegrate.leadij/linked-v8.patch",
+      "timings": "/private/tmp/rustty-reintegrate.leadij/linked-v8-timings.json",
+      "measurement-summary": "/private/tmp/rustty-reintegrate.leadij/linked-v8-measurement-summary.json",
+      "measurement-run": "/private/tmp/rustty-reintegrate.leadij/linked-v8-measurement-run.json",
+      "paired-controls": "/private/tmp/rustty-reintegrate.leadij/linked-v8-paired-controls.json",
+      "final_measured_revision": "cc309adab78b012fc15200306eab5883268eb31d",
+      "final_tix_change": "nnwzqpm",
+      "authoritative_full_matrix": {
+        "timings": "/private/tmp/rustty-reintegrate.leadij/linked-timings.json",
+        "measurement-summary": "/private/tmp/rustty-reintegrate.leadij/linked-measurement-summary.json",
+        "measurement-run": "/private/tmp/rustty-reintegrate.leadij/linked-measurement-run.json",
+        "root-measurement-check": "/private/tmp/rustty-reintegrate.leadij/linked-root-measurement-check.json"
+      }
+    }
+  ],
+  "note": "Per-version control repeats are provisional; final accepted full29/261 matrix is linked-timings.json. Historical Python native checks and final Rust parity-runner checks retain separate provenance."
+}

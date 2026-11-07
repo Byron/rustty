@@ -1,0 +1,35 @@
+diff --cc crates/rustty/src/tmuxx.rs
+index ad4183d05,5456e77ba..000000000
+--- a/crates/rustty/src/tmuxx.rs
++++ b/crates/rustty/src/tmuxx.rs
+@@@ -2298,16 -2327,21 +2329,28 @@@ mod tests 
+                  } else {
+                      let mut requests = Vec::new();
+                      peer.read_to_end(&mut requests).unwrap();
+-                     assert!(requests.is_empty(), "wrong owner received size commands");
++                     assert!(requests.is_empty(), "wrong owner received mutations");
+                      let deadline = Instant::now() + Duration::from_secs(5);
+ -                    while !connection.is_closed() {
+ +                    let mut errors = connection.errors();
+ +                    while errors.is_empty() {
+                          assert!(Instant::now() < deadline, "wrong owner was accepted");
+                          thread::sleep(Duration::from_millis(5));
+ +                        errors = connection.errors();
+                      }
+++<<<<<<< rebased parent
+ +                    assert!(connection.is_closed());
+ +                    assert!(errors.join(";").contains("incarnation"));
+++=======
++                     assert!(connection.errors().join(";").contains("incarnation"));
++                     assert!(
++                         reply
++                             .recv_timeout(Duration::from_secs(5))
++                             .unwrap()
++                             .unwrap_err()
++                             .to_string()
++                             .contains("incarnation")
++                     );
+++>>>>>>> commit
+                  }
+                  drop(connection);
+                  let _ = peer.get_ref().shutdown(std::net::Shutdown::Both);

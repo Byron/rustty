@@ -1,0 +1,8 @@
+{
+  "name": "blank-prefix-erase-rate-300x100",
+  "data": "/private/tmp/rustty-reintegrate.leadij/blank-inputs/blank-prefix-erase-rate-300x100.vt",
+  "cols": 300,
+  "rows": 100,
+  "scrollback_bytes": 10000,
+  "grapheme_width": "legacy"
+}

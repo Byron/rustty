@@ -1,0 +1,19 @@
+{
+  "runner": "target/release/examples/parity-runner",
+  "runner_sha256": "0a2dbe6ec2d5a01aad642a689d49727ea9a699279a2fe0b54d64c67db5e14de7",
+  "fixture_sha256": "7d438915e25f9bbf86935c234596301ed540c713526f4cea5e4c153a8ef8c42b",
+  "cases": 40,
+  "comparisons": 120,
+  "shards": 4,
+  "failures": 0,
+  "coverage_gaps": 0,
+  "snapshot_cases": 38,
+  "direct_cases": 2,
+  "summaries": [
+    "/private/tmp/rustty-reintegrate.leadij/linked-native-rust-0/summary.json",
+    "/private/tmp/rustty-reintegrate.leadij/linked-native-rust-1/summary.json",
+    "/private/tmp/rustty-reintegrate.leadij/linked-native-rust-2/summary.json",
+    "/private/tmp/rustty-reintegrate.leadij/linked-native-rust-3/summary.json"
+  ],
+  "note": "New helper cleanup preserved emitted requests byte for byte. Python reference evidence remains separately attributed; final comparisons execute in Rust."
+}

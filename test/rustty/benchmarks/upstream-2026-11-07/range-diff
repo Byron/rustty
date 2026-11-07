@@ -1,0 +1,325 @@
+  1:  e7ed282ab !   1:  cad5f7842 feat(rustty): establish the native terminal and macOS desktop
+    @@ Cargo.toml (new)
+     
+      ## build.zig ##
+     @@ build.zig: pub fn build(b: *std.Build) !void {
+    -         "test-lib-vt-schema",
+    -         "Validate the libghostty-vt ABI type manifest",
+    +         "update-lib-vt-abi",
+    +         "Record the libghostty-vt ABI of the current target in src/terminal/c/abi",
+          );
+     +    // A process-based test oracle for the Rust port. It is deliberately absent
+     +    // from normal library/application builds and is never linked into Rustty.
+  2:  5c808c372 =   2:  f39d7a043 fix(rustty): preserve sessions through native workspace changes
+  3:  d5876c30f =   3:  85f83174f feat(rustty): implement clipboard consent and host query protocols
+  4:  535be0f0b =   4:  eb5b4b7a7 fix(rustty): match native input and terminal control semantics
+  5:  372169a3b =   5:  faae34267 fix(rustty): preserve screen resources through resize and restoration
+  6:  74f3e4935 !   6:  fec3e3d60 feat(rustty): restore workspaces and complete selection and search
+    @@ src/terminal/Terminal.zig: pub fn deleteChars(self: *Terminal, count_req: usize)
+          // left is just the cursor position but as a multi-pointer
+          const left: [*]Cell = @ptrCast(self.screens.active.cursor.page_cell);
+          var page = self.screens.active.cursor.page_pin.node.page();
+    -@@ src/terminal/Terminal.zig: pub fn deleteChars(self: *Terminal, count_req: usize) void {
+    +@@ src/terminal/Terminal.zig: fn cursorInScrollingRegion(self: *const Terminal) bool {
+      }
+      
+      pub fn eraseChars(self: *Terminal, count_req: usize) void {
+  7:  d96494849 =   7:  506f9a55e feat(rustty): complete screen exports and Kitty animation support
+  8:  35a732798 =   8:  8de906704 perf(rustty): reuse pane frames and honor terminal interaction modes
+  9:  352555c44 =   9:  60d52826d perf(rustty): reduce terminal storage and batch parsed input
+ 10:  47d6425ab =  10:  13be7aed6 perf(rustty): pack terminal pages and vectorize printing
+ 11:  de3fab128 =  11:  cb4c37c78 perf(rustty): accelerate UTF-8 input and active-page access
+ 12:  b1188de93 =  12:  964e12ed4 perf(rustty): streamline shaping and GPU frame preparation
+ 13:  dd0cb32ca =  13:  6d65ca158 feat(rustty): refine desktop search, selection and native controls
+ 14:  4e76782e4 =  14:  abcea8cba perf(rustty): batch styled and Unicode reflow
+ 15:  8ba5d15d2 =  15:  a8645ab63 feat(rustty): ship a native Windows desktop with software fallback
+ 16:  d521defc0 =  16:  3d5ee5748 feat(rustty): report agent activity on Stream Deck dashboards
+ 17:  59d383903 =  17:  613a05e9e perf(rustty): share Kitty images and index tile updates
+ 18:  a1a3f9e30 =  18:  919c75d26 fix(rustty): keep pane selections and labels legible
+ 19:  c8b56f927 =  19:  d7c1ce0c2 perf(rustty): batch APC image payload parsing
+ 20:  b5ac92705 =  20:  6e082c925 fix(rustty): flag carriage returns in unsafe pastes
+ 21:  046e2ba53 =  21:  8fcf08e0d fix(rustty): discard cancelled OSC commands
+ 22:  484e6201b =  22:  0210d1588 fix(rustty): repair pending wrap when resizing
+ 23:  24af0e04e =  23:  3ceb882cb fix(rustty): encode extended mouse and modified backspace
+ 24:  1aabf438c =  24:  e27f21f5e fix(rustty): select words across wide cells and soft wraps
+ 25:  1b4d1931e =  25:  c26a96ac8 fix(rustty): preserve Unicode and consume single shifts once
+ 26:  fadd08e6d =  26:  f9435f874 fix(rustty): restore configured palette on terminal reset
+ 27:  931860f54 =  27:  fb02bc402 fix(rustty): retain output when clearing above blank rows
+ 28:  3b2674c47 =  28:  0e4a98a5a fix(rustty): preserve graphemes through scrolling wraps
+ 29:  b26d4b1bd =  29:  a969ec6d7 test(rustty): measure legacy character-set throughput
+ 30:  f0623659a =  30:  d6c6a138e fix(rustty): validate macOS links before opening handlers
+ 31:  e08d5bb1f =  31:  5654dfd56 perf(rustty): batch legacy character-set printing
+ 32:  9c32d853c =  32:  4e9817454 docs(rustty): record the October upstream review
+ 33:  f1c147279 =  33:  8edae665a feat(rustty): recover terminal panes from the command palette
+ 34:  2c043dc7a =  34:  70cb30b60 feat(rustty): support soft terminal reset
+ 35:  1127b79eb =  35:  df747bdf6 feat(rustty): preserve hyperlinks in VT exports
+ 36:  4144bb218 =  36:  1140fadeb feat(rustty): support Unicode 18 widths and grapheme boundaries
+ 37:  748fc0924 =  37:  25a087320 feat(rustty): preview themes from the command palette
+ 38:  282033fb3 =  38:  8a429b3be feat(rustty): pull active agents onto the first Stream Deck page
+ 39:  acd468c5b =  39:  aeb5dc50f feat(rustty): expose Stream Deck commands and held-page actions
+ 40:  5ab296ab9 =  40:  bfc18d8f8 feat(rustty): add a copper crab app icon
+ 41:  0b75d2045 =  41:  feb2c7786 fix(rustty): keep quadrant zoom while multiple panes remain
+ 42:  9c3c0d6df =  42:  0fda7ecc2 fix(render): align software image storage limits
+ 43:  87520b618 =  43:  cf6e9f2d1 fix(rustty): distinguish the three zoom layers
+ 44:  e5f2f4ed0 =  44:  05100c192 fix(rustty): keep tab editors open while editing
+ 45:  97c211208 =  45:  0d4623d7c feat(rustty): include OSC progress in deck aggregates
+ 46:  f2bb137ff =  46:  9a3d64e86 feat(rustty): add a floating workspace outliner
+ 47:  7a9cf2dcb =  47:  89b2cc61a fix(rustty): dismiss the command palette on outside clicks
+ 48:  65ce58476 =  48:  0276bd16f feat(rustty): pin panels above the workspace outliner
+ 49:  d16f12670 =  49:  4373f77fc feat(rustty): find panels from the outliner
+ 50:  a66c4ea42 =  50:  4f8a27887 feat(rustty): group sibling panels with equal names
+ 51:  269910ec4 =  51:  44617ed80 feat(rustty): group search results by hierarchy
+ 52:  cde7502a1 =  52:  ddd1b7aae fix(rustty): require explicit search selection
+ 53:  6e0ffa8fb =  53:  14847574b fix(rustty): stop idle outliner redraws
+ 54:  b91dc3149 =  54:  167d39503 fix(rustty): keep pinned breadcrumbs stable
+ 55:  f256eadbd =  55:  9720cd55c feat(rustty): add numbered pin shortcuts
+ 56:  82472c413 =  56:  868068c2d fix(rustty): keep offscreen smoke hidden
+ 57:  57fe3f2ec =  57:  c2a17ccea docs(rustty): explain configurable pin shortcuts
+ 58:  e9db3ba7b =  58:  e7fda5392 feat(rustty): label quads with distinct panel names
+ 59:  9bf8b6faa =  59:  782dff855 fix(rustty): give each panel a separate tree row
+ 60:  016e2fdf2 =  60:  2f1d8df2a style(rustty): simplify quad position icons
+ 61:  a59911bab =  61:  0f5cf99fd fix(rustty): preserve zoom when pins interrupt peek
+ 62:  2d1e317de =  62:  521af1421 feat(rustty): highlight the focused pinned panel
+ 63:  04379a50b =  63:  6e5f78682 feat(rustty): highlight the active quad in pins
+ 64:  535b3707e =  64:  525e8d375 fix(rustty): separate pin dragging from unpinning
+ 65:  3ffe1af97 =  65:  e0190dfae style(rustty): hide redundant expanded quad labels
+ 66:  2441ee96f =  66:  8ce1c84af fix(rustty): discard expired Stream Deck progress
+ 67:  6848374cc =  67:  ef56e2c3f fix(rustty): preserve outliner expansion on focus
+ 68:  51b61e852 =  68:  023572c1c feat(rustty): integrate native tmuxx terminal views
+ 69:  128622d18 =  69:  41b737ab2 feat(rustty): manage temporary and persistent tmuxx windows
+ 70:  ecf9984f5 =  70:  93db437bd build(rustty): pin tmuxx dependencies to their published revision
+ 71:  081aa3e3e =  71:  1cd4c4f01 feat(rustty): select native SSH helpers per host
+ 72:  b15fc8831 =  72:  46568bc72 fix(rustty): let the event loop sleep between tmuxx retries
+ 73:  9539f0187 =  73:  72cd40be2 fix(rustty): put tmuxx controls in the native application menu
+ 74:  5da5059b0 =  74:  1c6da399e feat(rustty): connect to named SSH hosts from the tmuxx menu
+ 75:  5307f05de =  75:  66264ed14 fix(rustty): share configured SSH agents with GUI connections
+ 76:  ffc29ace2 =  76:  6cc6ae811 fix(rustty): restore legacy tmuxx capture state after pane resizing
+ 77:  2e2b963e1 =  77:  af3dcb32c fix(rustty): release closed tmuxx panes without stale host updates
+ 78:  680e92574 =  78:  a84cad084 fix(rustty): stream tmuxx input without snapshotting every key
+ 79:  e6005d6e0 =  79:  f97583dd4 build(rustty): update tmuxx while preserving native session compatibility
+ 80:  0a864efb0 =  80:  c107d1ed6 fix(rustty): initialize the shared ConPTY backend before opening panes
+ 81:  c0efc0608 =  81:  c647e932b fix(rustty): enable native tmuxx sessions on Windows
+ 82:  fdfd52836 =  82:  f61dfc5bc build(rustty): own tmuxx and share the local terminal engine
+ 83:  7445f6185 =  83:  7b95ee20d perf(rustty): track tmux capture metadata only for compatible terminals
+ 84:  4f08121b6 =  84:  c9e372472 test(rustty): keep shared tmuxx regression adapters executable
+ 85:  1b83eee88 =  85:  72ebba997 fix(rustty): validate native tmuxx hello before sending requests
+ 86:  c9e114292 =  86:  397c38834 fix(rustty): keep size clients bound to their original tmuxx owner
+ 87:  786cc25f5 =  87:  61139dbaf test(rustty): finish SSH fixture cleanup after its server exits
+ 88:  9e96f8c6c =  88:  9000b8ad4 fix(rustty): keep pane focus steady while selection reaches tmuxx
+ 89:  165c0f60c =  89:  f2fef211a fix(rustty): ignore late view metadata for closed tmuxx panes
+ 90:  6606dd474 =  90:  f11608d1b build(rustty): ship a console tmuxx sidecar with the GUI
+ 91:  47b107c5c =  91:  9990498f4 fix(rustty): use pixel dividers for tmuxx pane layouts
+ 92:  6485ac800 =  92:  fd3673880 chore(rustty): establish a warning-free workspace lint baseline
+ 93:  408ebaa66 =  93:  f6da97bf6 test(rustty): configure handshake sockets before disconnecting
+ 94:  abacd22d3 =  94:  98c70b8a6 ci(rustty): check the Rust workspace on macOS and Windows
+ 95:  b7da946f2 =  95:  070c69ddb feat(rustty): copy windows into persistent tmuxx sessions
+ 96:  33d2b63d2 =  96:  e5025a7c3 feat(rustty): load configuration for automatically launched tmuxx servers
+ 97:  5584aa6c6 =  97:  e8e8b0d3c fix(tmuxx): inherit Windows Terminal shell defaults for every pane
+ 98:  c22a19d61 =  98:  a51104946 fix(tmuxx): notify every view when panes disappear
+ 99:  7489d5994 =  99:  330fd1834 perf(rustty): avoid redundant tmuxx state transfers
+100:  fc64408be = 100:  29dd836d1 perf(rustty): skip dashboard labels for unregistered panes
+101:  5407d590e = 101:  c56f68db6 fix(rustty): show diagnostics without taking terminal focus
+102:  83d8ee4ac = 102:  a61c917e8 fix(rustty): stop automatic updates after tmuxx disconnects
+103:  be2929862 = 103:  a792ef065 perf(tmuxx): compact repeated cells in negotiated snapshots
+104:  44cca6d6a = 104:  676874dce perf(rustty): share retained tmuxx snapshots across graph copies
+105:  f8a17e370 = 105:  aed86fde5 feat(rustty): scope tmuxx themes by SSH host and session
+106:  90e65473c = 106:  c44bca21d perf(rustty): copy tmuxx windows without subscribing the worker
+107:  02f15e2a8 = 107:  7cf56aaaa fix(rustty): release source snapshots when tmuxx connections close
+108:  bbb596f97 = 108:  da2ee638e feat(rustty): keep idle local tmuxx servers manageable
+109:  202b0f8d1 = 109:  6a41f4b5f fix(rustty): scope new tmuxx theme choices to their session
+110:  a824f8b2b = 110:  8edc818f3 fix(rustty): stop injecting mouse motion on title-bar clicks
+111:  face49230 = 111:  0919e83c7 fix(rustty): keep copied tmuxx windows resizable
+112:  a96ff65fa = 112:  1d7221b47 fix(rustty): give tmuxx views stable resize ownership
+113:  978268042 = 113:  75f8c7f60 feat(rustty): let tmuxx views take resize control
+114:  6cdb5e641 = 114:  afd3c93ba feat(rustty): add portable local tmuxx addresses
+115:  5c510ec58 = 115:  95a1918c0 fix(rustty): keep tmuxx pane focus local
+116:  ce8c5e7fa = 116:  0bbfbf540 fix(rustty): accept tmux-wrapped agent reports
+117:  b00c3cd89 = 117:  d046fcdaf feat(rustty): show completed commands on Stream Deck
+118:  69ea0f5a5 = 118:  1d6f647cf fix(rustty): exclude sessions from completion fallback
+119:  ac356be74 = 119:  e2a0c0cc3 fix(rustty): reveal ungrouped panes in the outliner
+120:  242521dff = 120:  e7552dcc0 fix(rustty): preserve split pane backgrounds
+121:  4ccae0f0b = 121:  976cc6aee perf(tmuxx): keep focus updates free of scrollback
+122:  9fc88dc65 = 122:  499ffe475 perf(tmuxx): remove duplicate cells from snapshots
+123:  9479de35a = 123:  f4c48e0d9 fix(rustty): restore remote CWD on tmuxx attachment
+124:  37efc2c0b = 124:  c3e122682 feat(rustty): identify tmuxx sessions in window pills
+125:  cb43ada51 = 125:  38ed026ca perf(rustty): avoid snapshots on keyboard tab switches
+126:  98fbf4d9c = 126:  1ee52fc32 fix(tmuxx): inherit source directories for new panes
+127:  6f48e6606 = 127:  2cda7e3d5 perf(tmuxx)!: compress native protocol records
+128:  e9c467ee7 = 128:  a13ea2ddb fix(rustty): stop input after tmuxx disconnects
+129:  519e01fb7 = 129:  3ba39d7af fix(tmuxx): load config before the first session
+130:  0de368374 = 130:  d978ec690 fix(tmuxx): flush Windows bridge responses promptly
+131:  5d5565820 = 131:  3d7ba2403 fix(tmuxx): retain pane CWDs across reconnects
+132:  7c80e3797 = 132:  fbd8d9af0 docs: adopt conventional changelog-style commits
+133:  e5e797998 = 133:  9bd3ff020 fix(tmuxx): restore reflowed history on reconnect
+134:  4711a22cf = 134:  b5dca0919 fix(rustty): remove tabs from tmuxx session menus
+135:  495cb4203 = 135:  e5d37a89d feat(rustty): reload tmuxx server configuration
+136:  8dfc9b79b = 136:  06625067c fix(rustty): stop tmuxx split dividers from wobbling
+137:  e52806c12 = 137:  1b0f79180 feat(tmuxx): add shell completions and live fish targets
+138:  f298c3fc8 = 138:  6bf60294d feat(rustty): open local tmuxx server settings
+139:  98603bb1f = 139:  152600d3d feat(rustty): mark tmux reports on Stream Deck
+140:  6d8295a17 ! 140:  458187efe docs(rustty): introduce the project and its daily use
+    @@ README.md
+     -complete example. See [awesome-libghostty](https://github.com/Uzaaft/awesome-libghostty)
+     -for a list of projects and resources related to `libghostty`.
+     -
+    --We haven't tagged libghostty with a version yet and we're still working
+    --on a better docs experience, but our [Doxygen website](https://libghostty.tip.ghostty.org/)
+    --is a good resource for the C API.
+    +-`libghostty-vt` is released on its own, separately from Ghostty, with
+    +-`vt-X.Y.Z` tags. To build or package it, see
+    +-[`PACKAGING-LIBGHOSTTY.md`](PACKAGING-LIBGHOSTTY.md). To use it from a
+    +-CMake project, see [`dist/cmake/README.md`](dist/cmake/README.md). We're
+    +-still working on a better docs experience, but our
+    +-[Doxygen website](https://lib.ghostty.org/vt/) is a good resource
+    +-for the C API.
+     -
+     -#### Ghostty-only Terminal Control Sequences
+     -
+141:  1d4a4426f = 141:  6810367cf feat(rustty): import visual state from another instance
+142:  2c97638a1 = 142:  5f6e7f117 feat(rustty): import visual state on Windows
+143:  b6e266ed6 = 143:  d6dec83f0 build(rustty): support persistent local macOS signing
+144:  212749d6b = 144:  176f74d19 build(rustty): add explicit macOS install recipe
+145:  c5532360f = 145:  ff471d407 fix(rustty): clear panel focus colors in inactive windows
+146:  312af1e30 = 146:  39b3fbeeb fix(rustty): omit tmuxx windows from state exports
+147:  a4455efad = 147:  37ab9f8b5 fix(rustty): gate the Unix test request helper on Unix
+148:  585f3dcdc = 148:  cbedbfeb0 fix(rustty): emphasize the restored display banner
+149:  628594f54 = 149:  46a3950ca build(rustty): install Windows development releases on the Desktop
+150:  44575eadf = 150:  28aaf89b7 test(rustty): make badge overflow cases independent of native font widths
+151:  638990eb6 = 151:  c6796b0e1 test(rustty): restrict POSIX parity fixtures to Unix
+152:  aeeb7b2f5 = 152:  c560e4bac test(rustty): initialize ConPTY in Windows PTY fixtures
+153:  a835e2ecd = 153:  6cf1e5cde test(tmuxx): accept Windows short aliases in reported job directories
+154:  00aad54fe = 154:  8194d6dfc fix(rustty): close disconnected tmuxx windows without prompting
+155:  903f11a32 = 155:  a0ec882af fix(rustty): fit restored banners to imported panels
+156:  364d6c61f = 156:  9e946d540 feat(rustty): bleed tab colors into the existing window frame
+157:  85c6dfa66 = 157:  f2d55ea61 feat(rustty): offer theme colors for tab accents
+158:  35af27506 = 158:  5fe07b446 feat(rustty)!: save session dumps on quit and offer them at startup
+159:  4fa368e9e = 159:  e496c33e1 feat(rustty): animate pane and quadrant zoom transitions
+160:  11b7b3930 = 160:  b9dfb304f fix(rustty): animate automatic zoom exits
+161:  95fd061cb = 161:  66e8bb042 style(rustty): use a subtle block band for restored displays
+162:  8fa49f193 = 162:  8d19e809d fix(rustty-vt): stop backward cursor moves at the left margin
+163:  ac0f14014 = 163:  2fe0f52e3 fix(rustty-vt): skip unknown snapshot records
+164:  5c61dd250 = 164:  f7532fcca fix(rustty-vt): accept platform Kitty shared-memory names
+165:  fa8dec94b = 165:  de7a0bd14 fix(rustty-vt): apply cursor origin offsets once
+166:  68db6191d = 166:  21b0c8810 fix(rustty-vt): abandon chunks before non-direct image transfers
+167:  ce7089b5f = 167:  d267390ac fix(rustty): report color schemes after configuration changes
+168:  3fee6fe83 = 168:  52202d2d0 fix(rustty-vt): preserve blank cells and backgrounds in VT exports
+169:  01f121090 = 169:  16f251c6b fix(rustty-vt): retain trailing blank rows in untrimmed VT exports
+170:  1e34dfd2f = 170:  9b04bf46b fix(rustty-vt): discard cancelled and aborted APC commands
+171:  20e51bfab = 171:  e5c522158 fix(rustty-parser): normalize C1 continuation restarts
+172:  cc6f42b04 = 172:  984d91876 build(rustty): refresh Ghostty reference tools for Zig 0.17
+173:  8b9e56166 = 173:  3e91686af fix(rustty): keep cells visible in nested split layouts
+174:  066456187 = 174:  71ae2bb97 feat(rustty-vt): stop input at selected parser boundaries
+175:  b3bdc2c4b = 175:  5dee5d593 perf(rustty-vt): index common Kitty diacritics directly
+176:  74e7da60b = 176:  966fcd1d9 feat(rustty-vt): persist Kitty graphics in binary snapshots
+177:  edc19ac15 = 177:  2fb3e1bcf chore(rustty): refresh bundled color themes
+178:  b04813e58 = 178:  3b0d284d1 fix(rustty-vt): clean up images anchored in discarded history
+179:  d35ba4eff = 179:  011e8bc8a perf(rustty-vt): skip unchanged idle animation scans
+180:  ca1da05f5 = 180:  a665c1713 perf(rustty-render): cache Kitty placeholder runs by row
+181:  beccfebb6 = 181:  7efa87c26 docs(rustty): record ports from the updated Ghostty main
+182:  2a41a6e88 = 182:  abc527e43 fix(rustty): compare shell startup before separating restored history
+183:  9d0b2157c = 183:  8527f9e19 fix(rustty): start inactive local tabs lazily
+184:  e475c22f6 = 184:  d39079a3f fix(rustty): keep zoom text anchored through redraws
+185:  c2a78261a = 185:  388fc3158 feat(rustty): add confirmed session dumping to the File menu
+186:  f82357ea0 = 186:  64d61e1b2 fix(rustty): keep quad label identity stable on focus
+187:  01cfc2f96 = 187:  9f759ca4b feat(rustty): disambiguate panel labels by directory path
+188:  19457c71a = 188:  817114695 revert(rustty): restore continuous zoom transitions
+189:  9c699c915 = 189:  0e0e91360 perf(rustty): limit double-click link lookup to the clicked line
+190:  bbbfabbe2 = 190:  5748da08d test(rustty): verify visible Metal frame benchmarks
+191:  b86fa1eb7 = 191:  df10208fe perf(rustty): retain idle cursor blinking in a macOS layer
+192:  6060d8ff5 = 192:  915110c18 fix(rustty): back off failed Stream Deck connections
+193:  55aa710bb = 193:  57bdec6e3 perf(rustty): retain cursor blinking across split panes
+194:  3f9601e8c = 194:  7297c6403 feat(rustty): automatically import a sole session dump
+195:  d43074c18 = 195:  448dafc69 perf(rustty): skip unchanged dashboard work on pointer motion
+196:  b4b59c9c1 = 196:  a5a9bbe37 fix(rustty): reserve a third Metal drawable for cursor retirement
+197:  c90e9fb9b = 197:  0c1b20bab perf(rustty): avoid UI wakes for completed silent PTY writes
+198:  18e515958 = 198:  615be935e perf(rustty): animate progress without window redraws
+199:  8af1bcae9 = 199:  253e7ae34 fix(rustty): remove standalone pane status badges
+200:  95c5630ff = 200:  5ad4fa3c1 fix(rustty): restore imported tabs without blocking the UI
+201:  084bbcc3a = 201:  baf83c85a feat(rustty): keep session exports across reboots when selected
+202:  e504d6bff = 202:  93c131373 fix(rustty): show focused panel labels during quad peek
+203:  cfa0a24b4 = 203:  fe6d78322 fix(rustty-vt): cap page rows when narrowing columns
+204:  2c466ef85 = 204:  72bb84f26 feat(rustty): preview every clipboard representation before approval
+205:  405ac72b4 = 205:  e1fbaed79 test(rustty): preserve incoming mainline safety guarantees
+206:  14188b0c9 = 206:  ee4247190 test(rustty): refresh mainline comparison fixtures
+207:  6661e22c3 = 207:  4560c022c docs(skills): add repository-local tix reintegration workflow
+208:  527aa5abd = 208:  fb1be48ce docs(rustty): record the October 28 mainline reintegration
+209:  735c6fa8b = 209:  ea676d078 feat(rustty): animate panel splits
+210:  1962a413b = 210:  ea91774e3 feat(rustty): keep breadcrumbs beside macOS window controls
+211:  8f0b5ccb8 = 211:  b96a50d45 feat(rustty): make the tab frame color mix configurable
+212:  c89221c39 = 212:  b66c374b7 fix(rustty): preserve explicit tmuxx tab titles
+213:  662aa31da = 213:  80dabfd52 fix(rustty): release native windows before workspace teardown
+214:  beb320a85 = 214:  1cbd3c13f feat(stream-deck): prioritize ready agents and retrace panel visits
+215:  4376b811d = 215:  16f104230 feat(rustty): add recursive quad roots
+216:  1ded36c07 = 216:  a916dbed2 style(rustty): make window breadcrumb text bold
+217:  874b312c7 = 217:  6dc707b99 style(rustty): mute tab accents in unfocused windows
+218:  a47d0016c = 218:  aedf0e87a feat(rustty): configure unfocused tab saturation
+220:  323639284 = 219:  7a10cab4b rustty: let macOS dictation start in terminal panes
+219:  369bf9987 = 220:  c53d903d2 fix(tmuxx): forward tmux-wrapped clipboard requests
+221:  28830a66f = 221:  2d38e6373 fix(rustty): preserve emoji picker input
+222:  9f5ad23e2 = 222:  d18e1e7d9 feat(rustty): accept macOS emoji and text drops
+223:  d4719afb9 = 223:  2aa54606f fix(stream-deck): clear ready counts when panes are visited
+224:  653b31789 = 224:  8cbeb6500 style(rustty): accent window breadcrumb text
+225:  cf25e025f = 225:  949d9bcbd feat(rustty): show running counts throughout the outliner
+226:  d75050df9 = 226:  1a8c10de6 fix(rustty): retain single-tab breadcrumbs in macOS fullscreen
+227:  1550a4786 = 227:  e4e66710c fix(rustty): remove unused top headers from split panes
+228:  c9bb81f2b = 228:  ff3ee42b0 test(rustty): cover quad roots across saved sessions
+229:  9a09bed88 = 229:  fe537ed5a fix(rustty): clear CI Clippy failures
+230:  c5dee933c = 230:  e5eb1f924 test(rustty): remove startup fixture timing race
+231:  338d9ee92 = 231:  9b8f928aa feat(rustty): populate remote tmuxx sessions from local environment providers
+232:  4ca117723 = 232:  dce420dee feat(rustty): cross-fade resizes when most text stays put
+233:  ef1b8ba3f = 233:  bcc1ffe2d fix(rustty): anchor matching footer rows during resize
+234:  cd4fbd382 = 234:  48a52ca02 fix(rustty): restore quad-root zoom when returning from peek
+235:  32ffe76d0 = 235:  721303f77 fix(rustty-vt): retain host graphics denial across resets and screens
+236:  c94db370f = 236:  a549d1542 feat(rustty-vt): emit opt-in native OSC 7501 status reports
+237:  ac3a25f1f = 237:  c5aec0f08 feat(rustty-vt): expose synchronous output hold transitions
+238:  52e350085 = 238:  00c7e337e feat(rustty-vt): expose native row content revisions for rendering
+239:  063a242f7 = 239:  8fd2e64fa feat(rustty-vt): notify synchronous hosts when mouse tracking changes
+240:  b93f40e90 = 240:  984823afb fix(rustty-vt): retain application cursor shape in VT handoff
+241:  cce4e7f38 = 241:  d19e5e079 feat(rustty-vt): share native viewport render metadata
+242:  58c953fc3 = 242:  5635211c0 fix(rustty): locate parameterized benchmark results
+243:  287d5e204 = 243:  f9aab170c feat(rustty): notify agent attention without a Stream Deck
+244:  a90e26835 = 244:  5f16b4471 feat(rustty): filter the outliner to agent panels
+245:  e76adea77 = 245:  bd24855d3 feat(rustty-vt): discover Kitty graphics features
+246:  b438193fb = 246:  f8dc27f36 feat(rustty-vt): complete pointer shape stacks
+247:  82af838ef = 247:  2f7fb8158 feat(rustty-vt): save all side-effect-free modes
+248:  db0619fdc = 248:  c3ccaab3f feat(rustty-vt): reset bold and faint independently
+249:  d29d51157 = 249:  26044c75b feat(rustty-vt): style regions with DECCARA
+250:  a09eaf481 = 250:  98eeb3c06 feat(rustty-vt): restore scrollback with unscroll
+251:  9f8e2a258 = 251:  47a3cd345 fix(rustty-vt): complete terminal mode status replies
+252:  46e75196d = 252:  548929f4d feat(rustty): compress cold scrollback while idle
+253:  5c33c2f5b = 253:  7fe765940 feat(rustty-vt): retain complete program status records
+254:  76a5d2ffe = 254:  23595b3de feat(rustty): connect program status to session owners
+255:  ff7fea1fd = 255:  33b1351ea test(rustty): measure PTY throughput and delivery latency
+256:  53d107620 = 256:  218b0af8a perf(rustty): drain PTY output while parsing
+257:  bced675da = 257:  77c2bcf51 perf(rustty): wake embedded tmuxx delivery on messages
+258:  247ad8119 = 258:  184ecac86 docs(rustty): record Linux validation and deferred work
+259:  90f5232af = 259:  06a2e9ee9 feat(rustty-app): present retained program status
+260:  6fc409f7a = 260:  b009fe97b feat(rustty-app): add keyboard hints for visible links
+261:  1e05dca31 = 261:  963852110 perf(rustty-vt): keep hidden history cold during viewport reads
+262:  c1bdd1145 = 262:  c5b9cdcdc feat(rustty-app): copy and open terminal output in an editor
+263:  1eb26e5f2 = 263:  c09341300 perf(rustty-render): reuse stable row geometry
+264:  24237b4c5 = 264:  04f455a5b feat(rustty): support indexed Kitty images
+265:  e0f2ab23c = 265:  614d78a11 feat(rustty): support explicit text widths
+266:  5563656f7 = 266:  c68f76c1a feat(rustty): support multiple TUI cursors
+267:  fb662cab0 = 267:  5fcde5055 feat(rustty): support native TUI drag-and-drop
+268:  d11361e94 = 268:  96997fc3c feat(rustty): support actionable desktop notifications
+269:  bbeaf8d23 = 269:  7b5b8d2fc feat(rustty): report when the pointer leaves TUI panes
+270:  1b22a786c = 270:  1dbf0560c feat(rustty): advertise validated Unicode placeholder graphics
+271:  cfa5a071b = 271:  91fc580a3 feat(rustty-app): number quad peek targets
+272:  bb21efa5e = 272:  559b5f2f4 fix(tmuxx): recover lagging native subscribers
+273:  c170d0149 = 273:  d97e6c277 fix(rustty-vt): clamp resize pins to their destination row
+274:  8266a4c5b = 274:  514832534 fix(rustty-vt): reapply configured cursor defaults
+275:  7a6f6a791 = 275:  9bc3b7567 fix(tmuxx): restore bounded large-history snapshots
+276:  2d428e4e6 = 276:  13214f05f perf(rustty-vt): preserve cold history during navigation
+277:  2ffc19132 = 277:  fa7231dc8 perf(tmuxx): search visible content without snapshots
+278:  ea1765151 = 278:  e418df182 perf(rustty-vt): walk native snapshot style runs by page
+279:  d471c2375 = 279:  8819f5206 test(rustty): bound Ghostty benchmark comparisons
+280:  3a37a0527 = 280:  b4632eadf feat(rustty-app): start quad peek outside quad zoom
+281:  5e2dcc63b = 281:  6ffd8e427 perf(rustty-parser): batch CSI parameter runs
+282:  937b5fb49 = 282:  bf60f72e9 perf(rustty-vt): reuse resolved row IDs during writes
+283:  7536d9787 = 283:  fc3f47503 perf(rustty-parser): fast-path complete CSI commands
+284:  81a30f4c7 = 284:  ff819846e perf(rustty-vt): locate active rows from the page-list tail
+285:  79f7c8005 = 285:  9ec26c43f perf(rustty-vt): group style attributes in cursor comparisons
+286:  f6d6cb61d = 286:  a2635fc92 perf(rustty-vt): skip inactive capture hooks while printing
+287:  9a1746dc6 = 287:  7e4209aba perf(rustty-vt): reuse prepared cursor location for ASCII writes
+288:  c06197283 = 288:  55d67c753 docs(rustty): consolidate optimization reports after code changes

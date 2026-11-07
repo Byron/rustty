@@ -1,0 +1,53 @@
+{
+  "revision": "cc309adab78b012fc15200306eab5883268eb31d",
+  "change": "nnwzqpm",
+  "author": "Codex <codex@openai.com>",
+  "parent": "1aa7813cdb93cf59cc9ac869654d705a9e1291db",
+  "source_patch_sha256": "0080666862466d230480052a6801bd158f589aaab0ecc9d1669361272f18c000",
+  "source_validation": "/private/tmp/rustty-reintegrate.leadij/linked-final-source-validation.json",
+  "commands": "/private/tmp/rustty-reintegrate.leadij/linked-final-validation-commands.json",
+  "tests": {
+    "lib": 247,
+    "integration": 102,
+    "native_comparisons": 132,
+    "native_cases": 44,
+    "shared_selfchecks": 87,
+    "upstream_corpora": 22,
+    "upstream_corpus_selfchecks": 44,
+    "dense_reflow_records_per_engine": 8192,
+    "engines": [
+      "Rust",
+      "native"
+    ]
+  },
+  "tests_log": "/private/tmp/rustty-reintegrate.leadij/linked-final-tests.log",
+  "clippy_log": "/private/tmp/rustty-reintegrate.leadij/linked-final-clippy.log",
+  "format_log": "/private/tmp/rustty-reintegrate.leadij/linked-final-format.log",
+  "dense_reflow_log": "/private/tmp/rustty-reintegrate.leadij/linked-final-dense-reflow.log",
+  "native_validation": "/private/tmp/rustty-reintegrate.leadij/linked-native-final-validation.json",
+  "native_runner": "Rust target/release/examples/parity-runner; four independent shards",
+  "shared_selfchecks": "/private/tmp/rustty-reintegrate.leadij/linked-selfchecks.json",
+  "corpus_selfchecks": "/private/tmp/rustty-reintegrate.leadij/final-stream-corpora-selfchecks.json",
+  "corpus_run": "/private/tmp/rustty-reintegrate.leadij/final-stream-corpora-selfcheck-run.json",
+  "measurements": "/private/tmp/rustty-reintegrate.leadij/linked-measurement-summary.json",
+  "raw_measurements": "/private/tmp/rustty-reintegrate.leadij/linked-timings.json",
+  "run_metadata": "/private/tmp/rustty-reintegrate.leadij/linked-measurement-run.json",
+  "independent_audit": "/private/tmp/rustty-reintegrate.leadij/linked-root-measurement-check.json",
+  "tuning_checkpoints": "/private/tmp/rustty-reintegrate.leadij/linked-tuning-checkpoints.json",
+  "binaries": {
+    "stream": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/linked-v8-after-stream",
+      "sha256": "819376fbd18a180a9babba4e1fe5f0f355f5a2e29ab2aeb5c4f7e3bdf8c39237"
+    },
+    "parity": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/linked-v8-after-parity",
+      "sha256": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5"
+    }
+  },
+  "notes": [
+    "Final V8 measured source is byte-identical to this commit. Root may later rewrite hashes for ancestor-only QA; preserve this measured SHA.",
+    "29 workloads, 261 observations: short links improve 9.06\u201322.82%, full 65.29\u201384.94%, linked wide 85.94/86.03%, linked mixed 74.37/75.45%; linked emoji +1.70% is the largest remaining cost; ordinary/repaint controls cost at most +0.90%.",
+    "One private UTF8 event specialization avoids linked setup for unlinked text; true retains runtime link-presence guards.",
+    "Native roundtrip cases use explicit IDs only for newly added boundary captures. Original identical budget pruning/implicit-ID renewal and initial Python comparison evidence are retained separately."
+  ]
+}

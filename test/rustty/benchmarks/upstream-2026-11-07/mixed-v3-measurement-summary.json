@@ -1,0 +1,520 @@
+[
+  {
+    "name": "plain",
+    "before": {
+      "ms": 14.04952408,
+      "samples_ms": [
+        13.91853992,
+        14.06533408,
+        14.04952408
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 13.97478418,
+      "samples_ms": [
+        13.957375820000001,
+        13.97478418,
+        14.02733922
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 6.0298216600000005,
+      "samples_ms": [
+        5.993685019999999,
+        6.0298216600000005,
+        6.0391625
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -0.5319746033703332
+  },
+  {
+    "name": "plain-styled-protected",
+    "before": {
+      "ms": 18.303963524999997,
+      "samples_ms": [
+        18.138343775,
+        18.303963524999997,
+        18.3818291
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "after": {
+      "ms": 18.245252100000002,
+      "samples_ms": [
+        18.16168225,
+        18.245252100000002,
+        18.342682274999998
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "native": {
+      "ms": 64.269024925,
+      "samples_ms": [
+        64.269024925,
+        63.883411425,
+        64.318559375
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -0.32075798730589744
+  },
+  {
+    "name": "styled-4",
+    "before": {
+      "ms": 37.210354200000005,
+      "samples_ms": [
+        36.81215405,
+        37.210354200000005,
+        37.2257229
+      ],
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "after": {
+      "ms": 37.0287355,
+      "samples_ms": [
+        36.7901896,
+        37.2085645,
+        37.0287355
+      ],
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "native": {
+      "ms": 22.2385208,
+      "samples_ms": [
+        21.91838115,
+        22.37377705,
+        22.2385208
+      ],
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -0.4880864584729028
+  },
+  {
+    "name": "wide",
+    "pre-blank": {
+      "ms": 11.845125783333334,
+      "samples_ms": [
+        11.7382216,
+        11.845125783333334,
+        11.883687616666666
+      ],
+      "history_rows": 679,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "before": {
+      "ms": 11.839741016666668,
+      "samples_ms": [
+        11.784673666666666,
+        11.839741016666668,
+        11.892688883333333
+      ],
+      "history_rows": 679,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 12.026823,
+      "samples_ms": [
+        11.991903433333334,
+        12.050780533333333,
+        12.026823
+      ],
+      "history_rows": 679,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 5.4200750499999995,
+      "samples_ms": [
+        5.414614616666666,
+        5.4200750499999995,
+        5.454353483333334
+      ],
+      "history_rows": 679,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 1.5801188815699474,
+    "combined_change_percent": 1.5339407954816586
+  },
+  {
+    "name": "wide-spaces",
+    "pre-blank": {
+      "ms": 49.867130466666666,
+      "samples_ms": [
+        49.23312773333333,
+        49.867130466666666,
+        49.93555006666667
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "before": {
+      "ms": 51.1237888,
+      "samples_ms": [
+        51.260636133333335,
+        50.818602799999994,
+        51.1237888
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 24.0929862,
+      "samples_ms": [
+        24.0929862,
+        23.74653066666667,
+        24.134241600000003
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 10.098491666666666,
+      "samples_ms": [
+        10.0624472,
+        10.144411066666667,
+        10.098491666666666
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -52.873238143101005,
+    "combined_change_percent": -51.6856374639307
+  },
+  {
+    "name": "mixed-wide",
+    "pre-blank": {
+      "ms": 67.1635917,
+      "samples_ms": [
+        67.1635917,
+        67.0793209,
+        67.6250708
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "before": {
+      "ms": 69.55477490000001,
+      "samples_ms": [
+        69.55477490000001,
+        69.9008542,
+        69.5069166
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 32.7241708,
+      "samples_ms": [
+        32.6198748,
+        32.7266418,
+        32.7241708
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 11.072624800000002,
+      "samples_ms": [
+        11.0538959,
+        11.084095900000001,
+        11.072624800000002
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -52.95194205279501,
+    "combined_change_percent": -51.27691957546099
+  },
+  {
+    "name": "wide-unicode",
+    "pre-blank": {
+      "ms": 12.092825033333334,
+      "samples_ms": [
+        11.9670708,
+        12.208186066666666,
+        12.092825033333334
+      ],
+      "history_rows": 679,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "before": {
+      "ms": 12.007850099999999,
+      "samples_ms": [
+        12.007850099999999,
+        12.0056555,
+        12.175682
+      ],
+      "history_rows": 679,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 12.483525033333333,
+      "samples_ms": [
+        12.422941766666668,
+        12.483525033333333,
+        12.555377833333335
+      ],
+      "history_rows": 679,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 6.173619433333333,
+      "samples_ms": [
+        6.173619433333333,
+        6.1605653,
+        6.2326653
+      ],
+      "history_rows": 679,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 3.96136635094515,
+    "combined_change_percent": 3.2308414197927515
+  },
+  {
+    "name": "wide-spaces-unicode",
+    "pre-blank": {
+      "ms": 50.70606775,
+      "samples_ms": [
+        50.232088375,
+        50.70606775,
+        51.063411125
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "before": {
+      "ms": 51.554734375,
+      "samples_ms": [
+        51.266369875,
+        51.554734375,
+        52.432458375
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 26.443984125,
+      "samples_ms": [
+        26.443984125,
+        26.648937625,
+        25.851645875
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 10.833208375,
+      "samples_ms": [
+        10.753661625,
+        10.85719275,
+        10.833208375
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -48.706972413724124,
+    "combined_change_percent": -47.848481851563015
+  },
+  {
+    "name": "mixed-wide-unicode",
+    "pre-blank": {
+      "ms": 68.432403,
+      "samples_ms": [
+        68.2324025,
+        68.58624316666668,
+        68.432403
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "before": {
+      "ms": 70.52132616666667,
+      "samples_ms": [
+        70.00066683333333,
+        71.5402775,
+        70.52132616666667
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 34.73320833333334,
+      "samples_ms": [
+        34.64595116666666,
+        34.83461116666666,
+        34.73320833333334
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 11.897367833333334,
+      "samples_ms": [
+        11.748250166666667,
+        11.9307085,
+        11.897367833333334
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -50.74793651604542,
+    "combined_change_percent": -49.24449995810707
+  },
+  {
+    "name": "combining-control",
+    "before": {
+      "ms": 27.301180666666667,
+      "samples_ms": [
+        27.073778,
+        27.301180666666667,
+        27.525986
+      ],
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "after": {
+      "ms": 28.373014,
+      "samples_ms": [
+        28.657347666666666,
+        28.27024966666667,
+        28.373014
+      ],
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "native": {
+      "ms": 10.314694333333334,
+      "samples_ms": [
+        10.373721666666667,
+        10.249125,
+        10.314694333333334
+      ],
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 3.9259596367639427
+  },
+  {
+    "name": "emoji-control",
+    "before": {
+      "ms": 10.985916333333334,
+      "samples_ms": [
+        10.889972666666665,
+        11.012000333333335,
+        10.985916333333334
+      ],
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "after": {
+      "ms": 10.950583333333334,
+      "samples_ms": [
+        10.994166666666667,
+        10.937958666666667,
+        10.950583333333334
+      ],
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "native": {
+      "ms": 5.553708333333333,
+      "samples_ms": [
+        5.553708333333333,
+        5.634,
+        5.544819333333333
+      ],
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -0.32162087283327256
+  }
+]

@@ -1,0 +1,112 @@
+{
+  "stopped_at": 1794051494.00666,
+  "reason": "Root explicitly requested stopping remaining group2 on the known-broken native parser observer; completed groups are retained for a later composite coverage proof.",
+  "coordinator_exit_status": 130,
+  "interrupt": "write_stdin session10124 Ctrl-C; coordinator finally called stop() on the only active process group and awaited its termination.",
+  "complete": false,
+  "source_commit": "03be726e243bdc235bd641420f511fc2b7792f8e",
+  "run_json_sha256": "d94e109124494af84a7187014ce6d2d6438b02ac8b68c188c4aaa1af3aaf3f94",
+  "completed_shards": [
+    {
+      "name": "groups-1",
+      "exit_status": 1,
+      "complete": true,
+      "summary": {
+        "aborted": false,
+        "checked": 24247,
+        "coverage_gaps": [],
+        "covered": [
+          "clipboard",
+          "drag-and-drop",
+          "effects.bell",
+          "effects.host",
+          "effects.pty",
+          "effects.pwd",
+          "effects.title",
+          "graphics.glyphs",
+          "graphics.kitty",
+          "graphics.png",
+          "input.focus-paste",
+          "parser.events",
+          "protocol.dcs",
+          "snapshot.cross-decode",
+          "terminal.cells",
+          "terminal.colors",
+          "terminal.cursor",
+          "terminal.modes",
+          "terminal.observe",
+          "terminal.reset",
+          "terminal.resize",
+          "terminal.screens",
+          "terminal.styles",
+          "terminal.write",
+          "unicode.width"
+        ],
+        "error": null,
+        "failures": 217,
+        "full_parity": false,
+        "mode": "smoke"
+      }
+    },
+    {
+      "name": "groups-3",
+      "exit_status": 1,
+      "complete": true,
+      "summary": {
+        "aborted": false,
+        "checked": 18742,
+        "coverage_gaps": [],
+        "covered": [
+          "clipboard",
+          "effects.bell",
+          "effects.host",
+          "effects.pty",
+          "effects.pwd",
+          "effects.title",
+          "parser.events",
+          "snapshot.cross-decode",
+          "terminal.cells",
+          "terminal.cursor",
+          "terminal.observe",
+          "terminal.pages",
+          "terminal.reset",
+          "terminal.resize",
+          "terminal.screens",
+          "terminal.search",
+          "terminal.selection",
+          "terminal.styles",
+          "terminal.tracked",
+          "terminal.write",
+          "unicode.width"
+        ],
+        "error": null,
+        "failures": 30,
+        "full_parity": false,
+        "mode": "smoke"
+      }
+    },
+    {
+      "name": "thorough-cases",
+      "exit_status": 0,
+      "complete": true,
+      "summary": {
+        "aborted": false,
+        "checked": 237,
+        "coverage_gaps": [],
+        "covered": [
+          "snapshot.streaming",
+          "terminal.pages",
+          "terminal.search"
+        ],
+        "error": null,
+        "failures": 0,
+        "full_parity": false,
+        "mode": "smoke"
+      }
+    }
+  ],
+  "incomplete_shards": [
+    "groups-2"
+  ],
+  "raw_failure_directory_count": 1400
+}

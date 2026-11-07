@@ -1,0 +1,77 @@
+{
+  "checkpoints": [
+    {
+      "version": "v1",
+      "status": "rejected",
+      "note": "Initial mixed kernel; rejected for uniform Unicode and emoji control costs.",
+      "raw": "mixed-v1-timings.json",
+      "summary": "mixed-v1-measurement-summary.json"
+    },
+    {
+      "version": "v2",
+      "status": "rejected",
+      "note": "Outline mixed-only restyling; rejected for remaining Unicode/combining/emoji costs.",
+      "raw": "mixed-v2-timings.json",
+      "summary": "mixed-v2-measurement-summary.json"
+    },
+    {
+      "version": "v3",
+      "status": "rejected",
+      "note": "Delay templates and mark from fresh first cell; rejected for Unicode/combining costs.",
+      "raw": "mixed-v3-timings.json",
+      "summary": "mixed-v3-measurement-summary.json"
+    },
+    {
+      "version": "v4",
+      "status": "rejected",
+      "note": "Outline full row writer; rejected for control costs; attribute reverted.",
+      "raw": "mixed-v4-timings.json",
+      "summary": "mixed-v4-measurement-summary.json"
+    },
+    {
+      "version": "v5",
+      "status": "rejected",
+      "note": "Reuse capped prefix length; rejected for Unicode/combining costs.",
+      "raw": "mixed-v5-timings.json",
+      "summary": "mixed-v5-measurement-summary.json"
+    },
+    {
+      "version": "v6",
+      "status": "rejected",
+      "note": "Handoff8 and opposite-width predicate; rejected for remaining control costs.",
+      "raw": "mixed-v6-timings.json",
+      "summary": "mixed-v6-measurement-summary.json"
+    },
+    {
+      "version": "v7",
+      "status": "rejected",
+      "note": "Decoded-block width hint; rejected for remaining control costs.",
+      "raw": "mixed-v7-timings.json",
+      "summary": "mixed-v7-measurement-summary.json"
+    },
+    {
+      "version": "v8",
+      "status": "superseded",
+      "note": "Reuse successful uniform template; common controls recovered, superseded by cutoff4 to reduce sparse-wide cost.",
+      "raw": "mixed-v8-timings.json",
+      "summary": "mixed-v8-measurement-summary.json"
+    },
+    {
+      "version": "v9",
+      "status": "superseded",
+      "note": "Handoff4; accepted for full validation, six-case run is provisional and superseded by final117-record matrix.",
+      "raw": "mixed-v9-timings.json",
+      "summary": "mixed-v9-measurement-summary.json"
+    }
+  ],
+  "authoritative": {
+    "raw": "mixed-timings.json",
+    "summary": "mixed-measurement-summary.json",
+    "run": "mixed-measurement-run.json",
+    "commit": "1aa7813cdb93cf59cc9ac869654d705a9e1291db",
+    "change": "yppsryw",
+    "records": 117,
+    "cases": 11,
+    "rounds": 3
+  }
+}

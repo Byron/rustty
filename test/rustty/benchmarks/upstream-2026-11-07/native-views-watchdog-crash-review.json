@@ -1,0 +1,545 @@
+{
+  "result": "Four watchdog readiness EOFs match four macOS child aborts in libSystem fork handlers before libc::fork returned to Watchdog::start child branch.",
+  "scope": "read-only source/history and saved OS crash-report review; no process reproduction, builds, edits, or tests by reviewer",
+  "evidence": [
+    {
+      "source_path": "/Users/byron/Library/Logs/DiagnosticReports/native_views-200d25979ee2c561-2026-11-07-115616.000.ips",
+      "source_sha256": "70c50fb4e644413d11d62aaf5375520ce66504aa7927abf7f09d1d6ae09c9b19",
+      "process": "native_views-200d25979ee2c561",
+      "pid": 87901,
+      "parent_pid": 87891,
+      "capture_time": "2026-11-07 11:56:15.6079 +0100",
+      "os_version": {
+        "train": "macOS 27.2",
+        "build": "26B123",
+        "releaseType": "User"
+      },
+      "exception": {
+        "codes": "0x0000000000000001, 0x00000001a2c7e4a4",
+        "rawCodes": [
+          1,
+          7025976484
+        ],
+        "type": "EXC_BREAKPOINT",
+        "signal": "SIGKILL"
+      },
+      "termination": {
+        "namespace": "FOUNDATION",
+        "flags": 2,
+        "code": 1
+      },
+      "application_specific_information": {
+        "libsystem_platform.dylib": [
+          "BUG IN CLIENT OF LIBPLATFORM: os_once_t is corrupt",
+          "Abort Cause 3843"
+        ],
+        "libsystem_c.dylib": [
+          "crashed on child side of fork pre-exec"
+        ]
+      },
+      "fault_frames": [
+        {
+          "imageOffset": 33956,
+          "symbol": "_os_once_gate_corruption_abort",
+          "symbolLocation": 36,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 13736,
+          "symbol": "_os_once_gate_wait",
+          "symbolLocation": 360,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 3052,
+          "symbol": "_os_once",
+          "symbolLocation": 76,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 3396,
+          "symbol": "_os_alloc_once",
+          "symbolLocation": 56,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 28544,
+          "symbol": "_notify_fork_child",
+          "symbolLocation": 384,
+          "imageIndex": 2
+        },
+        {
+          "imageOffset": 5644,
+          "symbol": "libSystem_atfork_child",
+          "symbolLocation": 64,
+          "imageIndex": 3
+        },
+        {
+          "imageOffset": 148508,
+          "symbol": "fork",
+          "symbolLocation": 112,
+          "imageIndex": 4
+        },
+        {
+          "imageOffset": 2290372,
+          "symbol": "tmuxx_runtime::watchdog::Watchdog::start::he62d8a177385e1f3",
+          "symbolLocation": 884,
+          "imageIndex": 0
+        },
+        {
+          "imageOffset": 3128204,
+          "symbol": "tmuxx_runtime::start::h184adcf68e0507fd",
+          "symbolLocation": 704,
+          "imageIndex": 0
+        },
+        {
+          "imageOffset": 15320,
+          "sourceLine": 24,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::host::h4649f813685d946c",
+          "imageIndex": 0,
+          "symbolLocation": 400
+        },
+        {
+          "imageOffset": 46668,
+          "sourceLine": 1004,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::native_view_size_fit_can_claim_a_window_linked_into_another_session::ha51694bb03044a1b",
+          "imageIndex": 0,
+          "symbolLocation": 44
+        },
+        {
+          "imageOffset": 48852,
+          "sourceLine": 1003,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::native_view_size_fit_can_claim_a_window_linked_into_another_session::_$u7b$$u7b$closure$u7d$$u7d$::h91456cf3f8645c52",
+          "imageIndex": 0,
+          "symbolLocation": 20
+        },
+        {
+          "imageOffset": 200848,
+          "sourceLine": 250,
+          "sourceFile": "function.rs",
+          "symbol": "core::ops::function::FnOnce::call_once::hec6fd57aa3e137f1",
+          "imageIndex": 0,
+          "symbolLocation": 20
+        },
+        {
+          "imageOffset": 263128,
+          "symbol": "_RINvCsbjLeP659uW4_4test28___rust_begin_short_backtraceINtNtCsl8K0bEFm1U0_4core6result6ResultuNtNtCs1OjIl8oxbrv_5alloc6string6StringEFEBQ_EB2_",
+          "symbolLocation": 24,
+          "imageIndex": 0
+        }
+      ]
+    },
+    {
+      "source_path": "/Users/byron/Library/Logs/DiagnosticReports/native_views-200d25979ee2c561-2026-11-07-115616.0002.ips",
+      "source_sha256": "2a26f0760a78f5eaef056de4d1d5fc1b6df601ca18899acde22f6717d5df9173",
+      "process": "native_views-200d25979ee2c561",
+      "pid": 87900,
+      "parent_pid": 87891,
+      "capture_time": "2026-11-07 11:56:15.6079 +0100",
+      "os_version": {
+        "train": "macOS 27.2",
+        "build": "26B123",
+        "releaseType": "User"
+      },
+      "exception": {
+        "codes": "0x0000000000000001, 0x00000001a2c7e4a4",
+        "rawCodes": [
+          1,
+          7025976484
+        ],
+        "type": "EXC_BREAKPOINT",
+        "signal": "SIGKILL"
+      },
+      "termination": {
+        "namespace": "FOUNDATION",
+        "flags": 2,
+        "code": 1
+      },
+      "application_specific_information": {
+        "libsystem_platform.dylib": [
+          "BUG IN CLIENT OF LIBPLATFORM: os_once_t is corrupt",
+          "Abort Cause 3843"
+        ],
+        "libsystem_c.dylib": [
+          "crashed on child side of fork pre-exec"
+        ]
+      },
+      "fault_frames": [
+        {
+          "imageOffset": 33956,
+          "symbol": "_os_once_gate_corruption_abort",
+          "symbolLocation": 36,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 13736,
+          "symbol": "_os_once_gate_wait",
+          "symbolLocation": 360,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 3052,
+          "symbol": "_os_once",
+          "symbolLocation": 76,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 3396,
+          "symbol": "_os_alloc_once",
+          "symbolLocation": 56,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 28544,
+          "symbol": "_notify_fork_child",
+          "symbolLocation": 384,
+          "imageIndex": 2
+        },
+        {
+          "imageOffset": 5644,
+          "symbol": "libSystem_atfork_child",
+          "symbolLocation": 64,
+          "imageIndex": 3
+        },
+        {
+          "imageOffset": 148508,
+          "symbol": "fork",
+          "symbolLocation": 112,
+          "imageIndex": 4
+        },
+        {
+          "imageOffset": 2290372,
+          "symbol": "tmuxx_runtime::watchdog::Watchdog::start::he62d8a177385e1f3",
+          "symbolLocation": 884,
+          "imageIndex": 0
+        },
+        {
+          "imageOffset": 3128204,
+          "symbol": "tmuxx_runtime::start::h184adcf68e0507fd",
+          "symbolLocation": 704,
+          "imageIndex": 0
+        },
+        {
+          "imageOffset": 15320,
+          "sourceLine": 24,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::host::h4649f813685d946c",
+          "imageIndex": 0,
+          "symbolLocation": 400
+        },
+        {
+          "imageOffset": 63596,
+          "sourceLine": 1682,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::agent_status_is_retained_without_views_and_reconnect_keeps_the_process::h00157829a4b20f37",
+          "imageIndex": 0,
+          "symbolLocation": 52
+        },
+        {
+          "imageOffset": 66480,
+          "sourceLine": 1681,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::agent_status_is_retained_without_views_and_reconnect_keeps_the_process::_$u7b$$u7b$closure$u7d$$u7d$::h843d8868bc2ab425",
+          "imageIndex": 0,
+          "symbolLocation": 20
+        },
+        {
+          "imageOffset": 199456,
+          "sourceLine": 250,
+          "sourceFile": "function.rs",
+          "symbol": "core::ops::function::FnOnce::call_once::h5e3d9354cc82d132",
+          "imageIndex": 0,
+          "symbolLocation": 20
+        },
+        {
+          "imageOffset": 263128,
+          "symbol": "_RINvCsbjLeP659uW4_4test28___rust_begin_short_backtraceINtNtCsl8K0bEFm1U0_4core6result6ResultuNtNtCs1OjIl8oxbrv_5alloc6string6StringEFEBQ_EB2_",
+          "symbolLocation": 24,
+          "imageIndex": 0
+        }
+      ]
+    },
+    {
+      "source_path": "/Users/byron/Library/Logs/DiagnosticReports/native_views-200d25979ee2c561-2026-11-07-115616.0003.ips",
+      "source_sha256": "e9790c54404c428aef7fdfd646da29f21115d7ccf977a2076796a43d21f108a7",
+      "process": "native_views-200d25979ee2c561",
+      "pid": 87905,
+      "parent_pid": 87891,
+      "capture_time": "2026-11-07 11:56:15.6079 +0100",
+      "os_version": {
+        "train": "macOS 27.2",
+        "build": "26B123",
+        "releaseType": "User"
+      },
+      "exception": {
+        "codes": "0x0000000000000001, 0x00000001a2c7e4a4",
+        "rawCodes": [
+          1,
+          7025976484
+        ],
+        "type": "EXC_BREAKPOINT",
+        "signal": "SIGKILL"
+      },
+      "termination": {
+        "namespace": "FOUNDATION",
+        "flags": 2,
+        "code": 1
+      },
+      "application_specific_information": {
+        "libsystem_platform.dylib": [
+          "BUG IN CLIENT OF LIBPLATFORM: os_once_t is corrupt",
+          "Abort Cause 3843"
+        ],
+        "libsystem_c.dylib": [
+          "crashed on child side of fork pre-exec"
+        ]
+      },
+      "fault_frames": [
+        {
+          "imageOffset": 33956,
+          "symbol": "_os_once_gate_corruption_abort",
+          "symbolLocation": 36,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 13736,
+          "symbol": "_os_once_gate_wait",
+          "symbolLocation": 360,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 3052,
+          "symbol": "_os_once",
+          "symbolLocation": 76,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 3396,
+          "symbol": "_os_alloc_once",
+          "symbolLocation": 56,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 28544,
+          "symbol": "_notify_fork_child",
+          "symbolLocation": 384,
+          "imageIndex": 2
+        },
+        {
+          "imageOffset": 5644,
+          "symbol": "libSystem_atfork_child",
+          "symbolLocation": 64,
+          "imageIndex": 3
+        },
+        {
+          "imageOffset": 148508,
+          "symbol": "fork",
+          "symbolLocation": 112,
+          "imageIndex": 4
+        },
+        {
+          "imageOffset": 2290372,
+          "symbol": "tmuxx_runtime::watchdog::Watchdog::start::he62d8a177385e1f3",
+          "symbolLocation": 884,
+          "imageIndex": 0
+        },
+        {
+          "imageOffset": 3128204,
+          "symbol": "tmuxx_runtime::start::h184adcf68e0507fd",
+          "symbolLocation": 704,
+          "imageIndex": 0
+        },
+        {
+          "imageOffset": 15320,
+          "sourceLine": 24,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::host::h4649f813685d946c",
+          "imageIndex": 0,
+          "symbolLocation": 400
+        },
+        {
+          "imageOffset": 76084,
+          "sourceLine": 113,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::native_splits_spawn_in_reported_directory_with_override_and_stale_fallback::hca3f563f29e6851f",
+          "imageIndex": 0,
+          "symbolLocation": 1076
+        },
+        {
+          "imageOffset": 83492,
+          "sourceLine": 91,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::native_splits_spawn_in_reported_directory_with_override_and_stale_fallback::_$u7b$$u7b$closure$u7d$$u7d$::h6a0761defb3cba37",
+          "imageIndex": 0,
+          "symbolLocation": 20
+        },
+        {
+          "imageOffset": 199184,
+          "sourceLine": 250,
+          "sourceFile": "function.rs",
+          "symbol": "core::ops::function::FnOnce::call_once::h334ce746f3a63a15",
+          "imageIndex": 0,
+          "symbolLocation": 20
+        },
+        {
+          "imageOffset": 263128,
+          "symbol": "_RINvCsbjLeP659uW4_4test28___rust_begin_short_backtraceINtNtCsl8K0bEFm1U0_4core6result6ResultuNtNtCs1OjIl8oxbrv_5alloc6string6StringEFEBQ_EB2_",
+          "symbolLocation": 24,
+          "imageIndex": 0
+        }
+      ]
+    },
+    {
+      "source_path": "/Users/byron/Library/Logs/DiagnosticReports/native_views-200d25979ee2c561-2026-11-07-115616.ips",
+      "source_sha256": "95ebd0e13cd9f2de840eb64ef7a638595a5bbe32b901e698ec1aa3675b9a651e",
+      "process": "native_views-200d25979ee2c561",
+      "pid": 87903,
+      "parent_pid": 87891,
+      "capture_time": "2026-11-07 11:56:15.6079 +0100",
+      "os_version": {
+        "train": "macOS 27.2",
+        "build": "26B123",
+        "releaseType": "User"
+      },
+      "exception": {
+        "codes": "0x0000000000000001, 0x00000001a2c7e4a4",
+        "rawCodes": [
+          1,
+          7025976484
+        ],
+        "type": "EXC_BREAKPOINT",
+        "signal": "SIGKILL"
+      },
+      "termination": {
+        "namespace": "FOUNDATION",
+        "flags": 2,
+        "code": 1
+      },
+      "application_specific_information": {
+        "libsystem_platform.dylib": [
+          "BUG IN CLIENT OF LIBPLATFORM: os_once_t is corrupt",
+          "Abort Cause 3843"
+        ],
+        "libsystem_c.dylib": [
+          "crashed on child side of fork pre-exec"
+        ]
+      },
+      "fault_frames": [
+        {
+          "imageOffset": 33956,
+          "symbol": "_os_once_gate_corruption_abort",
+          "symbolLocation": 36,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 13736,
+          "symbol": "_os_once_gate_wait",
+          "symbolLocation": 360,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 3052,
+          "symbol": "_os_once",
+          "symbolLocation": 76,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 3396,
+          "symbol": "_os_alloc_once",
+          "symbolLocation": 56,
+          "imageIndex": 1
+        },
+        {
+          "imageOffset": 28544,
+          "symbol": "_notify_fork_child",
+          "symbolLocation": 384,
+          "imageIndex": 2
+        },
+        {
+          "imageOffset": 5644,
+          "symbol": "libSystem_atfork_child",
+          "symbolLocation": 64,
+          "imageIndex": 3
+        },
+        {
+          "imageOffset": 148508,
+          "symbol": "fork",
+          "symbolLocation": 112,
+          "imageIndex": 4
+        },
+        {
+          "imageOffset": 2290372,
+          "symbol": "tmuxx_runtime::watchdog::Watchdog::start::he62d8a177385e1f3",
+          "symbolLocation": 884,
+          "imageIndex": 0
+        },
+        {
+          "imageOffset": 3128204,
+          "symbol": "tmuxx_runtime::start::h184adcf68e0507fd",
+          "symbolLocation": 704,
+          "imageIndex": 0
+        },
+        {
+          "imageOffset": 15320,
+          "sourceLine": 24,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::host::h4649f813685d946c",
+          "imageIndex": 0,
+          "symbolLocation": 400
+        },
+        {
+          "imageOffset": 58316,
+          "sourceLine": 312,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::native_absent_host_state_still_validates_requests_and_command_targets::ha7d7928edd8a3eff",
+          "imageIndex": 0,
+          "symbolLocation": 56
+        },
+        {
+          "imageOffset": 63524,
+          "sourceLine": 311,
+          "sourceFile": "native_views.rs",
+          "symbol": "native_views::native_absent_host_state_still_validates_requests_and_command_targets::_$u7b$$u7b$closure$u7d$$u7d$::haf94e6d65c4cbe3f",
+          "imageIndex": 0,
+          "symbolLocation": 20
+        },
+        {
+          "imageOffset": 198752,
+          "sourceLine": 250,
+          "sourceFile": "function.rs",
+          "symbol": "core::ops::function::FnOnce::call_once::h1af50400ce2116a4",
+          "imageIndex": 0,
+          "symbolLocation": 20
+        },
+        {
+          "imageOffset": 263128,
+          "symbol": "_RINvCsbjLeP659uW4_4test28___rust_begin_short_backtraceINtNtCsl8K0bEFm1U0_4core6result6ResultuNtNtCs1OjIl8oxbrv_5alloc6string6StringEFEBQ_EB2_",
+          "symbolLocation": 24,
+          "imageIndex": 0
+        }
+      ]
+    }
+  ],
+  "call_path": [
+    "native_views.rs:24 -> tmuxx_runtime::start",
+    "lib.rs:653 -> watchdog::Watchdog::start",
+    "watchdog.rs:79 -> libc::fork",
+    "libSystem_atfork_child -> _notify_fork_child -> _os_alloc_once -> _os_once_gate_corruption_abort",
+    "parent watchdog.rs:100 readiness read_exact receives EOF"
+  ],
+  "classification": "Observed macOS platform fork/one-time-initialization failure under concurrent in-process tests. It is not a client handshake, endpoint collision, bounded native-delivery queue, or VT content failure. The same production Watchdog::start uses libc::fork; serial test success does not prove production immunity or justify arbitrary retries. No new application-side child-loop race is established by these reports.",
+  "serial_control": "root final-native-views-serial.log: all16 tests pass in3.67s with no source change",
+  "source_ancestry": {
+    "path": "tmuxx/crates/tmuxx-runtime/src/watchdog.rs",
+    "blob_at_start_and_current_and_import": "c97878085d1281677a4ce5d1ee7514262c76861e",
+    "starting_revision": "c06197283",
+    "earliest_local_import": "f61dfc5bcb38d8b74d374567440d9cd78b03429a",
+    "import_subject": "build(rustty): own tmuxx and share the local terminal engine",
+    "upstream_imported_source_revision": "700884116bc7239d032e6c91fb4e37e7c540c335",
+    "proof": "git rev-parse c06197283:path HEAD:path f61dfc5bc:path returned identical blob; path history has only imported source"
+  },
+  "root_disposition": "No watchdog production redesign or environment bypass in this reintegration. Root will repeat whole-workspace tests serially with --test-threads=1, retaining internal test concurrency and recording the macOS concurrent-startup limitation explicitly."
+}

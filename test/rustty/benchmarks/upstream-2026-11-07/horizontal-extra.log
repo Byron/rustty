@@ -1,0 +1,7 @@
+Checked 100 comparisons (horizontal-extra/wide/decdc/2/3-5)
+Checked 200 comparisons (horizontal-extra/combining/decic/99/2-2/scalar)
+Checked 300 comparisons (horizontal-extra/combining/decfi/1/4-7/chunks)
+Checked 400 comparisons (horizontal-extra/styled/decdc/2/3-5)
+Checked 500 comparisons (horizontal-extra/linked/decic/99/2-2/scalar)
+Checked 600 comparisons (horizontal-extra/linked/decfi/1/4-7/chunks)
+600 comparisons, 0 failures, 0 coverage gaps; full parity not established

@@ -1,0 +1,7 @@
+info: ghostty version=1.4.1-rustty+6aced98bc
+info: ghostty build optimize=fast
+info: runtime=.none
+info: font_backend=.coretext
+info: renderer=renderer.generic.Renderer(renderer.Metal)
+info: libxev default backend=kqueue
+info(os_locale): setlocale from env result=C.UTF-8

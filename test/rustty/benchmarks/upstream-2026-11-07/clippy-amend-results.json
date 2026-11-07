@@ -1,0 +1,205 @@
+{
+  "status": "complete",
+  "return_branch": "rustty",
+  "pre_cleanup_head": "f8e484e0ac8edf5916717ea51c12b14b4a4f83e4",
+  "steps": [
+    {
+      "change": "pzqlpkv",
+      "before": "98eeb3c062e5094e2a27929fbbf09c52662a87dc",
+      "after": "eb443fa8ed38c5d299bd24dc984afda48ad88b5d",
+      "tests_passed": 40,
+      "format_checked": true,
+      "log": "clippy-pzqlpkv-tests.log"
+    },
+    {
+      "change": "qkrlxpx",
+      "before": "47a3cd345d7cc6df6af4a427689de3bf73fbba36",
+      "after": "492aad71d2a88e4e0479910a7b7cc2cb147edebb",
+      "tests_passed": 6,
+      "format_checked": true,
+      "log": "clippy-qkrlxpx-tests.log"
+    },
+    {
+      "change": "unwwnxk",
+      "before": "7fe765940f08ee9dade746d824bf8ef4f93fba25",
+      "after": "c34689234f7f8d3d083ae50fb043767c081258b2",
+      "tests_passed": 4,
+      "format_checked": true,
+      "log": "clippy-unwwnxk-tests.log"
+    },
+    {
+      "change": "myywtyl",
+      "before": "96997fc3c93cac0655e4d0ab9d20074f02eb94dd",
+      "after": "e8b3de6fb6f7924447f9e988a339922cda0d0ced",
+      "validation": "Windows MSVC all-target cargo check and strict app no-deps all-target Clippy passed; runtime not run",
+      "format_checked": true,
+      "logs": [
+        "clippy-myywtyl-windows-check.log",
+        "clippy-myywtyl-windows-lint.log"
+      ]
+    },
+    {
+      "change": "vmwpzyz",
+      "before": "559b5f2f4a01ac1f6b3bc94bd3e6c5b10cffc207",
+      "after": "f0bdbeddaef0d67d4d6f882d09c39d380b2377ba",
+      "tests_passed": 10,
+      "format_checked": true,
+      "log": "clippy-vmwpzyz-tests.log"
+    }
+  ],
+  "post_cleanup_head": "595623207b12eafe0d178e15ac26d67a1aabf472",
+  "tests_passed": 60,
+  "only_six_expected_files_changed": true,
+  "all_current_source_hashes_match_prepared_fixes": true,
+  "human_review_marks_before": 0,
+  "human_review_marks_after": 0,
+  "qa_marks_before": 0,
+  "qa_marks_after": 0,
+  "port_hashes": [
+    {
+      "key": "native-tools",
+      "change": "ylkpzwm",
+      "commit": "7ec92baa5349af87aa0669a2c9c982b51c72472d",
+      "before_clippy_commit": "1efa03df53bfa6418bd595564db017aad8d02baa"
+    },
+    {
+      "key": "resource-admission",
+      "change": "ttmoqly",
+      "commit": "81ef0c6e2aee1aa7d10e20a8098a5417daabc927",
+      "before_clippy_commit": "66db9e1f2973ad1e248800df30fa88e266d1e8e0"
+    },
+    {
+      "key": "direct-commands",
+      "change": "upvquxw",
+      "commit": "b0de73367bb1c724884a7e15352e31cb71f907b8",
+      "before_clippy_commit": "5a49523f855c3a82d9ea1b4950b2068e9046c531"
+    },
+    {
+      "key": "osc7-authority",
+      "change": "ytlxxys",
+      "commit": "5392fa09d05b412c81cc1a1e0c1d8aeb966610d1",
+      "before_clippy_commit": "16e22176e0f1e81d7d0cf024587d643ca27c4090"
+    },
+    {
+      "key": "themes",
+      "change": "spppnxx",
+      "commit": "7f02da84ddd3ace0f2147620d9f9a26d405d3b33",
+      "before_clippy_commit": "7aaac227dcf9fa2b40ddeb2644af175511593347"
+    },
+    {
+      "key": "horizontal-controls",
+      "change": "ouskkly",
+      "commit": "4bafc541c8c55dc4fef37f1d95fc96d9c5aabc78",
+      "before_clippy_commit": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683"
+    },
+    {
+      "key": "print-wrap",
+      "change": "klmtlvn",
+      "commit": "a4df5476010a296ecde27bbc156095ed620113c3",
+      "before_clippy_commit": "fed6e4c5733f7a9a7e5761414843f92a6586df30"
+    },
+    {
+      "key": "formatter-wrap",
+      "change": "powxpsq",
+      "commit": "06ef936bd0b5a83880a092bb719d716e85b1d5c1",
+      "before_clippy_commit": "ab32a792dbbb61dc66613ae0ca5f4fe2f240c031"
+    },
+    {
+      "key": "placeholder-kind",
+      "change": "qouystx",
+      "commit": "e527ade572bfb4231b0a9cdbcc1a45108853ea54",
+      "before_clippy_commit": "9b51762eb5b3eb41facb70132c93a1eb105fc63b"
+    },
+    {
+      "key": "image-number",
+      "change": "nvwpkxp",
+      "commit": "0f7072d77e2e24230dfe862ee1333d66b1943ee2",
+      "before_clippy_commit": "c43af2aec6e7fefb999a1ed04aadc71c93ba81f7"
+    },
+    {
+      "key": "image-eviction",
+      "change": "sxuolkk",
+      "commit": "dc963a0179b6ec5090a7cd1fab8d087b3842c218",
+      "before_clippy_commit": "725beff764c052e821d3ed9f13fd1d9caf49a949"
+    },
+    {
+      "key": "line-drag",
+      "change": "ywqqypn",
+      "commit": "e734c2d0739d1db91028e5dbdf4e6adeaf5f7ee5",
+      "before_clippy_commit": "13991acb527d6e646fe94d1cc6254bb68056b137"
+    },
+    {
+      "key": "tmux-guarantees",
+      "change": "ouskoty",
+      "commit": "e3fdb3b0fdc0392b6dd91dc8a20314330e46af16",
+      "before_clippy_commit": "b57fb615033447b4662ed7a603d714555a90cda9"
+    },
+    {
+      "key": "window-appearance",
+      "change": "tpnlmqr",
+      "commit": "a8e5ae306a27f41f136626d4539637bc3ecc05e9",
+      "before_clippy_commit": "6aced98bc012e4714753d242c3ad43b85406be11"
+    },
+    {
+      "key": "shaper-benchmark",
+      "change": "mokoonq",
+      "commit": "38e7b831457b934c658641ff4d4b5173244a17ce",
+      "before_clippy_commit": "dbfbbc932f37e90d4cc3eb7c990890c82c84f665"
+    },
+    {
+      "key": "canonical-style",
+      "change": "wswurtn",
+      "commit": "9fc413bf0b85916bd87a4faba0105606c0c59dfa",
+      "before_clippy_commit": "373586cfd1327d440a4220e7b722486c78079129"
+    },
+    {
+      "key": "sgr-admission",
+      "change": "uxpryuy",
+      "commit": "fe8e1ed1a29957c7b77403c63f0c7767cf65d477",
+      "before_clippy_commit": "1e1fbf90d084dc8c77a75ec254493f9b3c9ce09f"
+    },
+    {
+      "key": "ed2-gate",
+      "change": "ztmmomo",
+      "commit": "d08700283feda53fe6cda7237092af8277fc72c2",
+      "before_clippy_commit": "ddfc413a633940d665a81e32806b3e97fda87f23"
+    },
+    {
+      "key": "hyperlink-map",
+      "change": "nokoswn",
+      "commit": "5a74dd3f466c044b09cd4cdbdf6b964db2412628",
+      "before_clippy_commit": "3882d7da60158d3042ae33efeb5bca72fcc4b085"
+    },
+    {
+      "key": "capacity-carry",
+      "change": "movrxsk",
+      "commit": "02cbad0f49dd4d4cdbe1faae04a984af07150543",
+      "before_clippy_commit": "db4827ff87215ff3be8fa892eac3f6ac4c4b484d"
+    },
+    {
+      "key": "blank-rows",
+      "change": "krlvrvl",
+      "commit": "595623207b12eafe0d178e15ac26d67a1aabf472",
+      "before_clippy_commit": "f8e484e0ac8edf5916717ea51c12b14b4a4f83e4"
+    }
+  ],
+  "post_replay_validation": {
+    "argv": [
+      "cargo",
+      "+1.95.0",
+      "clippy",
+      "--locked",
+      "--offline",
+      "-p",
+      "rustty-vt",
+      "-p",
+      "tmuxx-runtime",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "result": "passed without lint suppressions",
+    "log": "clippy-replayed-tip.log"
+  }
+}

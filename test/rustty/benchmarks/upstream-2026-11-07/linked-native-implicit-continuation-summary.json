@@ -1,0 +1,78 @@
+{
+  "zig": {
+    "live": [
+      {
+        "explicit": null,
+        "implicit": 0,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      },
+      {
+        "explicit": null,
+        "implicit": 0,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      }
+    ],
+    "rust": [
+      {
+        "explicit": null,
+        "implicit": 0,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      },
+      {
+        "explicit": null,
+        "implicit": 1,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      }
+    ],
+    "zig": [
+      {
+        "explicit": null,
+        "implicit": 0,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      },
+      {
+        "explicit": null,
+        "implicit": 1,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      }
+    ]
+  },
+  "rust": {
+    "live": [
+      {
+        "explicit": null,
+        "implicit": 0,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      },
+      {
+        "explicit": null,
+        "implicit": 0,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      }
+    ],
+    "rust": [
+      {
+        "explicit": null,
+        "implicit": 0,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      },
+      {
+        "explicit": null,
+        "implicit": 1,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      }
+    ],
+    "zig": [
+      {
+        "explicit": null,
+        "implicit": 0,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      },
+      {
+        "explicit": null,
+        "implicit": 1,
+        "uri": "687474703a2f2f6578616d706c652e74657374"
+      }
+    ]
+  }
+}

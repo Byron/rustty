@@ -1,0 +1,21 @@
+{
+  "source": "6aced98bc012e4714753d242c3ad43b85406be11",
+  "command": [
+    "cargo",
+    "+1.95.0",
+    "build",
+    "--release",
+    "--locked",
+    "--offline",
+    "-p",
+    "rustty-render",
+    "--example",
+    "prepare_frames"
+  ],
+  "profile": {
+    "lto": "thin",
+    "codegen_units": 1
+  },
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "binary_sha256": "8972447d9295e8227ddb6697494095140507b2177bda83a7403d3ea260c055cb"
+}

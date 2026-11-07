@@ -1,0 +1,7 @@
+{
+  "cols": 120,
+  "rows": 80,
+  "bytes": 3499,
+  "sha256": "cdf494885d70d989a21847473f45c4b253f40e54db2f28560a94392a2b8ccde6",
+  "source": "generate-shaper-fixture.py"
+}

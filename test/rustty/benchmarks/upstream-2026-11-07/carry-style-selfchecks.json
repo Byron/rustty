@@ -1,0 +1,237 @@
+[
+  {
+    "name": "plain",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "plain",
+        "iterations": 1,
+        "elapsed_ns": 15234500,
+        "units_per_iteration": 8388587,
+        "cell_bytes": 8,
+        "checksum": 18031999217808237406,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "plain",
+        "iterations": 1,
+        "elapsed_ns": 15074209,
+        "units_per_iteration": 8388587,
+        "cell_bytes": 8,
+        "checksum": 18031999217808237406,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "plain",
+        "iterations": 1,
+        "elapsed_ns": 5901000,
+        "units_per_iteration": 8388587,
+        "cell_bytes": 8,
+        "checksum": 18031999217808237406,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "styled-1",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-1",
+        "iterations": 1,
+        "elapsed_ns": 51408750,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 12899486017603866576,
+        "history_rows": 564,
+        "page_bytes": 1048576,
+        "page_count": 2,
+        "owned_bytes": 1034880
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-1",
+        "iterations": 1,
+        "elapsed_ns": 47239833,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 12899486017603866576,
+        "history_rows": 431,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 767856
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-1",
+        "iterations": 1,
+        "elapsed_ns": 25626542,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 12899486017603866576,
+        "history_rows": 431,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "styled-2",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-2",
+        "iterations": 1,
+        "elapsed_ns": 45719417,
+        "units_per_iteration": 8388510,
+        "cell_bytes": 8,
+        "checksum": 12966706845396462931,
+        "history_rows": 318,
+        "page_bytes": 933888,
+        "page_count": 2,
+        "owned_bytes": 948224
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-2",
+        "iterations": 1,
+        "elapsed_ns": 42118125,
+        "units_per_iteration": 8388510,
+        "cell_bytes": 8,
+        "checksum": 12966706845396462931,
+        "history_rows": 451,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 767856
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-2",
+        "iterations": 1,
+        "elapsed_ns": 23169875,
+        "units_per_iteration": 8388510,
+        "cell_bytes": 8,
+        "checksum": 12966706845396462931,
+        "history_rows": 451,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "styled-3",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-3",
+        "iterations": 1,
+        "elapsed_ns": 41875667,
+        "units_per_iteration": 8388595,
+        "cell_bytes": 8,
+        "checksum": 10588578405522194252,
+        "history_rows": 419,
+        "page_bytes": 1048576,
+        "page_count": 2,
+        "owned_bytes": 995328
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-3",
+        "iterations": 1,
+        "elapsed_ns": 39280375,
+        "units_per_iteration": 8388595,
+        "cell_bytes": 8,
+        "checksum": 10588578405522194252,
+        "history_rows": 257,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 767856
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-3",
+        "iterations": 1,
+        "elapsed_ns": 22241084,
+        "units_per_iteration": 8388595,
+        "cell_bytes": 8,
+        "checksum": 10588578405522194252,
+        "history_rows": 257,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "styled-4",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-4",
+        "iterations": 1,
+        "elapsed_ns": 39997875,
+        "units_per_iteration": 8388583,
+        "cell_bytes": 8,
+        "checksum": 16292896308437353651,
+        "history_rows": 506,
+        "page_bytes": 1048576,
+        "page_count": 2,
+        "owned_bytes": 1034880
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-4",
+        "iterations": 1,
+        "elapsed_ns": 36958209,
+        "units_per_iteration": 8388583,
+        "cell_bytes": 8,
+        "checksum": 16292896308437353651,
+        "history_rows": 356,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 767856
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-4",
+        "iterations": 1,
+        "elapsed_ns": 22357792,
+        "units_per_iteration": 8388583,
+        "cell_bytes": 8,
+        "checksum": 16292896308437353651,
+        "history_rows": 356,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  }
+]

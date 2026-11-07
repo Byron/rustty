@@ -1,0 +1,8 @@
+{
+  "key": "capacity-carry",
+  "commit": "db4827ff87215ff3be8fa892eac3f6ac4c4b484d",
+  "change": "movrxsk",
+  "subject": "perf(vt): carry live resource demand into new pages",
+  "result": "Project live resources and carry recent page demand with bounded hints, native fitting, burst decay and byte-budget pruning.",
+  "validation": "233 library and 450 integration tests; 386 exact native layouts and 181 smoke comparisons; 28 native page-ledger and six complete-state observations; both dense reflow checks. Three timing rounds: retained links 60\u201377% faster, combined map+carry short links 54\u201373% faster than valid pre-map controls, other controls within 0.9%."
+}

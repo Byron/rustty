@@ -1,0 +1,8 @@
+{
+  "name": "links-full-215x215-50000000",
+  "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/links-full.vt",
+  "cols": 215,
+  "rows": 215,
+  "scrollback_bytes": 50000000,
+  "grapheme_width": "legacy"
+}

@@ -1,0 +1,18 @@
+{
+  "runner_summary": {
+    "aborted": false,
+    "checked": 237,
+    "coverage_gaps": [],
+    "covered": [
+      "snapshot.streaming",
+      "terminal.pages",
+      "terminal.search"
+    ],
+    "error": null,
+    "failures": 0,
+    "full_parity": false,
+    "mode": "smoke"
+  },
+  "counts": {},
+  "failures": []
+}

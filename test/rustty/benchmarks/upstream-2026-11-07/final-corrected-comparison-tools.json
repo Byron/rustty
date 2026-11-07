@@ -1,0 +1,25 @@
+{
+  "commit": "6ad34306f7477ccad2f7fbd53f066b679b5aaf15",
+  "binaries": {
+    "runner": {
+      "path": "target/release/examples/parity-runner",
+      "sha256": "0a2dbe6ec2d5a01aad642a689d49727ea9a699279a2fe0b54d64c67db5e14de7",
+      "bytes": 2257664
+    },
+    "rust": {
+      "path": "target/release/examples/parity",
+      "sha256": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5",
+      "bytes": 2816912
+    },
+    "stream": {
+      "path": "target/release/examples/stream-file",
+      "sha256": "819376fbd18a180a9babba4e1fe5f0f355f5a2e29ab2aeb5c4f7e3bdf8c39237",
+      "bytes": 1738784
+    },
+    "zig": {
+      "path": "zig-out/bin/vt-oracle",
+      "sha256": "ffed07e73c1a44e3cae1cec05308a47aeb60bf7e990d763faba96ddca1234ccc",
+      "bytes": 9951112
+    }
+  }
+}

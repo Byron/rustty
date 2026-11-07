@@ -1,0 +1,16 @@
+{
+  "runner_summary": {
+    "aborted": false,
+    "checked": 336,
+    "coverage_gaps": [],
+    "covered": [
+      "parser.raw-events"
+    ],
+    "error": null,
+    "failures": 0,
+    "full_parity": false,
+    "mode": "smoke"
+  },
+  "counts": {},
+  "failures": []
+}

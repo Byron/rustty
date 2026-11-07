@@ -1,0 +1,23 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running tests/native_views.rs (target/debug/deps/native_views-26c4ab59e41c1c55)
+
+running 16 tests
+test agent_status_is_retained_without_views_and_reconnect_keeps_the_process ... ok
+test buffer_clipboard_flags_target_exact_native_view_and_keep_binary_data ... ok
+test clipboard_defaults_block_writes_and_opt_in_fires_buffer_notification_and_hook ... ok
+test native_absent_host_state_still_validates_requests_and_command_targets ... ok
+test native_cell_geometry_updates_terminal_queries_pty_and_pairwise_arbitration ... ok
+test native_late_gui_events_after_kill_are_idempotent ... ok
+test native_reported_colors_are_query_only_and_survive_reconnect ... ok
+test native_splits_spawn_in_reported_directory_with_override_and_stale_fallback ... ok
+test native_style_theme_and_active_pane_survive_view_reconnect ... ok
+test native_view_size_cannot_follow_a_client_into_a_different_session ... ok
+test native_view_size_fit_can_claim_a_window_linked_into_another_session ... ok
+test native_view_size_preserves_policies_and_fits_all_session_windows ... ok
+test one_view_handles_clipboard_and_reply_cannot_be_replayed ... ok
+test retention_acknowledgement_preserves_only_selected_panes_after_all_views_leave ... ok
+test tmux_wrapped_clipboard_writes_follow_policy_and_reach_one_client ... ok
+test two_view_sizes_are_arbitrated_without_changing_process_identity ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.67s
+

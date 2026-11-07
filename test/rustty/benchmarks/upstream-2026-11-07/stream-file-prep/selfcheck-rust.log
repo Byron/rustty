@@ -1,0 +1,3 @@
+   Compiling rustty-stream-file-prep v0.0.0 (/private/tmp/rustty-reintegrate.leadij/stream-file-prep)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.22s
+     Running `/private/tmp/rustty-reintegrate.leadij/stream-file-prep/target/debug/stream-file /private/tmp/rustty-reintegrate.leadij/stream-file-prep/selfcheck.json 2`

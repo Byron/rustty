@@ -1,0 +1,19 @@
+    Checking bitflags v2.13.2
+    Checking objc2 v0.6.4
+    Checking bytemuck v1.25.2
+    Checking png v0.18.1
+    Checking tiny-skia-path v0.11.4
+    Checking wide v1.7.0
+    Checking tiny-skia v0.11.4
+    Checking dispatch2 v0.3.1
+    Checking objc2-foundation v0.3.2
+    Checking block2 v0.6.2
+    Checking objc2-core-foundation v0.3.2
+    Checking objc2-metal v0.3.2
+    Checking objc2-core-graphics v0.3.2
+    Checking objc2-core-text v0.3.2
+    Checking rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+    Checking rustty-font v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-font)
+    Checking rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Checking rustty-render v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-render)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.10s

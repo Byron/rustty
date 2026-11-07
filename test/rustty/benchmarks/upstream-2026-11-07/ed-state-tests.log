@@ -1,0 +1,10 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.46s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 2 tests
+test screen::tests::accepted_streaming_history_updates_semantic_prompt_seen_after_reset ... ok
+test screen::tests::semantic_prompt_seen_survives_copies_and_derives_from_restored_state ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 0.01s
+

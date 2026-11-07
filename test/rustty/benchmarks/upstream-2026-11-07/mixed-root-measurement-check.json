@@ -1,0 +1,119 @@
+{
+  "timings_sha256": "cfcb803cce57330f95199968526b2bb4af453063ae84e2b38c8b3046fdbd35eb",
+  "records": 117,
+  "cases": 11,
+  "correctness_and_storage_guards": "all equal across runs and comparable engines",
+  "results": [
+    {
+      "name": "plain",
+      "median_ms": {
+        "before": 14.36193334,
+        "after": 14.41136242,
+        "native": 6.16671008
+      },
+      "time_change_percent": 0.34416731250472843
+    },
+    {
+      "name": "plain-styled-protected",
+      "median_ms": {
+        "before": 18.6472698,
+        "after": 18.533699,
+        "native": 68.310004175
+      },
+      "time_change_percent": -0.6090478725201964
+    },
+    {
+      "name": "styled-4",
+      "median_ms": {
+        "before": 38.8637625,
+        "after": 38.5971646,
+        "native": 23.2973313
+      },
+      "time_change_percent": -0.6859806741562946
+    },
+    {
+      "name": "wide",
+      "median_ms": {
+        "pre-blank": 12.021265983333333,
+        "before": 12.031379183333334,
+        "after": 12.20709095,
+        "native": 5.5766861
+      },
+      "time_change_percent": 1.4604457559618256,
+      "combined_vs_pre_blank_percent": 1.545801972307248
+    },
+    {
+      "name": "wide-spaces",
+      "median_ms": {
+        "pre-blank": 51.034308333333335,
+        "before": 52.2929168,
+        "after": 30.327458333333333,
+        "native": 10.307969333333334
+      },
+      "time_change_percent": -42.004653423093565,
+      "combined_vs_pre_blank_percent": -40.57437178290356
+    },
+    {
+      "name": "mixed-wide",
+      "median_ms": {
+        "pre-blank": 69.103875,
+        "before": 70.9500002,
+        "after": 37.882366700000006,
+        "native": 11.231679199999999
+      },
+      "time_change_percent": -46.60695335699238,
+      "combined_vs_pre_blank_percent": -45.180546387594035
+    },
+    {
+      "name": "wide-unicode",
+      "median_ms": {
+        "pre-blank": 12.228402766666667,
+        "before": 12.238840266666667,
+        "after": 12.3456875,
+        "native": 6.303479166666667
+      },
+      "time_change_percent": 0.8730176307990556,
+      "combined_vs_pre_blank_percent": 0.9591173562996991
+    },
+    {
+      "name": "wide-spaces-unicode",
+      "median_ms": {
+        "pre-blank": 51.728020875,
+        "before": 53.19159375,
+        "after": 33.149781125,
+        "native": 11.133927
+      },
+      "time_change_percent": -37.678533790877445,
+      "combined_vs_pre_blank_percent": -35.91523401773682
+    },
+    {
+      "name": "mixed-wide-unicode",
+      "median_ms": {
+        "pre-blank": 69.8829305,
+        "before": 72.33983316666666,
+        "after": 41.04222216666666,
+        "native": 12.367444333333333
+      },
+      "time_change_percent": -43.26469889402726,
+      "combined_vs_pre_blank_percent": -41.27003279196103
+    },
+    {
+      "name": "combining-control",
+      "median_ms": {
+        "before": 27.62622233333333,
+        "after": 27.938695,
+        "native": 10.595930666666666
+      },
+      "time_change_percent": 1.1310727282812127
+    },
+    {
+      "name": "emoji-control",
+      "median_ms": {
+        "before": 11.178611,
+        "after": 11.237194333333335,
+        "native": 5.791666666666667
+      },
+      "time_change_percent": 0.5240663024532743
+    }
+  ]
+}

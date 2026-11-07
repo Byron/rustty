@@ -1,0 +1,475 @@
+[
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/event-boundary/False/narrow",
+      "kind": "snapshot",
+      "cols": 7,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f32303237681b5d383b69643d6576656e743b687474703a2f2f6578616d706c652e746573741b5c61626364656667"
+        },
+        {
+          "op": "write",
+          "data": "6162636465666768696a6b6c6d6e6f707172737475767778797a30313233343536373839"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/odd-edge/None/narrow",
+      "kind": "snapshot",
+      "cols": 7,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5b313b33316d1b5b3122711b5d3133333b50071b5d383b3b687474703a2f2f6578616d706c652e746573741b5c"
+        },
+        {
+          "op": "write",
+          "data": "68656c6c6f20776f726c6421616263"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5d383b3b1b5c1b5b3262"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/same-uri-reopen/None",
+      "kind": "snapshot",
+      "cols": 80,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5d383b3b687474703a2f2f6578616d706c652e746573741b5ce4b8ad20611b5d383b3b1b5c"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5d383b3b687474703a2f2f6578616d706c652e746573741b5ce8aa9e20621b5d383b3b1b5c"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/odd-edge/explicit/mixed",
+      "kind": "snapshot",
+      "cols": 7,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5b313b33316d1b5b3122711b5d3133333b50071b5d383b69643d6578706c696369743b687474703a2f2f6578616d706c652e746573741b5c"
+        },
+        {
+          "op": "write",
+          "data": "e4b8ad20e4ba8c3132e4b88920e59b9b61e6bca2e5ad9720"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5d383b3b1b5c1b5b3262"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/overwrite/same",
+      "kind": "snapshot",
+      "cols": 15,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5d383b3b687474703a2f2f6578616d706c652e746573741b5c6f6f6f6f6f6f6f6f6f6f6f6fe4b8ad1b5b313b3348"
+        },
+        {
+          "op": "write",
+          "data": "61e4ba8c62e4b889e59b9b2063e6bca264656667"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/margin-wrap-control",
+      "kind": "snapshot",
+      "cols": 10,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f32303237681b5b3f3639681b5b333b38731b5b313b3130481b5d383b3b687474703a2f2f6578616d706c652e746573741b5c"
+        },
+        {
+          "op": "write",
+          "data": "61626364e4b8ad2061e8aa9e2062"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/map-free/0/narrow",
+      "kind": "snapshot",
+      "cols": 200,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5b323b31481b5d383b3b66696c6c65721b5c7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878781b5b481b5d383b3b687474703a2f2f6578616d706c652e746573741b5c"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "68656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c6421616263"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/map-free/1/wide",
+      "kind": "snapshot",
+      "cols": 200,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5b323b31481b5d383b3b66696c6c65721b5c78787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878781b5b481b5d383b3b687474703a2f2f6578616d706c652e746573741b5c"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "e4b8ade4ba8ce4b889e59b9be6bca2e5ad97e38182e382a2e4b8ade4ba8ce4b889e59b9be6bca2e5ad97e38182e382a2e4b8ade4ba8ce4b889e59b9be6bca2e5ad97e38182e382a2e4b8ade4ba8ce4b889e59b9be6bca2e5ad97e38182e382a2e4b8ade4ba8ce4b889e59b9be6bca2e5ad97e38182e382a2e4b8ade4ba8ce4b889e59b9be6bca2e5ad97e38182e382a2e4b8ade4ba8ce4b889e59b9be6bca2e5ad97e38182e382a2e4b8ade4ba8ce4b889e59b9be6bca2e5ad97e38182e382a2"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/map-free/2/mixed",
+      "kind": "snapshot",
+      "cols": 200,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5b323b31481b5d383b3b66696c6c65721b5c787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878781b5b481b5d383b3b687474703a2f2f6578616d706c652e746573741b5c"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "e4b8ad20e4ba8c3132e4b88920e59b9b61e6bca2e5ad9720e4b8ad20e4ba8c3132e4b88920e59b9b61e6bca2e5ad9720e4b8ad20e4ba8c3132e4b88920e59b9b61e6bca2e5ad9720e4b8ad20e4ba8c3132e4b88920e59b9b61e6bca2e5ad9720e4b8ad20e4ba8c3132e4b88920e59b9b61e6bca2e5ad9720e4b8ad20e4ba8c3132e4b88920e59b9b61e6bca2e5ad9720e4b8ad20e4ba8c3132e4b88920e59b9b61e6bca2e5ad9720e4b8ad20e4ba8c3132e4b88920e59b9b61e6bca2e5ad9720"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/map-free/7/narrow",
+      "kind": "snapshot",
+      "cols": 200,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "1b5b323b31481b5d383b3b66696c6c65721b5c78787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878781b5b481b5d383b3b687474703a2f2f6578616d706c652e746573741b5c"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "68656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c642161626368656c6c6f20776f726c6421616263"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        }
+      ],
+      "after": [
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  },
+  {
+    "request": {
+      "id": "pages/hyperlinks/batched/page-crossing/10000/narrow",
+      "kind": "input",
+      "cols": 200,
+      "rows": 3,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "pages"
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "limits",
+            "bytes": 10000
+          }
+        },
+        {
+          "op": "write",
+          "data": "1b5b316d1b5d383b3b687474703a2f2f611b5c781b5d383b3b687474703a2f2f621b5c781b5d383b3b687474703a2f2f631b5c781b5b333b31480a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "write",
+          "data": "6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f707172737475767778797a6162636465666768696a6b6c6d6e6f70717273"
+        },
+        {
+          "op": "pages"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5d383b3b1b5c1b5b3262"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b32621b5b366e"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.pages",
+      "terminal.cells",
+      "terminal.cursor"
+    ]
+  }
+]

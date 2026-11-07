@@ -1,0 +1,36 @@
+warmup-0-before 0.247899 s;24files exact
+warmup-0-after 0.020298 s;24files exact
+timed-1-before 0.239162 s;24files exact
+timed-1-after 0.019955 s;24files exact
+timed-2-after 0.02022 s;24files exact
+timed-2-before 0.236292 s;24files exact
+timed-3-before 0.233953 s;24files exact
+timed-3-after 0.019243 s;24files exact
+{
+  "pairs": [
+    {
+      "round": 1,
+      "before": 239161667,
+      "after": 19955083,
+      "after_vs_before_percent": -91.65623686675507
+    },
+    {
+      "round": 2,
+      "after": 20220291,
+      "before": 236291709,
+      "after_vs_before_percent": -91.44265743153942
+    },
+    {
+      "round": 3,
+      "before": 233952708,
+      "after": 19242542,
+      "after_vs_before_percent": -91.77502916529609
+    }
+  ],
+  "medians_ns": {
+    "before": 236291709,
+    "after": 19955083
+  },
+  "median_percent": -91.55489497094457,
+  "all192_saved_files_exact": true
+}

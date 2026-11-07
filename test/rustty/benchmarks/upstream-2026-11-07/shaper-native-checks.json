@@ -1,0 +1,34 @@
+{
+  "binary_sha256": "83b8cc0a0098cff0c963d308c019ae32a2cdbf8b59f47e023d05ba62283a5304",
+  "build_flags": [
+    "-Demit-lib-vt=true",
+    "-Demit-bench=true",
+    "-Demit-macos-app=false",
+    "-Doptimize=ReleaseFast",
+    "-Dsentry=false"
+  ],
+  "checks": [
+    {
+      "mode": "runs",
+      "argv": [
+        "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/ghostty-bench",
+        "+shaper-rows",
+        "--mode=runs",
+        "--iterations=1",
+        "--data=/private/tmp/rustty-reintegrate.leadij/shaper-fixture.vt"
+      ],
+      "returncode": 0
+    },
+    {
+      "mode": "shape",
+      "argv": [
+        "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/ghostty-bench",
+        "+shaper-rows",
+        "--mode=shape",
+        "--iterations=1",
+        "--data=/private/tmp/rustty-reintegrate.leadij/shaper-fixture.vt"
+      ],
+      "returncode": 0
+    }
+  ]
+}

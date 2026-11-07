@@ -1,0 +1,25 @@
+   Compiling rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.76s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 1 test
+test screen::tests::mixed_row_writer_crosses_width_changes_and_restyles_exact_cells ... FAILED
+
+failures:
+
+---- screen::tests::mixed_row_writer_crosses_width_changes_and_restyles_exact_cells stdout ----
+
+thread 'screen::tests::mixed_row_writer_crosses_width_changes_and_restyles_exact_cells' (96541455) panicked at crates/rustty-vt/src/screen/tests.rs:1418:9:
+assertion `left == right` failed
+  left: 1
+ right: 5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    screen::tests::mixed_row_writer_crosses_width_changes_and_restyles_exact_cells
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p rustty-vt --lib`

@@ -1,0 +1,354 @@
+[
+  {
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-controlled",
+      "plain",
+      "20000",
+      "80"
+    ],
+    "results": [
+      {
+        "case": "plain",
+        "cols": 120,
+        "rows": 80,
+        "round": 0,
+        "iterations": 20000,
+        "input_bytes": 5819,
+        "frames_per_feed": 64,
+        "elapsed_ns": 90070750
+      },
+      {
+        "case": "plain",
+        "cols": 120,
+        "rows": 80,
+        "round": 1,
+        "iterations": 20000,
+        "input_bytes": 5819,
+        "frames_per_feed": 64,
+        "elapsed_ns": 88622875
+      },
+      {
+        "case": "plain",
+        "cols": 120,
+        "rows": 80,
+        "round": 2,
+        "iterations": 20000,
+        "input_bytes": 5819,
+        "frames_per_feed": 64,
+        "elapsed_ns": 89624000
+      }
+    ],
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-controlled",
+      "plain",
+      "20000",
+      "80"
+    ],
+    "results": [
+      {
+        "case": "plain",
+        "cols": 120,
+        "rows": 80,
+        "round": 0,
+        "iterations": 20000,
+        "input_bytes": 5819,
+        "frames_per_feed": 64,
+        "elapsed_ns": 91415167
+      },
+      {
+        "case": "plain",
+        "cols": 120,
+        "rows": 80,
+        "round": 1,
+        "iterations": 20000,
+        "input_bytes": 5819,
+        "frames_per_feed": 64,
+        "elapsed_ns": 91631667
+      },
+      {
+        "case": "plain",
+        "cols": 120,
+        "rows": 80,
+        "round": 2,
+        "iterations": 20000,
+        "input_bytes": 5819,
+        "frames_per_feed": 64,
+        "elapsed_ns": 91417916
+      }
+    ],
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "name": "erase-2",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-controlled",
+      "erase-2",
+      "400",
+      "80"
+    ],
+    "results": [
+      {
+        "case": "erase-2",
+        "cols": 120,
+        "rows": 80,
+        "round": 0,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 940350000
+      },
+      {
+        "case": "erase-2",
+        "cols": 120,
+        "rows": 80,
+        "round": 1,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 914458167
+      },
+      {
+        "case": "erase-2",
+        "cols": 120,
+        "rows": 80,
+        "round": 2,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 914979416
+      }
+    ],
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "name": "erase-2",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-controlled",
+      "erase-2",
+      "400",
+      "80"
+    ],
+    "results": [
+      {
+        "case": "erase-2",
+        "cols": 120,
+        "rows": 80,
+        "round": 0,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 933176167
+      },
+      {
+        "case": "erase-2",
+        "cols": 120,
+        "rows": 80,
+        "round": 1,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 938677666
+      },
+      {
+        "case": "erase-2",
+        "cols": 120,
+        "rows": 80,
+        "round": 2,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 901887167
+      }
+    ],
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "name": "erase-2-seen",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-controlled",
+      "erase-2-seen",
+      "400",
+      "80"
+    ],
+    "results": [
+      {
+        "case": "erase-2-seen",
+        "cols": 120,
+        "rows": 80,
+        "round": 0,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 1185328750
+      },
+      {
+        "case": "erase-2-seen",
+        "cols": 120,
+        "rows": 80,
+        "round": 1,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 1156161416
+      },
+      {
+        "case": "erase-2-seen",
+        "cols": 120,
+        "rows": 80,
+        "round": 2,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 1161816458
+      }
+    ],
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "name": "erase-2-seen",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-controlled",
+      "erase-2-seen",
+      "400",
+      "80"
+    ],
+    "results": [
+      {
+        "case": "erase-2-seen",
+        "cols": 120,
+        "rows": 80,
+        "round": 0,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 1163280042
+      },
+      {
+        "case": "erase-2-seen",
+        "cols": 120,
+        "rows": 80,
+        "round": 1,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 1189420916
+      },
+      {
+        "case": "erase-2-seen",
+        "cols": 120,
+        "rows": 80,
+        "round": 2,
+        "iterations": 400,
+        "input_bytes": 3448,
+        "frames_per_feed": 64,
+        "elapsed_ns": 1145006208
+      }
+    ],
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "name": "erase-22",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-controlled",
+      "erase-22",
+      "400",
+      "80"
+    ],
+    "results": [
+      {
+        "case": "erase-22",
+        "cols": 120,
+        "rows": 80,
+        "round": 0,
+        "iterations": 400,
+        "input_bytes": 3512,
+        "frames_per_feed": 64,
+        "elapsed_ns": 248128292
+      },
+      {
+        "case": "erase-22",
+        "cols": 120,
+        "rows": 80,
+        "round": 1,
+        "iterations": 400,
+        "input_bytes": 3512,
+        "frames_per_feed": 64,
+        "elapsed_ns": 246569375
+      },
+      {
+        "case": "erase-22",
+        "cols": 120,
+        "rows": 80,
+        "round": 2,
+        "iterations": 400,
+        "input_bytes": 3512,
+        "frames_per_feed": 64,
+        "elapsed_ns": 248984791
+      }
+    ],
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "name": "erase-22",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-controlled",
+      "erase-22",
+      "400",
+      "80"
+    ],
+    "results": [
+      {
+        "case": "erase-22",
+        "cols": 120,
+        "rows": 80,
+        "round": 0,
+        "iterations": 400,
+        "input_bytes": 3512,
+        "frames_per_feed": 64,
+        "elapsed_ns": 248845209
+      },
+      {
+        "case": "erase-22",
+        "cols": 120,
+        "rows": 80,
+        "round": 1,
+        "iterations": 400,
+        "input_bytes": 3512,
+        "frames_per_feed": 64,
+        "elapsed_ns": 248596625
+      },
+      {
+        "case": "erase-22",
+        "cols": 120,
+        "rows": 80,
+        "round": 2,
+        "iterations": 400,
+        "input_bytes": 3512,
+        "frames_per_feed": 64,
+        "elapsed_ns": 249025333
+      }
+    ],
+    "status": 0,
+    "stderr": ""
+  }
+]

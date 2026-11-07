@@ -1,0 +1,42 @@
+Rustty Cell: 8 bytes
+Benchmarking rustty/resource_churn/plain
+Benchmarking rustty/resource_churn/plain: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/plain: Collecting 20 samples in estimated 2.0000 s (1.9M iterations)
+Benchmarking rustty/resource_churn/plain: Analyzing
+rustty/resource_churn/plain
+                        time:   [1.0498 µs 1.0545 µs 1.0608 µs]
+                        thrpt:  [1.2066 Gelem/s 1.2138 Gelem/s 1.2193 Gelem/s]
+                 change:
+                        time:   [−0.0868% +0.4991% +1.0491%] (p = 0.11 > 0.05)
+                        thrpt:  [−1.0382% −0.4966% +0.0869%]
+                        No change in performance detected.
+Benchmarking rustty/resource_churn/style
+Benchmarking rustty/resource_churn/style: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/style: Collecting 20 samples in estimated 2.0253 s (14k iterations)
+Benchmarking rustty/resource_churn/style: Analyzing
+rustty/resource_churn/style
+                        time:   [146.48 µs 147.35 µs 148.07 µs]
+                        thrpt:  [8.6445 Melem/s 8.6866 Melem/s 8.7385 Melem/s]
+                 change:
+                        time:   [−31.709% −31.341% −30.951%] (p = 0.00 < 0.05)
+                        thrpt:  [+44.825% +45.647% +46.433%]
+                        Performance has improved.
+Benchmarking rustty/resource_churn/hyperlink
+Benchmarking rustty/resource_churn/hyperlink: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/hyperlink: Collecting 20 samples in estimated 2.0597 s (3150 iterations)
+Benchmarking rustty/resource_churn/hyperlink: Analyzing
+rustty/resource_churn/hyperlink
+                        time:   [662.07 µs 673.21 µs 686.50 µs]
+                        thrpt:  [1.8645 Melem/s 1.9013 Melem/s 1.9333 Melem/s]
+                 change:
+                        time:   [−37.552% −36.718% −35.897%] (p = 0.00 < 0.05)
+                        thrpt:  [+55.999% +58.024% +60.133%]
+                        Performance has improved.
+Found 3 outliers among 20 measurements (15.00%)
+  2 (10.00%) low mild
+  1 (5.00%) high mild
+
+kitty_upload/unique_256px_4_terminals: sources=4, source_bytes=1048576
+kitty_upload/duplicate_256px_4_terminals: sources=1, source_bytes=262144
+kitty_upload/unique_1024px_4_terminals: sources=4, source_bytes=16777216
+kitty_upload/duplicate_1024px_4_terminals: sources=1, source_bytes=4194304

@@ -1,0 +1,22 @@
+plain.vt {'bytes': 8388587, 'lines': 135334, 'sgr_sequences': 0}
+styled-1.vt {'bytes': 8388604, 'lines': 66379, 'sgr_sequences': 432812}
+styled-2.vt {'bytes': 8388510, 'lines': 46729, 'sgr_sequences': 304463}
+styled-3.vt {'bytes': 8388595, 'lines': 36138, 'sgr_sequences': 235663}
+styled-4.vt {'bytes': 8388583, 'lines': 29493, 'sgr_sequences': 191930}
+erase-2-120x80.vt {'bytes': 8388576, 'lines': 141302, 'erase_iterations': 141302}
+erase-2-120x12.vt {'bytes': 8388576, 'lines': 144412, 'erase_iterations': 144412}
+erase-2-300x100.vt {'bytes': 8388604, 'lines': 139873, 'erase_iterations': 139873}
+erase-22-120x80.vt {'bytes': 8388555, 'lines': 138961, 'erase_iterations': 138961}
+erase-22-120x12.vt {'bytes': 8388594, 'lines': 141965, 'erase_iterations': 141965}
+erase-22-300x100.vt {'bytes': 8388575, 'lines': 137582, 'erase_iterations': 137582}
+erase-rate-120x80.vt {'bytes': 8388606, 'lines': 579323, 'erase_iterations': 57876}
+erase-rate-120x12.vt {'bytes': 8388599, 'lines': 584505, 'erase_iterations': 58384}
+erase-rate-300x100.vt {'bytes': 8388578, 'lines': 576871, 'erase_iterations': 57647}
+erase-lines-120x80.vt {'bytes': 8388158, 'lines': 16881, 'erase_iterations': 16881}
+erase-lines-120x12.vt {'bytes': 8388272, 'lines': 17844, 'erase_iterations': 17844}
+erase-lines-300x100.vt {'bytes': 8388154, 'lines': 16461, 'erase_iterations': 16461}
+links-short.vt {'bytes': 8388600, 'lines': 204600, 'unique_uris': 1}
+links-full.vt {'bytes': 8388457, 'lines': 52794, 'unique_uris': 1000}
+wide.vt {'bytes': 8388608, 'codepoints': 2801664, 'wide': 2793472, 'spaces': 8192}
+wide-spaces.vt {'bytes': 8388608, 'codepoints': 3308078, 'wide': 2540265, 'spaces': 767813}
+mixed-wide.vt {'bytes': 8388608, 'codepoints': 3846204, 'wide': 2271202, 'spaces': 892976}

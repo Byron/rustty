@@ -1,0 +1,19 @@
+{
+  "result": "No actionable review finding",
+  "scope": "Read-only patch and connected production lifecycle review; no tests, builds, or source edits",
+  "patch_sha256": {
+    "runtime-stale-tests-prep/drag.patch": "47ff7c8138595808af2c34b411ebad271d5979f1eef17af346a9d2df954b78aa",
+    "runtime-stale-tests-prep/native-stream.patch": "daee23028360803392ee01225e2e20f07bba5c4f970a33d9416076354a4991ab"
+  },
+  "drag": "Process::try_write_input maps a full record queue to WouldBlock and rolls back input_bytes; write_input maps WouldBlock to byte-budget text. The patch changes only the stale expected message and retains drag-view and zero-byte rollback assertions.",
+  "native_stream": "Slow initial attach snapshot is consumed before the20MiB output burst. Replayable queue overflow sets needs_snapshot. Healthy DONE delivery proves the owner has already applied the full burst before slow consumption begins. flush_native sends the replacement only once delivery_bytes==0 and no prior snapshot is pending; the first replacement therefore contains final READYDONE. receive asserts on disconnection and has a30-second deadline. The patch keeps bounded backlog1..256, recovered PID/text, exact healthy bytes/zeros/sequence, PTY liveness and reconnect assertions.",
+  "paths": [
+    "tmuxx/crates/tmuxx-runtime/src/lib.rs:185",
+    "tmuxx/crates/tmuxx-runtime/src/lib.rs:217",
+    "tmuxx/crates/tmuxx-runtime/src/delivery.rs:79",
+    "tmuxx/crates/tmuxx-runtime/src/delivery.rs:171",
+    "tmuxx/crates/tmuxx-runtime/tests/native_stream_consistency.rs:335"
+  ],
+  "superseded_by_runtime_validation": true,
+  "correction": "The initial review missed that cumulative queued receives can exceed the instantaneous channel capacity. Runtime validation observed257, invalidating the1..256 cumulative assertion. Root replaced the counter with existing snapshot(&slow), retaining authoritative READYDONE/PID/healthy/PTTY/reconnect checks. Exact instantaneous bounds are covered separately by critical_backlog_and_final_barriers_share_finite_budgets and native_byte_backlog_recovers_without_blocking_healthy_client. Initial native-stream patch is preserved as runtime-stale-tests-prep/native-stream-initial.patch; runtime-qa-amend-results.json records final validated source."
+}

@@ -1,0 +1,578 @@
+[
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-120x80-0",
+        "iterations": 1,
+        "elapsed_ns": 373691792,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 1589550112815534490,
+        "history_rows": 0,
+        "page_bytes": 573440,
+        "page_count": 1,
+        "owned_bytes": 666120
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-120x80-0",
+        "iterations": 1,
+        "elapsed_ns": 371833583,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 1589550112815534490,
+        "history_rows": 0,
+        "page_bytes": 884736,
+        "page_count": 1,
+        "owned_bytes": 565634
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-full-120x80-0",
+        "iterations": 1,
+        "elapsed_ns": 49529500,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 1589550112815534490,
+        "history_rows": 0,
+        "page_bytes": 901120,
+        "page_count": 1,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-120x80-10000",
+        "iterations": 1,
+        "elapsed_ns": 1681202208,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 1589550112815534490,
+        "history_rows": 443,
+        "page_bytes": 1949696,
+        "page_count": 2,
+        "owned_bytes": 1483364
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-120x80-10000",
+        "iterations": 1,
+        "elapsed_ns": 1082895834,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 1589550112815534490,
+        "history_rows": 443,
+        "page_bytes": 2719744,
+        "page_count": 2,
+        "owned_bytes": 1829850
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-full-120x80-10000",
+        "iterations": 1,
+        "elapsed_ns": 42172541,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 1589550112815534490,
+        "history_rows": 443,
+        "page_bytes": 1867776,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-120x80-50000000",
+        "iterations": 1,
+        "elapsed_ns": 1695227792,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 1589550112815534490,
+        "history_rows": 15491,
+        "page_bytes": 49889280,
+        "page_count": 40,
+        "owned_bytes": 30097896
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-120x80-50000000",
+        "iterations": 1,
+        "elapsed_ns": 1062451542,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 1589550112815534490,
+        "history_rows": 14303,
+        "page_bytes": 50888704,
+        "page_count": 37,
+        "owned_bytes": 40366202
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-full-120x80-50000000",
+        "iterations": 1,
+        "elapsed_ns": 40706916,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 1589550112815534490,
+        "history_rows": 20639,
+        "page_bytes": 49496064,
+        "page_count": 53,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-215x215-0",
+        "iterations": 1,
+        "elapsed_ns": 443611917,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 2886038768371901496,
+        "history_rows": 0,
+        "page_bytes": 720896,
+        "page_count": 1,
+        "owned_bytes": 901088
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-215x215-0",
+        "iterations": 1,
+        "elapsed_ns": 446901291,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 2886038768371901496,
+        "history_rows": 0,
+        "page_bytes": 688128,
+        "page_count": 1,
+        "owned_bytes": 797710
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-full-215x215-0",
+        "iterations": 1,
+        "elapsed_ns": 404470917,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 2886038768371901496,
+        "history_rows": 0,
+        "page_bytes": 688128,
+        "page_count": 1,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-215x215-10000",
+        "iterations": 1,
+        "elapsed_ns": 1735061959,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 15586540551022945730,
+        "history_rows": 188,
+        "page_bytes": 1441792,
+        "page_count": 2,
+        "owned_bytes": 1490030
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-215x215-10000",
+        "iterations": 1,
+        "elapsed_ns": 1324232542,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 2886038768371901496,
+        "history_rows": 188,
+        "page_bytes": 1785856,
+        "page_count": 2,
+        "owned_bytes": 1501242
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-full-215x215-10000",
+        "iterations": 1,
+        "elapsed_ns": 37672166,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 2886038768371901496,
+        "history_rows": 188,
+        "page_bytes": 1802240,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": false
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-215x215-50000000",
+        "iterations": 1,
+        "elapsed_ns": 1819703250,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 15586540551022945730,
+        "history_rows": 14396,
+        "page_bytes": 49676288,
+        "page_count": 66,
+        "owned_bytes": 49400336
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-full-215x215-50000000",
+        "iterations": 1,
+        "elapsed_ns": 1366578250,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 2886038768371901496,
+        "history_rows": 12176,
+        "page_bytes": 50446336,
+        "page_count": 56,
+        "owned_bytes": 42613914
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-full-215x215-50000000",
+        "iterations": 1,
+        "elapsed_ns": 40410542,
+        "units_per_iteration": 8388457,
+        "cell_bytes": 8,
+        "checksum": 2886038768371901496,
+        "history_rows": 11954,
+        "page_bytes": 49561600,
+        "page_count": 55,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": false
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-0.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-120x80-0",
+        "iterations": 1,
+        "elapsed_ns": 221686667,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 10677737215458174579,
+        "history_rows": 0,
+        "page_bytes": 458752,
+        "page_count": 1,
+        "owned_bytes": 424980
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-120x80-0",
+        "iterations": 1,
+        "elapsed_ns": 223208416,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 10677737215458174579,
+        "history_rows": 0,
+        "page_bytes": 425984,
+        "page_count": 1,
+        "owned_bytes": 424980
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-short-120x80-0",
+        "iterations": 1,
+        "elapsed_ns": 73562458,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 10677737215458174579,
+        "history_rows": 0,
+        "page_bytes": 442368,
+        "page_count": 1,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-120x80-10000",
+        "iterations": 1,
+        "elapsed_ns": 348016750,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 10677737215458174579,
+        "history_rows": 581,
+        "page_bytes": 1146880,
+        "page_count": 2,
+        "owned_bytes": 1030696
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-120x80-10000",
+        "iterations": 1,
+        "elapsed_ns": 396566167,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 10677737215458174579,
+        "history_rows": 581,
+        "page_bytes": 950272,
+        "page_count": 2,
+        "owned_bytes": 1030696
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-short-120x80-10000",
+        "iterations": 1,
+        "elapsed_ns": 37317291,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 10677737215458174579,
+        "history_rows": 420,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-120x80-50000000",
+        "iterations": 1,
+        "elapsed_ns": 357939708,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 10677737215458174579,
+        "history_rows": 34241,
+        "page_bytes": 49889280,
+        "page_count": 87,
+        "owned_bytes": 45923616
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-120x80-50000000",
+        "iterations": 1,
+        "elapsed_ns": 412099458,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 10677737215458174579,
+        "history_rows": 41369,
+        "page_bytes": 49889280,
+        "page_count": 105,
+        "owned_bytes": 55430352
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-short-120x80-50000000",
+        "iterations": 1,
+        "elapsed_ns": 39218750,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 10677737215458174579,
+        "history_rows": 37740,
+        "page_bytes": 49971200,
+        "page_count": 122,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-0.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-215x215-0",
+        "iterations": 1,
+        "elapsed_ns": 297296792,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 17134237088296637019,
+        "history_rows": 0,
+        "page_bytes": 573440,
+        "page_count": 1,
+        "owned_bytes": 502736
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-215x215-0",
+        "iterations": 1,
+        "elapsed_ns": 293117708,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 17134237088296637019,
+        "history_rows": 0,
+        "page_bytes": 458752,
+        "page_count": 1,
+        "owned_bytes": 502736
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-short-215x215-0",
+        "iterations": 1,
+        "elapsed_ns": 98756666,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 17134237088296637019,
+        "history_rows": 0,
+        "page_bytes": 458752,
+        "page_count": 1,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-215x215-10000",
+        "iterations": 1,
+        "elapsed_ns": 492223792,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 17134237088296637019,
+        "history_rows": 146,
+        "page_bytes": 1048576,
+        "page_count": 2,
+        "owned_bytes": 920176
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-215x215-10000",
+        "iterations": 1,
+        "elapsed_ns": 570216750,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 17134237088296637019,
+        "history_rows": 146,
+        "page_bytes": 901120,
+        "page_count": 2,
+        "owned_bytes": 920176
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-short-215x215-10000",
+        "iterations": 1,
+        "elapsed_ns": 40275125,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 17134237088296637019,
+        "history_rows": 224,
+        "page_bytes": 1228800,
+        "page_count": 3,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-50000000.json",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-215x215-50000000",
+        "iterations": 1,
+        "elapsed_ns": 502415375,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 17134237088296637019,
+        "history_rows": 19682,
+        "page_bytes": 50069504,
+        "page_count": 90,
+        "owned_bytes": 42703632
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "links-short-215x215-50000000",
+        "iterations": 1,
+        "elapsed_ns": 574144625,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 17134237088296637019,
+        "history_rows": 23900,
+        "page_bytes": 49987584,
+        "page_count": 109,
+        "owned_bytes": 51725060
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "links-short-215x215-50000000",
+        "iterations": 1,
+        "elapsed_ns": 43206708,
+        "units_per_iteration": 8388600,
+        "cell_bytes": 8,
+        "checksum": 17134237088296637019,
+        "history_rows": 23786,
+        "page_bytes": 49971200,
+        "page_count": 122,
+        "owned_bytes": null
+      }
+    },
+    "checksum_equal": true
+  }
+]

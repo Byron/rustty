@@ -1,0 +1,58 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 6 tests
+test page_resources::tests::live_set_reuses_dead_ids_and_trims_before_duplicate_lookup ... ok
+test page_resources::tests::live_set_reclaims_exhausted_ids_across_repeated_churn ... FAILED
+test page_resources::tests::live_set_preserves_lookup_through_dead_longer_probe ... FAILED
+test page_resources::tests::live_set_reaped_membership_preserves_last_bucket_and_payloads ... FAILED
+test page_resources::tests::live_set_rehash_threshold_counts_living_entries ... FAILED
+test page_resources::tests::live_set_reclaims_id_passed_over_during_insert ... FAILED
+
+failures:
+
+---- page_resources::tests::live_set_reclaims_exhausted_ids_across_repeated_churn stdout ----
+
+thread 'page_resources::tests::live_set_reclaims_exhausted_ids_across_repeated_churn' (96324376) panicked at crates/rustty-vt/src/page_resources.rs:1535:59:
+called `Result::unwrap()` on an `Err` value: NeedsRehash
+
+---- page_resources::tests::live_set_preserves_lookup_through_dead_longer_probe stdout ----
+
+thread 'page_resources::tests::live_set_preserves_lookup_through_dead_longer_probe' (96324374) panicked at crates/rustty-vt/src/page_resources.rs:1496:13:
+assertion `left == right` failed
+  left: None
+ right: Some(3)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- page_resources::tests::live_set_reaped_membership_preserves_last_bucket_and_payloads stdout ----
+
+thread 'page_resources::tests::live_set_reaped_membership_preserves_last_bucket_and_payloads' (96324375) panicked at crates/rustty-vt/src/page_resources.rs:1591:13:
+assertion `left == right` failed
+  left: Err(NeedsRehash)
+ right: Ok(3)
+
+---- page_resources::tests::live_set_rehash_threshold_counts_living_entries stdout ----
+
+thread 'page_resources::tests::live_set_rehash_threshold_counts_living_entries' (96324378) panicked at crates/rustty-vt/src/page_resources.rs:1610:13:
+assertion `left == right` failed
+  left: Err(NeedsRehash)
+ right: Ok(1)
+
+---- page_resources::tests::live_set_reclaims_id_passed_over_during_insert stdout ----
+
+thread 'page_resources::tests::live_set_reclaims_id_passed_over_during_insert' (96324377) panicked at crates/rustty-vt/src/page_resources.rs:1560:9:
+assertion `left == right` failed
+  left: Err(NeedsRehash)
+ right: Ok(9)
+
+
+failures:
+    page_resources::tests::live_set_preserves_lookup_through_dead_longer_probe
+    page_resources::tests::live_set_reaped_membership_preserves_last_bucket_and_payloads
+    page_resources::tests::live_set_reclaims_exhausted_ids_across_repeated_churn
+    page_resources::tests::live_set_reclaims_id_passed_over_during_insert
+    page_resources::tests::live_set_rehash_threshold_counts_living_entries
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 186 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p rustty-vt --lib`

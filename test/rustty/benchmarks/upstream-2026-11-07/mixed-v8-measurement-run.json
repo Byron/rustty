@@ -1,0 +1,75 @@
+{
+  "started": 1794042775.4692202,
+  "baseline": "595623207b12eafe0d178e15ac26d67a1aabf472 / krlvrvl",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "profile": "release thinLTO codegen-units=1 locked/offline",
+  "binaries": {
+    "pre-blank": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/blank-before-stream",
+      "sha256": "7ece381a718172123121328a3dfac5616f3372d697602fed0d220defb02c23fa"
+    },
+    "before": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/mixed-before-stream",
+      "sha256": "c71eba2292d4c2ffbe66c3be31f8771551bfc9ac8ed99557742c18dccc58125c"
+    },
+    "after": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/mixed-after-stream",
+      "sha256": "7820a2ad11a0d5f841a63ba453d5524433fefa79eee057c21a49c500d7fa370e"
+    },
+    "native": {
+      "path": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "sha256": "1bbb6960f2a3f36d8eccb410f59e9621f528cdc44ef21760246cc2d8b2e2b772"
+    }
+  },
+  "configs": {
+    "wide": {
+      "name": "wide",
+      "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/wide.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "legacy"
+    },
+    "wide-unicode": {
+      "name": "wide-unicode",
+      "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/wide.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "unicode"
+    },
+    "combining-control": {
+      "name": "combining-control",
+      "data": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/combining-control.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "unicode"
+    },
+    "emoji-control": {
+      "name": "emoji-control",
+      "data": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/emoji-control.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "unicode"
+    },
+    "wide-spaces": {
+      "name": "wide-spaces",
+      "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/wide-spaces.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "legacy"
+    },
+    "mixed-wide": {
+      "name": "mixed-wide",
+      "data": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/mixed-wide.vt",
+      "cols": 120,
+      "rows": 80,
+      "scrollback_bytes": 10000,
+      "grapheme_width": "legacy"
+    }
+  },
+  "finished": 1794042807.02103
+}

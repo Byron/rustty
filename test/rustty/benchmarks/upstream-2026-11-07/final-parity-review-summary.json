@@ -1,0 +1,542 @@
+{
+  "coverage_complete": true,
+  "full_cross_engine_parity": false,
+  "initial_full_run_complete": false,
+  "scope": "Composite complete configured coverage from initial groups1/3/thorough at03be, six corrected parser shards atca7e, and full buffered rest at96776. Both partial attempts are preserved and wholly excluded from retained coverage.",
+  "initial_run_sha256": "d94e109124494af84a7187014ce6d2d6438b02ac8b68c188c4aaa1af3aaf3f94",
+  "corrected_parser_run_sha256": "33a9423dde05e155cbc9c44749c08e4d6ddd41afc68b6e69ae5156a8d3613d5b",
+  "buffered_rest_run_sha256": "b27566a247ac97f5f27c60c8e4b325ef0fc7b9a17bb8e30e728d54790a3aa74f",
+  "joining_script_sha256": "fa9e39c8556c3b2f143b4c47614a00fa8bcfb320691b2b5e95a71a8fe846dca5",
+  "classifier_source_sha256": "e94ff33449f805f3d672b4d1c169c4bdf6746a160a145689f91ff77ab12edee4",
+  "configured_invocation_workloads": 22027,
+  "configured_invocation_comparisons": 61825,
+  "configured_unique_workloads": 22027,
+  "configured_unique_comparison_variants": 61825,
+  "all_suite_unique_workloads": 22106,
+  "all_suite_unique_comparison_variants": 62062,
+  "retained_coverage_physical_comparisons": 62424,
+  "repeated_smoke_comparisons": 362,
+  "retained_raw_passes": 60116,
+  "retained_raw_failures": 2308,
+  "unique_raw_failure_ids": 2308,
+  "strict_classifier_counts": {
+    "needs-review": 178,
+    "existing-pointer-shape-record-only": 2130
+  },
+  "strict_classifier_all_explained": false,
+  "manual_attribution_complete": true,
+  "manual_attribution_counts": {
+    "older-protocol/dnd/move-leave": 3,
+    "older-protocol/dnd/accept-before-hover": 3,
+    "older-protocol/dnd/data-roundtrip": 6,
+    "older-protocol/dnd/item-limit": 12,
+    "older-protocol/dnd/data-errors": 27,
+    "older-protocol/dnd/held-data-lifecycle": 3,
+    "older-protocol/dnd/mime-limit": 6,
+    "older-protocol/dnd/snapshot": 27,
+    "older-protocol/effects/progress": 18,
+    "existing-pointer-shape-record-only": 2130,
+    "older-protocol/host/status": 3,
+    "older-color-numeric": 40,
+    "older-semantic-selection-trimming": 6,
+    "older-empty-vt-point-map": 3,
+    "older_decxcpr_unsupported": 12,
+    "older_osc66_extension": 9
+  },
+  "unexplained": [],
+  "corrected_parser": {
+    "requests": 676,
+    "comparisons": 2028,
+    "failures": 0,
+    "seed_change": "parser/osc-cancel"
+  },
+  "initial_partial_attempt": {
+    "completed_comparison_lower_bound": 11572,
+    "exact_checked_count": null,
+    "complete_failure_records": 1152,
+    "interrupted_artifact_records": 1,
+    "source": "final-parser-stopped-summary.json",
+    "sha256": "39b81e1f346975b9f1bb9f390478d12f1157011943a7188c3f34f4efdcce0d0a",
+    "excluded_from_retained_coverage": true
+  },
+  "second_partial_attempt": {
+    "completed_comparison_lower_bound": 11683,
+    "exact_checked_count": null,
+    "complete_failure_records": 604,
+    "interrupted_artifact_records": 1,
+    "source": "final-rest-stopped-summary.json",
+    "sha256": "54315673b1e8d50cf7127094b137f707edc8c4b5a85adbc391f166fa2ad21b82",
+    "excluded_from_retained_coverage": true
+  },
+  "all_attempts_scope": "Configured-suite attempts only; excludes focused regressions, baseline replays and artifact-I/O witness checks.",
+  "all_attempts_completed_comparison_lower_bound": 85679,
+  "all_attempts_exact_comparison_total_known": false,
+  "runs": [
+    {
+      "origin": "initial",
+      "name": "groups-1",
+      "source_commit": "03be726e243bdc235bd641420f511fc2b7792f8e",
+      "summary": {
+        "aborted": false,
+        "checked": 24247,
+        "coverage_gaps": [],
+        "covered": [
+          "clipboard",
+          "drag-and-drop",
+          "effects.bell",
+          "effects.host",
+          "effects.pty",
+          "effects.pwd",
+          "effects.title",
+          "graphics.glyphs",
+          "graphics.kitty",
+          "graphics.png",
+          "input.focus-paste",
+          "parser.events",
+          "protocol.dcs",
+          "snapshot.cross-decode",
+          "terminal.cells",
+          "terminal.colors",
+          "terminal.cursor",
+          "terminal.modes",
+          "terminal.observe",
+          "terminal.reset",
+          "terminal.resize",
+          "terminal.screens",
+          "terminal.styles",
+          "terminal.write",
+          "unicode.width"
+        ],
+        "error": null,
+        "failures": 217,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "eae3760d62374b5d27b1e9d06451f3df12a4cd83f8f8f1d8dd9693bcab305ced",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-1/classification.json",
+      "classification_sha256": "f772382c4037ff3a6c171df571d5b69a2a2c1d7e2a141f7cc906e5626b45f8e4"
+    },
+    {
+      "origin": "initial",
+      "name": "groups-3",
+      "source_commit": "03be726e243bdc235bd641420f511fc2b7792f8e",
+      "summary": {
+        "aborted": false,
+        "checked": 18742,
+        "coverage_gaps": [],
+        "covered": [
+          "clipboard",
+          "effects.bell",
+          "effects.host",
+          "effects.pty",
+          "effects.pwd",
+          "effects.title",
+          "parser.events",
+          "snapshot.cross-decode",
+          "terminal.cells",
+          "terminal.cursor",
+          "terminal.observe",
+          "terminal.pages",
+          "terminal.reset",
+          "terminal.resize",
+          "terminal.screens",
+          "terminal.search",
+          "terminal.selection",
+          "terminal.styles",
+          "terminal.tracked",
+          "terminal.write",
+          "unicode.width"
+        ],
+        "error": null,
+        "failures": 30,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "9f8900818237e5298dd1b92141fa2d108f41ee37cfd82208ca4ce6f34bc0a4f6",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/classification.json",
+      "classification_sha256": "3fdc7fe7f1202056b586483776fb0c015d54fdb648961fe49a43e7f40ab28678"
+    },
+    {
+      "origin": "initial",
+      "name": "thorough-cases",
+      "source_commit": "03be726e243bdc235bd641420f511fc2b7792f8e",
+      "summary": {
+        "aborted": false,
+        "checked": 237,
+        "coverage_gaps": [],
+        "covered": [
+          "snapshot.streaming",
+          "terminal.pages",
+          "terminal.search"
+        ],
+        "error": null,
+        "failures": 0,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "8c3159ef53eaa388602c98de4ff033706629deeef88e2d5d780f00a0f3808a49",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity/thorough-cases/classification.json",
+      "classification_sha256": "6b953c7faa0ab3f46da367bacd0ef87a2bc10086780d43be97b9a4951ab25029"
+    },
+    {
+      "origin": "corrected-parser",
+      "name": "parser-1",
+      "source_commit": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+      "summary": {
+        "aborted": false,
+        "checked": 336,
+        "coverage_gaps": [],
+        "covered": [
+          "parser.raw-events"
+        ],
+        "error": null,
+        "failures": 0,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "6b6837613442355fcf0490a45b0dfa52bba4894714dca04ed1127b5cb6265df6",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/parser-1/classification.json",
+      "classification_sha256": "59d73a788d6e7f177ac5e4ba5d7b3f3fec6bd4d3a15dc07d28ddb5aafb21aa6f"
+    },
+    {
+      "origin": "corrected-parser",
+      "name": "parser-2",
+      "source_commit": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+      "summary": {
+        "aborted": false,
+        "checked": 336,
+        "coverage_gaps": [],
+        "covered": [
+          "parser.raw-events"
+        ],
+        "error": null,
+        "failures": 0,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "6b6837613442355fcf0490a45b0dfa52bba4894714dca04ed1127b5cb6265df6",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/parser-2/classification.json",
+      "classification_sha256": "59d73a788d6e7f177ac5e4ba5d7b3f3fec6bd4d3a15dc07d28ddb5aafb21aa6f"
+    },
+    {
+      "origin": "corrected-parser",
+      "name": "parser-3",
+      "source_commit": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+      "summary": {
+        "aborted": false,
+        "checked": 339,
+        "coverage_gaps": [],
+        "covered": [
+          "parser.raw-events"
+        ],
+        "error": null,
+        "failures": 0,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "d26f6ccfde69386c35e22b0b5012c67554d9f6b2f000f990dc912a0f9b58eb91",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/parser-3/classification.json",
+      "classification_sha256": "553667c61215fe67d63714018f4b9389f61938b92c6e07ae700fb39a1dd60279"
+    },
+    {
+      "origin": "corrected-parser",
+      "name": "parser-4",
+      "source_commit": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+      "summary": {
+        "aborted": false,
+        "checked": 339,
+        "coverage_gaps": [],
+        "covered": [
+          "parser.raw-events"
+        ],
+        "error": null,
+        "failures": 0,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "d26f6ccfde69386c35e22b0b5012c67554d9f6b2f000f990dc912a0f9b58eb91",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/parser-4/classification.json",
+      "classification_sha256": "553667c61215fe67d63714018f4b9389f61938b92c6e07ae700fb39a1dd60279"
+    },
+    {
+      "origin": "corrected-parser",
+      "name": "parser-5",
+      "source_commit": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+      "summary": {
+        "aborted": false,
+        "checked": 339,
+        "coverage_gaps": [],
+        "covered": [
+          "parser.raw-events"
+        ],
+        "error": null,
+        "failures": 0,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "d26f6ccfde69386c35e22b0b5012c67554d9f6b2f000f990dc912a0f9b58eb91",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/parser-5/classification.json",
+      "classification_sha256": "553667c61215fe67d63714018f4b9389f61938b92c6e07ae700fb39a1dd60279"
+    },
+    {
+      "origin": "corrected-parser",
+      "name": "parser-6",
+      "source_commit": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+      "summary": {
+        "aborted": false,
+        "checked": 339,
+        "coverage_gaps": [],
+        "covered": [
+          "parser.raw-events"
+        ],
+        "error": null,
+        "failures": 0,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "d26f6ccfde69386c35e22b0b5012c67554d9f6b2f000f990dc912a0f9b58eb91",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/parser-6/classification.json",
+      "classification_sha256": "553667c61215fe67d63714018f4b9389f61938b92c6e07ae700fb39a1dd60279"
+    },
+    {
+      "origin": "buffered-rest",
+      "name": "rest",
+      "source_commit": "96776a92676c59a40638b97621b160f72e64159a",
+      "summary": {
+        "aborted": false,
+        "checked": 17170,
+        "coverage_gaps": [],
+        "covered": [
+          "effects.bell",
+          "effects.pty",
+          "effects.pwd",
+          "effects.title",
+          "input.focus-paste",
+          "input.key",
+          "input.mouse",
+          "snapshot.cross-decode",
+          "snapshot.fixtures",
+          "snapshot.streaming",
+          "terminal.cells",
+          "terminal.cursor",
+          "terminal.observe",
+          "terminal.page-layout",
+          "terminal.pages",
+          "terminal.reset",
+          "terminal.resize",
+          "terminal.screens",
+          "terminal.styles",
+          "terminal.write",
+          "unicode.width"
+        ],
+        "error": null,
+        "failures": 2061,
+        "full_parity": false,
+        "mode": "smoke"
+      },
+      "summary_sha256": "03b6fca566026ae88cafc7ea79edfa26be845a1240510b05c99ccc8f6ffdd11e",
+      "classification_path": "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/rest/classification.json",
+      "classification_sha256": "3e641212377de639090a800cd1565561ec57ee3e866cfa717847c876d988a124"
+    }
+  ],
+  "binary_provenance": {
+    "initial": {
+      "runner": {
+        "path": "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/runner",
+        "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner",
+        "sha256": "0a2dbe6ec2d5a01aad642a689d49727ea9a699279a2fe0b54d64c67db5e14de7"
+      },
+      "rust": {
+        "path": "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/rust",
+        "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity",
+        "sha256": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5"
+      },
+      "zig": {
+        "path": "/private/tmp/rustty-reintegrate.leadij/final-parity/binaries/zig",
+        "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-oracle",
+        "sha256": "9107e2e57f503b7e081091651be1342d892e6a6a48052c6efe4770af52aa8b89"
+      }
+    },
+    "corrected-parser": {
+      "runner": {
+        "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/runner",
+        "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner",
+        "sha256": "0a2dbe6ec2d5a01aad642a689d49727ea9a699279a2fe0b54d64c67db5e14de7"
+      },
+      "rust": {
+        "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+        "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity",
+        "sha256": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5"
+      },
+      "zig": {
+        "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+        "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-oracle",
+        "sha256": "ffed07e73c1a44e3cae1cec05308a47aeb60bf7e990d763faba96ddca1234ccc"
+      }
+    },
+    "buffered-rest": {
+      "runner": {
+        "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/binaries/runner",
+        "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner",
+        "sha256": "c45d897330f1faf16c3ed43d7bab4f3f51ed4aa41bd05bef058c1e9c45587a08"
+      },
+      "rust": {
+        "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/binaries/rust",
+        "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity",
+        "sha256": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5"
+      },
+      "zig": {
+        "path": "/private/tmp/rustty-reintegrate.leadij/final-parity-buffered-rest/binaries/zig",
+        "source_path": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-oracle",
+        "sha256": "ffed07e73c1a44e3cae1cec05308a47aeb60bf7e990d763faba96ddca1234ccc"
+      }
+    }
+  },
+  "reuse_proof": {
+    "buffered_source_guard": "final-buffered-rest-reuse-guards.json",
+    "buffered_guard_sha256": "9ec185b60772c630748db3f9662ee7e362c7fc10d4ce4941442ad83844068381",
+    "artifact_io_witness": {
+      "path": "artifact-buffering-witness/measurement.json",
+      "sha256": "fdc063436464494cc0a9ee8078f6ab89440d666a1a9e82a6d87e794725af217d"
+    },
+    "source_guard": "final-group2-reuse-guards.json",
+    "sha256": "1a15314970ed0bfa272763e8841533c6e13f8d29b10d0fe1b400f6ab1a783d44",
+    "all12_archive_payload_guards": {
+      "input": {
+        "sha256": "6d2a4e9d4f748eef8753509fa7670e7ff2ed1ef66bc85ca994697ccde1f6a752",
+        "cases": 3300,
+        "comparisons": 9900,
+        "native_probes": 0,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "parser": {
+        "sha256": "a9f5a4ad6de97097db0da3f474062d4dc6fe9e64e76c0e43d367ec78149ba6c0",
+        "cases": 676,
+        "comparisons": 2028,
+        "native_probes": 0,
+        "requests_and_covers_exact_equal_to_initial": false,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "grid": {
+        "sha256": "bca3b5f3bc9198452baa8f0c7600d9eb85a72e69a2fc26990ff02ba935d51abb",
+        "cases": 2592,
+        "comparisons": 7752,
+        "native_probes": 72,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "page-layout": {
+        "sha256": "56511c741137bee19c26c1fc213dc48e46967978e75e757d09b5901fcaa25156",
+        "cases": 386,
+        "comparisons": 386,
+        "native_probes": 0,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "pages": {
+        "sha256": "11f6e90ac05e9bdf80f88e439f9c6213010676cc1d39ee916d3ce76bad1c190b",
+        "cases": 785,
+        "comparisons": 2355,
+        "native_probes": 150,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "unicode": {
+        "sha256": "5fcb213de140d4c6e38027c42c2ad37496b7faf732dc98f288133f0ff25cbe17",
+        "cases": 276,
+        "comparisons": 276,
+        "native_probes": 0,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "snapshots": {
+        "sha256": "251eb6913e71004bb8c600f607e3afd2981bf0e2295bea862fb75c3e01eda668",
+        "cases": 112,
+        "comparisons": 336,
+        "native_probes": 0,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "snapshot-wire": {
+        "sha256": "6315fe597667a632c291d92bcc8570545bf72aafd21e072c2f4b6a36e3e76812",
+        "cases": 2186,
+        "comparisons": 3712,
+        "native_probes": 15,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "protocols": {
+        "sha256": "f58a28931b2bdb2e71baf82fdb7beb62b2467a06fabdeca4b86f4a1e59516ae6",
+        "cases": 8042,
+        "comparisons": 24066,
+        "native_probes": 4,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "corpus": {
+        "sha256": "2b665e6bf4119411121ebdd825d3e497b2fc45013ecb900ce9164c020217643e",
+        "cases": 3295,
+        "comparisons": 9885,
+        "native_probes": 0,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "osc": {
+        "sha256": "17db8d52333e4e570ad741544cb6a37a4ae4ebe6fed314f13f70def06ab6e0bc",
+        "cases": 216,
+        "comparisons": 648,
+        "native_probes": 0,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      },
+      "thorough": {
+        "sha256": "40fbbd6264ce0038bbee78988c5d78a8d17d8b1dc53214357a0a2a538f025b0a",
+        "cases": 79,
+        "comparisons": 237,
+        "native_probes": 0,
+        "requests_and_covers_exact_equal_to_initial": true,
+        "native_probe_payloads_exact_equal_to_initial": true,
+        "corpus_membership_exact_equal_to_initial": true
+      }
+    },
+    "native_probes_regeneration": "final-corrected-fixture-validation.json",
+    "sha256_fixture_validation": "83e343507f3c4397f81f35153432479420139d8644293fe5dc9301c496cc4025"
+  },
+  "evidence": [
+    {
+      "path": "final-protocol-residual-attribution.json",
+      "sha256": "c332346e93aa246fa62ced3189ed0dc3c7e05251ef0ba1ea06bdc1774869246f"
+    },
+    {
+      "path": "final-color-grid-review/review.json",
+      "sha256": "798f96ca92cd0dcfd3c06d58bc3b3c67afd0e1eb5b5d4a00ba1ed3006855038d"
+    },
+    {
+      "path": "final-stream-gap-attribution.json",
+      "sha256": "79f90f0db72d15b3d5a60b3898b7521214f66729605772d331d148c9c207fd00"
+    }
+  ],
+  "interpretation": "Pointer-record classification and baseline attribution do not turn raw failures into passes. The global exhaustive/coverage gate was not requested or run. Neither stopped partial attempt has an exact final checked summary; neither is counted as complete.",
+  "full_report": {
+    "path": "final-parity-review.json",
+    "bytes": 2943579,
+    "sha256": "28f33376fbed32a9850509d3da336999a9703e8ae618e0b5a3823bf77809f2f5",
+    "gzip": {
+      "path": "final-parity-review.json.gz",
+      "bytes": 341930,
+      "sha256": "1d5979c8962f8505b81ada090386a32007b84f11e657845840ea4f644967cede"
+    }
+  }
+}

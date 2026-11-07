@@ -1,0 +1,38 @@
+{
+  "base": "1aa7813cdb93cf59cc9ac869654d705a9e1291db",
+  "patch_sha256": "0080666862466d230480052a6801bd158f589aaab0ecc9d1669361272f18c000",
+  "files": {
+    "crates/rustty-vt/src/page.rs": "7184a813e9cee09a023f811b5b9437f1f8f0ab2bf0cd7aadd5f425fdfe77f947",
+    "crates/rustty-vt/src/page_resources.rs": "5ce953f8c055ec4b1675d4d09f40d07ebb6eb212a21b7e4833dda454a0fcff0d",
+    "crates/rustty-vt/src/screen.rs": "7ab1ab4fcd9b00616c9172c2afafc7db8175542e4e64961cd229e8040d5a6559",
+    "crates/rustty-vt/src/screen/tests.rs": "a7f5681414dd8496d8b3782e3ae6aed7785f25825b3cb64bf2a3dca6a32e65b7",
+    "crates/rustty-vt/src/terminal.rs": "03ee27bac07f31914551f5032e35eb94e765c595417266d45c06dc2166cb0952",
+    "crates/rustty-vt/tests/batched_input.rs": "d8df761291833c950429646731ac075c0847164497c4c97eb1e40f0c9d686138",
+    "test/rustty/hyperlink_lifecycle_requests.py": "d7b1d590cc761c7ebc9cd9ab1d2989fe772331520b3bc46951ed5a1cb49263ce"
+  },
+  "cargo_lock_sha256": "2b853c1248153d19474226c3ebba88b8a5e69661c830b2b9019fe0d463fd10a6",
+  "binaries": {
+    "/private/tmp/rustty-reintegrate.leadij/linked-after-stream": "819376fbd18a180a9babba4e1fe5f0f355f5a2e29ab2aeb5c4f7e3bdf8c39237",
+    "/private/tmp/rustty-reintegrate.leadij/linked-after-parity": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5",
+    "target/release/examples/stream-file": "819376fbd18a180a9babba4e1fe5f0f355f5a2e29ab2aeb5c4f7e3bdf8c39237",
+    "target/release/examples/parity": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5",
+    "zig-out/bin/vt-primitives": "1bbb6960f2a3f36d8eccb410f59e9621f528cdc44ef21760246cc2d8b2e2b772"
+  },
+  "validation": {
+    "lib": 247,
+    "integration": 102,
+    "native_comparisons": 132,
+    "native_cases": 44,
+    "shared_selfchecks": 87,
+    "upstream_corpora": 22,
+    "upstream_corpus_selfchecks": 44,
+    "dense_reflow_records_per_engine": 8192,
+    "engines": [
+      "Rust",
+      "native"
+    ]
+  },
+  "commands": "/private/tmp/rustty-reintegrate.leadij/linked-final-validation-commands.json",
+  "measured_revision": "cc309adab78b012fc15200306eab5883268eb31d",
+  "tix_change": "nnwzqpm"
+}

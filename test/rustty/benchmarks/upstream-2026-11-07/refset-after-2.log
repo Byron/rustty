@@ -1,0 +1,46 @@
+Rustty Cell: 8 bytes
+Benchmarking rustty/resource_churn/plain
+Benchmarking rustty/resource_churn/plain: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/plain: Collecting 20 samples in estimated 2.0001 s (1.9M iterations)
+Benchmarking rustty/resource_churn/plain: Analyzing
+rustty/resource_churn/plain
+                        time:   [1.0428 µs 1.0461 µs 1.0495 µs]
+                        thrpt:  [1.2196 Gelem/s 1.2236 Gelem/s 1.2274 Gelem/s]
+                 change:
+                        time:   [−1.6039% −1.0294% −0.4294%] (p = 0.00 < 0.05)
+                        thrpt:  [+0.4313% +1.0402% +1.6301%]
+                        Change within noise threshold.
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking rustty/resource_churn/style
+Benchmarking rustty/resource_churn/style: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/style: Collecting 20 samples in estimated 2.0055 s (14k iterations)
+Benchmarking rustty/resource_churn/style: Analyzing
+rustty/resource_churn/style
+                        time:   [145.77 µs 146.26 µs 146.78 µs]
+                        thrpt:  [8.7206 Melem/s 8.7517 Melem/s 8.7808 Melem/s]
+                 change:
+                        time:   [−1.0498% −0.5545% −0.0658%] (p = 0.04 < 0.05)
+                        thrpt:  [+0.0658% +0.5576% +1.0609%]
+                        Change within noise threshold.
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) low mild
+Benchmarking rustty/resource_churn/hyperlink
+Benchmarking rustty/resource_churn/hyperlink: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/hyperlink: Collecting 20 samples in estimated 2.0393 s (3150 iterations)
+Benchmarking rustty/resource_churn/hyperlink: Analyzing
+rustty/resource_churn/hyperlink
+                        time:   [654.62 µs 666.20 µs 680.98 µs]
+                        thrpt:  [1.8796 Melem/s 1.9214 Melem/s 1.9553 Melem/s]
+                 change:
+                        time:   [−2.4245% −0.7683% +0.9192%] (p = 0.38 > 0.05)
+                        thrpt:  [−0.9108% +0.7743% +2.4847%]
+                        No change in performance detected.
+Found 4 outliers among 20 measurements (20.00%)
+  3 (15.00%) low mild
+  1 (5.00%) high mild
+
+kitty_upload/unique_256px_4_terminals: sources=4, source_bytes=1048576
+kitty_upload/duplicate_256px_4_terminals: sources=1, source_bytes=262144
+kitty_upload/unique_1024px_4_terminals: sources=4, source_bytes=16777216
+kitty_upload/duplicate_1024px_4_terminals: sources=1, source_bytes=4194304

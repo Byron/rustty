@@ -1,0 +1,522 @@
+[
+  {
+    "name": "links-short-120x80-10000",
+    "before": {
+      "ms": 125.66901575,
+      "samples_ms": [
+        129.262635625,
+        125.66901575,
+        124.3020415
+      ],
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "after": {
+      "ms": 97.25431775,
+      "samples_ms": [
+        99.89846375,
+        96.64252075,
+        97.25431775
+      ],
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 834214
+    },
+    "native": {
+      "ms": 37.273156125,
+      "samples_ms": [
+        38.276026125,
+        37.076594,
+        37.273156125
+      ],
+      "history_rows": 420,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -22.610742855284915
+  },
+  {
+    "name": "links-full-120x80-10000",
+    "before": {
+      "ms": 328.81490625,
+      "samples_ms": [
+        329.4047655,
+        326.893073,
+        328.81490625
+      ],
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "after": {
+      "ms": 49.635301875,
+      "samples_ms": [
+        50.9600625,
+        49.635301875,
+        49.170974125
+      ],
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": 2142874
+    },
+    "native": {
+      "ms": 42.836396,
+      "samples_ms": [
+        42.836396,
+        43.0041615,
+        42.692010375
+      ],
+      "history_rows": 443,
+      "page_bytes": 1867776,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -84.9047896152062
+  },
+  {
+    "name": "linked-wide",
+    "before": {
+      "ms": 255.330442875,
+      "samples_ms": [
+        256.94828125,
+        255.330442875,
+        254.220698125
+      ],
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": 1962392
+    },
+    "after": {
+      "ms": 36.036348875,
+      "samples_ms": [
+        37.111526125,
+        36.00568725,
+        36.036348875
+      ],
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": 1962392
+    },
+    "native": {
+      "ms": 31.5330365,
+      "samples_ms": [
+        32.012229125,
+        31.5330365,
+        31.374963625
+      ],
+      "history_rows": 679,
+      "page_bytes": 1736704,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -85.88638766719954
+  },
+  {
+    "name": "linked-emoji-control",
+    "before": {
+      "ms": 26.40301045,
+      "samples_ms": [
+        26.40301045,
+        26.2160062,
+        26.417810449999998
+      ],
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": 4521932
+    },
+    "after": {
+      "ms": 26.7023938,
+      "samples_ms": [
+        27.0227148,
+        26.608227199999998,
+        26.7023938
+      ],
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": 4521932
+    },
+    "native": {
+      "ms": 10.255212550000001,
+      "samples_ms": [
+        10.21359805,
+        10.255212550000001,
+        10.33329985
+      ],
+      "history_rows": 321,
+      "page_bytes": 5734400,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 1.1338985399674373
+  },
+  {
+    "name": "plain",
+    "before": {
+      "ms": 14.41218254,
+      "samples_ms": [
+        14.40420992,
+        14.41218254,
+        14.467449140000001
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 14.31870174,
+      "samples_ms": [
+        14.31870174,
+        14.36009756,
+        14.20008834
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 6.2758199,
+      "samples_ms": [
+        6.24217244,
+        6.32588584,
+        6.2758199
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": -0.6486234804516933
+  },
+  {
+    "name": "plain-styled-protected",
+    "before": {
+      "ms": 18.564587425,
+      "samples_ms": [
+        18.779861475,
+        18.564587425,
+        18.4351229
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "after": {
+      "ms": 18.813674024999997,
+      "samples_ms": [
+        18.813674024999997,
+        18.85181035,
+        18.746766625
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "native": {
+      "ms": 69.05068122499999,
+      "samples_ms": [
+        68.349001075,
+        69.05068122499999,
+        69.117001975
+      ],
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 1.341729790690449
+  },
+  {
+    "name": "styled-4",
+    "before": {
+      "ms": 38.94589565,
+      "samples_ms": [
+        38.92989805,
+        38.94589565,
+        39.141739799999996
+      ],
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "after": {
+      "ms": 39.00642505,
+      "samples_ms": [
+        38.896643600000004,
+        39.00642505,
+        39.3268583
+      ],
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 767856
+    },
+    "native": {
+      "ms": 23.5732186,
+      "samples_ms": [
+        23.5732186,
+        23.77160625,
+        23.5204459
+      ],
+      "history_rows": 356,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 0.15541920140691445
+  },
+  {
+    "name": "combining-control",
+    "before": {
+      "ms": 27.9546313,
+      "samples_ms": [
+        27.570029100000003,
+        27.9546313,
+        28.01333325
+      ],
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "after": {
+      "ms": 28.7078981,
+      "samples_ms": [
+        29.05126465,
+        28.57927485,
+        28.7078981
+      ],
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": 5821164
+    },
+    "native": {
+      "ms": 10.59498545,
+      "samples_ms": [
+        10.2708166,
+        10.59498545,
+        10.6517374
+      ],
+      "history_rows": 457,
+      "page_bytes": 5472256,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 2.6946046682432945
+  },
+  {
+    "name": "emoji-control",
+    "before": {
+      "ms": 11.02852085,
+      "samples_ms": [
+        11.024352,
+        11.05023955,
+        11.02852085
+      ],
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "after": {
+      "ms": 11.165925,
+      "samples_ms": [
+        11.350275,
+        11.165925,
+        11.116998050000001
+      ],
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": 3341236
+    },
+    "native": {
+      "ms": 5.655252,
+      "samples_ms": [
+        5.77806035,
+        5.655252,
+        5.6441272
+      ],
+      "history_rows": 321,
+      "page_bytes": 4816896,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 1.2458982656772255
+  },
+  {
+    "name": "linked-repaint-ascii",
+    "before": {
+      "ms": 53.1381083,
+      "samples_ms": [
+        53.1381083,
+        57.92814375,
+        52.7963396
+      ],
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "after": {
+      "ms": 53.782872850000004,
+      "samples_ms": [
+        54.21283125,
+        53.782872850000004,
+        53.3845977
+      ],
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "native": {
+      "ms": 15.25228145,
+      "samples_ms": [
+        15.076970800000002,
+        15.2830499,
+        15.25228145
+      ],
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "change_percent": 1.213375053473631
+  },
+  {
+    "name": "linked-repaint-mixed",
+    "before": {
+      "ms": 36.3788312,
+      "samples_ms": [
+        36.3788312,
+        36.210298,
+        36.44717095
+      ],
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "after": {
+      "ms": 36.8723709,
+      "samples_ms": [
+        36.890772850000005,
+        36.3327417,
+        36.8723709
+      ],
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": 393692
+    },
+    "native": {
+      "ms": 11.81754565,
+      "samples_ms": [
+        11.7405812,
+        11.81754565,
+        11.835377
+      ],
+      "history_rows": 0,
+      "page_bytes": 425984,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "change_percent": 1.3566672807234115
+  },
+  {
+    "name": "wide-spaces",
+    "before": {
+      "ms": 30.5847272,
+      "samples_ms": [
+        30.71827925,
+        30.5847272,
+        30.582966550000002
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 32.0828061,
+      "samples_ms": [
+        32.0828061,
+        31.9334978,
+        32.14011245
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 10.2719021,
+      "samples_ms": [
+        10.4018582,
+        10.2719021,
+        10.264158349999999
+      ],
+      "history_rows": 522,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 4.898127389542317
+  },
+  {
+    "name": "mixed-wide",
+    "before": {
+      "ms": 38.188387399999996,
+      "samples_ms": [
+        38.188387399999996,
+        38.03063325,
+        38.37464785
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after": {
+      "ms": 39.0959375,
+      "samples_ms": [
+        38.915952,
+        39.0959375,
+        39.196429
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "native": {
+      "ms": 11.47608355,
+      "samples_ms": [
+        11.47608355,
+        11.6577772,
+        11.28734815
+      ],
+      "history_rows": 368,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "change_percent": 2.3765080480984135
+  }
+]

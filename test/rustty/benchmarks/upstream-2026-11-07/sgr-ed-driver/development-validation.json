@@ -1,0 +1,43 @@
+{
+  "status": "development selfchecks only; no timing; not final before binary",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "system": "Darwin 27.2.0 arm64",
+  "profile": {
+    "lto": "thin",
+    "codegen-units": 1
+  },
+  "checks": 27,
+  "iterations": 0,
+  "sha256": {
+    "Cargo.toml": "6288b886c3d7ecd039dd1cbfbd41f799baf452802d7495b7c213ff826377b9cb",
+    "Cargo.lock": "62dcee9dcf36ec1920a3c3b3d9dfb635f04f6ca3dc1ef1cf61fe5372dc0df9eb",
+    "src/main.rs": "c0cf9f738f2c960c011ff0adc049b49b305c7842a82cef4ccaa6a7910c4c2584",
+    "corpora/erase-2-120x100.vt": "bfde6220dad70aeedcde6860ef8347af6e7d9ab723a6fc87524fd09f9809dcea",
+    "corpora/erase-2-120x12.vt": "f0bde7c25cf5c5b4a13882a6ac60a2ebf1fc081c8dd9663a70d4c25e2e41a97f",
+    "corpora/erase-2-120x80.vt": "a756b46d8fac7d8c5355375b74c1502030301ba786ea80bf3ef878d817753cca",
+    "corpora/erase-2-seen-120x100.vt": "bfde6220dad70aeedcde6860ef8347af6e7d9ab723a6fc87524fd09f9809dcea",
+    "corpora/erase-2-seen-120x12.vt": "f0bde7c25cf5c5b4a13882a6ac60a2ebf1fc081c8dd9663a70d4c25e2e41a97f",
+    "corpora/erase-2-seen-120x80.vt": "a756b46d8fac7d8c5355375b74c1502030301ba786ea80bf3ef878d817753cca",
+    "corpora/erase-22-120x100.vt": "144cf46faf2e93202b8a276d22d083a3b937fc2d08bdb570406b28c5e4b6da79",
+    "corpora/erase-22-120x12.vt": "b2c0903a03e7044b17fc719a7f8742f067afed5dc649b23894be42d3248d5d22",
+    "corpora/erase-22-120x80.vt": "f719502c8794c9c436810c3d0bbe237e0ccf38531d48c5da7b786cf7dfbe1084",
+    "corpora/erase-lines-120x100.vt": "b77df8ae7ef8a7f101d657614a0df74a9b22c0df1dfeea23e2aa36810843715b",
+    "corpora/erase-lines-120x12.vt": "050c0ceaf2e31f644ecd7e17d82fef34805350ed6d364cc8c62d82479bcaf056",
+    "corpora/erase-lines-120x80.vt": "65e0cbbdb9898d8ab1e3c9f10d860640860cc2bb5d65edb91bbd68cf23effe22",
+    "corpora/plain-120x100.vt": "c437a0a236336f7d96565719d9be3300fc0a0d367480c22462be7c630076bfdd",
+    "corpora/plain-120x12.vt": "a7feb5cde06714b7a7d4c3557fee3aed818b981b620aa06ba80d17e01a6a8650",
+    "corpora/plain-120x80.vt": "c437a0a236336f7d96565719d9be3300fc0a0d367480c22462be7c630076bfdd",
+    "corpora/sgr-1-120x100.vt": "adc01a9a4a9d4bbe58a229857bc169edb5eec908266a444433edb9f90441a7bd",
+    "corpora/sgr-1-120x12.vt": "2cd2e6d30e9778d6a721c3fbcd7a106dbbed290f8605945a516269de8a537448",
+    "corpora/sgr-1-120x80.vt": "adc01a9a4a9d4bbe58a229857bc169edb5eec908266a444433edb9f90441a7bd",
+    "corpora/sgr-2-120x100.vt": "2e3a253d7f4a8a0a1848d0cf8089b6464d9c5494be1c964db1ba018e5fcc34c5",
+    "corpora/sgr-2-120x12.vt": "09e146957a907ff334b14f7d4dc19edd6ec919b35252ea5693130cfa05100c4a",
+    "corpora/sgr-2-120x80.vt": "2e3a253d7f4a8a0a1848d0cf8089b6464d9c5494be1c964db1ba018e5fcc34c5",
+    "corpora/sgr-3-120x100.vt": "e78160e01a66aff9716013d13c5ebd53ed228be38d1101270a4284ed4c59c3dc",
+    "corpora/sgr-3-120x12.vt": "03badb1ec7e567096b50137854a466717f32bdbd77868616a8272359ff574a78",
+    "corpora/sgr-3-120x80.vt": "e78160e01a66aff9716013d13c5ebd53ed228be38d1101270a4284ed4c59c3dc",
+    "corpora/sgr-4-120x100.vt": "2d6e33e471b4f2a120daf8708946e847c59fcaa17c0291dcc7f13734ca0c3e16",
+    "corpora/sgr-4-120x12.vt": "2a10bfa97faffb8ff48d25dfc96692d44766bee45223292338237540cabb05b4",
+    "corpora/sgr-4-120x80.vt": "2d6e33e471b4f2a120daf8708946e847c59fcaa17c0291dcc7f13734ca0c3e16"
+  }
+}

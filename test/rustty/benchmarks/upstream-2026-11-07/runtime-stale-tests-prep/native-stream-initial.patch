@@ -1,0 +1,38 @@
+--- a/tmuxx/crates/tmuxx-runtime/tests/native_stream_consistency.rs
++++ b/tmuxx/crates/tmuxx-runtime/tests/native_stream_consistency.rs
+@@ -266,7 +266,7 @@
+ }
+ 
+ #[test]
+-fn blocked_native_view_disconnects_while_healthy_view_and_pty_survive() {
++fn blocked_native_view_recovers_while_healthy_view_and_pty_survive() {
+     let (host, _) = host();
+     let admin = host.connect().unwrap();
+     let script = "import os,tty\ntty.setraw(0)\nos.write(1,b'READY')\nos.read(0,1)\ndata=b'\\0'*(20*1024*1024)+b'DONE'\nwhile data:data=data[os.write(1,data):]\nos.read(0,1)";
+@@ -336,16 +336,16 @@
+     command(&admin, &["send-keys", "-l", "q"], None, false);
+     let healthy = healthy_reader.join().unwrap();
+     let mut queued = 0;
+-    loop {
+-        match slow.try_recv() {
+-            Ok(_) => queued += 1,
+-            Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+-            Err(std::sync::mpsc::TryRecvError::Empty) => {
+-                panic!("blocked viewer was not disconnected at its bounded backlog")
+-            }
+-        }
+-    }
+-    assert!(queued <= 256);
++    let recovered = receive(&slow, |message| match message {
++        ServerMessage::Snapshot { state, .. } => Some(state),
++        _ => {
++            queued += 1;
++            None
++        }
++    });
++    assert!((1..=256).contains(&queued));
++    assert_eq!(recovered.panes[0].pid, pid);
++    assert!(terminal(&recovered).capture().starts_with("READYDONE"));
+     assert!(
+         command(&admin, &["capture-pane", "-p"], None, false)
+             .output

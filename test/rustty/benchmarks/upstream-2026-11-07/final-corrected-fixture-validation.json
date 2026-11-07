@@ -1,0 +1,17 @@
+{
+  "head": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+  "regeneration_source": "6ad34306f7477ccad2f7fbd53f066b679b5aaf15",
+  "fixture_change": "ptynqok",
+  "original_fixture_commit": "a61c9bf0207d5e0c5e805de1dc7196bb5ffa3390",
+  "audit": "final-parser-fixture-audit.json",
+  "runner_tests": 13,
+  "observer_regression": {
+    "before": 3,
+    "before_failures": 3,
+    "after": 3,
+    "after_failures": 0
+  },
+  "format_passed": true,
+  "native_tool_build_passed": true,
+  "rust_tool_build_passed": true
+}

@@ -1,0 +1,23 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.69s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 15 tests
+test page_list::capacity::tests::fit_rows_preserves_aligned_grid_boundaries_with_independent_link_storage ... ok
+test page_list::capacity::tests::fit_rows_handles_empty_one_row_and_u16_row_limits ... ok
+test page_list::capacity::tests::impossible_carried_metadata_falls_back_without_committing_history ... ok
+test page_list::capacity::tests::history_ages_each_resource_independently_and_next_is_read_only ... ok
+test page_list::capacity::tests::a_light_link_page_carries_at_least_32_unique_links_when_shrinking ... ok
+test page_list::capacity::tests::resource_usage_counts_live_values_and_retained_string_storage ... ok
+test page_list::capacity::tests::new_pages_carry_live_style_capacity ... ok
+test page_list::capacity::tests::underused_resources_shrink_to_scaled_headroom_and_keep_standard_floors ... ok
+test page_list::capacity::tests::trimmed_pages_measure_style_and_string_demand_per_standard_row ... ok
+test page_list::capacity::tests::three_previous_pages_survive_light_use_but_two_empty_pages_drop_a_burst ... ok
+test page_list::capacity::tests::a_tall_styled_burst_returns_to_the_byte_floor ... ok
+test page_list::capacity::tests::pool_sized_fit_keeps_90_percent_density_or_retains_full_rows ... ok
+test page_list::capacity::tests::growing_large_carried_pages_enforces_bytes_and_owned_history_budget ... ok
+test page_list::capacity::tests::one_unique_link_per_row_projects_each_hyperlink_resource_once ... ok
+test page_list::capacity::tests::clones_restores_reflow_and_reset_start_fresh_hint_history ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 218 filtered out; finished in 0.46s
+

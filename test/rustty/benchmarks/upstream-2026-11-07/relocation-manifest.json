@@ -1,0 +1,75 @@
+{
+  "status": "Prepared relocation overlays only; no builds, generators or benchmark reruns",
+  "final_artifact_directory": "test/rustty/benchmarks/upstream-2026-11-07",
+  "changes": [
+    {
+      "source": "sgr-ed-driver/Cargo.toml",
+      "executed_original": "executed-sources/sgr-ed-driver/Cargo.toml",
+      "overlay_target": "sgr-ed-driver/Cargo.toml",
+      "original_sha256": "6288b886c3d7ecd039dd1cbfbd41f799baf452802d7495b7c213ff826377b9cb",
+      "relocated_sha256": "9df6d7229c6515f169f1fc7be3eb80b7dfbe656236ff46263f9632af6100450c",
+      "reason": "Replace machine-specific dependency path with repository-relative path; standalone workspace boundary. Package/dependency versions and release profile unchanged."
+    },
+    {
+      "source": "measure-sgr.py",
+      "executed_original": "executed-sources/measure-sgr.py",
+      "overlay_target": "measure-sgr.py",
+      "original_sha256": "b83bb41f0e09e54d645178df2d443e086beedb1ad35553efd70913751587e29a",
+      "relocated_sha256": "fc6dd6d4d52a367c733ed1a05bdbde23d87c0b230f8627fcde80c867519aab8a",
+      "reason": "Explicit scratch/input-root CLI; materialize five identical shared-input configs with relocated data paths before timing. Cases, dimensions, budget, iteration counts, alternating order and subprocess arguments unchanged."
+    }
+  ],
+  "unchanged_sources": {
+    "sgr-ed-driver/src/main.rs": "c0cf9f738f2c960c011ff0adc049b49b305c7842a82cef4ccaa6a7910c4c2584",
+    "sgr-ed-driver/Cargo.lock": "62dcee9dcf36ec1920a3c3b3d9dfb635f04f6ca3dc1ef1cf61fe5372dc0df9eb",
+    "generate-upstream-corpora.py": "a054b802592ee9cd44cb29694c5d794eea622c28f710e88424d4124bc5455265",
+    "upstream-workload-plan.json": "fb61d58eb33a0341a0de25239b578efa857c55827ce52c007f967a8540a26af3",
+    "generate-shaper-fixture.py": "f99125e9aeee9ae830132f02fbaa78142150a4afab626211bcd6a3c044665129",
+    "classify-final-parity.py": "e94ff33449f805f3d672b4d1c169c4bdf6746a160a145689f91ff77ab12edee4"
+  },
+  "validation": [
+    "Python AST parsed without executing runner",
+    "TOML parsed; relative dependency resolves to intended crate",
+    "Release profile unchanged",
+    "Five generated-config nonpath fields match every executed source config",
+    "Original sources preserved byte-for-byte",
+    "Original metadata/timing-loop suffix remains byte-for-byte unchanged"
+  ],
+  "packaging": [
+    {
+      "source": "originals/sgr-ed-driver/Cargo.toml",
+      "destination": "executed-sources/sgr-ed-driver/Cargo.toml"
+    },
+    {
+      "source": "originals/measure-sgr.py",
+      "destination": "executed-sources/measure-sgr.py"
+    },
+    {
+      "source": "overlays/sgr-ed-driver/Cargo.toml",
+      "destination": "sgr-ed-driver/Cargo.toml"
+    },
+    {
+      "source": "overlays/measure-sgr.py",
+      "destination": "measure-sgr.py"
+    },
+    {
+      "source": "overlays/README.md",
+      "destination": "README.md"
+    },
+    {
+      "source": "relocation-manifest.json",
+      "destination": "relocation-manifest.json"
+    }
+  ],
+  "measurement_suffix_sha256": "1a7bb9a62e56380fc42f943e94a69e8445f3517ff982e7c8eae5e7fa5809ea36",
+  "unchanged_source_updates": [
+    {
+      "source": "classify-final-parity.py",
+      "previous_sha256": "ba931b42d31f30946773c594a8fe45239bce89cd0238502bfe82ba1e0c806878",
+      "sha256": "e94ff33449f805f3d672b4d1c169c4bdf6746a160a145689f91ff77ab12edee4",
+      "reason": "Root clarified the selfcheck comment: classification compares stored CRC bytes but does not validate snapshot CRCs; validity is checked by the separate cross-decoding suite. This source is copied without relocation.",
+      "scope": "Only this not-relocated source hash was refreshed. Measured/executed sources, the two reviewed relocation source hashes and the other five unchanged-source hashes remain unchanged.",
+      "validation": "Hash and comment inspection only during linked timing. Root will rerun the classifier selfcheck after the quiet window."
+    }
+  ]
+}

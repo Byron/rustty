@@ -1,0 +1,4351 @@
+[
+  {
+    "id": "terminal/resize/retained-viewport-pin-before-saved-cursor",
+    "ok": true,
+    "err": null,
+    "capabilities": [
+      "drag-and-drop",
+      "terminal.pages",
+      "graphics.glyphs",
+      "terminal.page-layout",
+      "terminal.selection",
+      "terminal.search",
+      "terminal.tracked",
+      "graphics.kitty",
+      "graphics.png",
+      "protocol.dcs",
+      "terminal.write",
+      "terminal.resize",
+      "terminal.reset",
+      "terminal.observe",
+      "terminal.cells",
+      "terminal.styles",
+      "terminal.screens",
+      "terminal.cursor",
+      "terminal.modes",
+      "terminal.colors",
+      "effects.pty",
+      "effects.title",
+      "effects.pwd",
+      "effects.bell",
+      "effects.host",
+      "clipboard",
+      "unicode.width",
+      "input.key",
+      "input.mouse",
+      "input.focus-paste",
+      "parser.raw-events",
+      "snapshot.cross-decode",
+      "snapshot.streaming",
+      "snapshot.fixtures"
+    ],
+    "observations": [
+      {
+        "cols": 6,
+        "rows": 4,
+        "alternate_active": false,
+        "primary": {
+          "cursor": {
+            "x": 5,
+            "y": 1,
+            "pending_wrap": false,
+            "shape": "block",
+            "style": {
+              "foreground": {
+                "kind": "default",
+                "value": []
+              },
+              "background": {
+                "kind": "default",
+                "value": []
+              },
+              "underline_color": {
+                "kind": "default",
+                "value": []
+              },
+              "bold": false,
+              "faint": false,
+              "italic": false,
+              "blink": false,
+              "inverse": false,
+              "invisible": false,
+              "strikethrough": false,
+              "overline": false,
+              "underline": "none"
+            },
+            "hyperlink": null,
+            "protected": false,
+            "semantic": "output"
+          },
+          "rows": [
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": true
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            }
+          ],
+          "history": []
+        },
+        "alternate": {
+          "cursor": {
+            "x": 5,
+            "y": 1,
+            "pending_wrap": false,
+            "shape": "block",
+            "style": {
+              "foreground": {
+                "kind": "default",
+                "value": []
+              },
+              "background": {
+                "kind": "default",
+                "value": []
+              },
+              "underline_color": {
+                "kind": "default",
+                "value": []
+              },
+              "bold": false,
+              "faint": false,
+              "italic": false,
+              "blink": false,
+              "inverse": false,
+              "invisible": false,
+              "strikethrough": false,
+              "overline": false,
+              "underline": "none"
+            },
+            "hyperlink": null,
+            "protected": false,
+            "semantic": "output"
+          },
+          "rows": [
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            }
+          ],
+          "history": []
+        },
+        "margins": [
+          0,
+          3,
+          0,
+          5
+        ],
+        "title": "",
+        "pwd": "",
+        "modes": [],
+        "mode_effects": null,
+        "colors": null,
+        "semantic": null,
+        "graphics": null,
+        "graphics_placements": null
+      }
+    ],
+    "events": [],
+    "widths": [],
+    "parser": null,
+    "snapshots": [],
+    "snapshot_progress": [],
+    "mode_results": [],
+    "parsed_colors": [],
+    "grid_results": [],
+    "page_layout": null,
+    "glyph_results": [],
+    "page_results": [],
+    "dnd_results": [],
+    "graphics_ticks": []
+  },
+  {
+    "id": "preexisting/graphics/placed-priority",
+    "ok": true,
+    "err": null,
+    "capabilities": [
+      "drag-and-drop",
+      "terminal.pages",
+      "graphics.glyphs",
+      "terminal.page-layout",
+      "terminal.selection",
+      "terminal.search",
+      "terminal.tracked",
+      "graphics.kitty",
+      "graphics.png",
+      "protocol.dcs",
+      "terminal.write",
+      "terminal.resize",
+      "terminal.reset",
+      "terminal.observe",
+      "terminal.cells",
+      "terminal.styles",
+      "terminal.screens",
+      "terminal.cursor",
+      "terminal.modes",
+      "terminal.colors",
+      "effects.pty",
+      "effects.title",
+      "effects.pwd",
+      "effects.bell",
+      "effects.host",
+      "clipboard",
+      "unicode.width",
+      "input.key",
+      "input.mouse",
+      "input.focus-paste",
+      "parser.raw-events",
+      "snapshot.cross-decode",
+      "snapshot.streaming",
+      "snapshot.fixtures"
+    ],
+    "observations": [
+      {
+        "cols": 12,
+        "rows": 3,
+        "alternate_active": false,
+        "primary": {
+          "cursor": {
+            "x": 0,
+            "y": 0,
+            "pending_wrap": false,
+            "shape": "block",
+            "style": {
+              "foreground": {
+                "kind": "default",
+                "value": []
+              },
+              "background": {
+                "kind": "default",
+                "value": []
+              },
+              "underline_color": {
+                "kind": "default",
+                "value": []
+              },
+              "bold": false,
+              "faint": false,
+              "italic": false,
+              "blink": false,
+              "inverse": false,
+              "invisible": false,
+              "strikethrough": false,
+              "overline": false,
+              "underline": "none"
+            },
+            "hyperlink": null,
+            "protected": false,
+            "semantic": "output"
+          },
+          "rows": [
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            }
+          ],
+          "history": []
+        },
+        "alternate": null,
+        "margins": [
+          0,
+          2,
+          0,
+          11
+        ],
+        "title": "",
+        "pwd": "",
+        "modes": [],
+        "mode_effects": null,
+        "colors": null,
+        "semantic": null,
+        "graphics": {
+          "primary": [
+            {
+              "id": 3,
+              "number": 0,
+              "width": 1,
+              "height": 1,
+              "pixels": "010203ff",
+              "displayed_pixels": "010203ff",
+              "frames": [],
+              "current_frame": 0,
+              "root_gap_ms": 0,
+              "animation_state": 1,
+              "max_loops": 0,
+              "completed_loops": 0,
+              "frame_shown_at_ms": null
+            },
+            {
+              "id": 9,
+              "number": 0,
+              "width": 1,
+              "height": 1,
+              "pixels": "010203ff",
+              "displayed_pixels": "010203ff",
+              "frames": [],
+              "current_frame": 0,
+              "root_gap_ms": 0,
+              "animation_state": 1,
+              "max_loops": 0,
+              "completed_loops": 0,
+              "frame_shown_at_ms": null
+            }
+          ],
+          "alternate": null
+        },
+        "graphics_placements": {
+          "primary": [
+            {
+              "image_id": 9,
+              "placement_id": {
+                "internal": true,
+                "id": 0
+              },
+              "location": "pin",
+              "anchor": {
+                "screen": [
+                  0,
+                  0
+                ],
+                "active": [
+                  0,
+                  0
+                ],
+                "viewport": [
+                  0,
+                  0
+                ]
+              },
+              "parent": null,
+              "chain": null,
+              "requested_size": [
+                0,
+                0
+              ],
+              "requested_source": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "stored_offset": [
+                0,
+                0
+              ],
+              "z": 0,
+              "source": [
+                0,
+                0,
+                1,
+                1
+              ],
+              "offset": [
+                0,
+                0
+              ],
+              "pixels": [
+                1,
+                1
+              ],
+              "grid": [
+                1,
+                1
+              ],
+              "rect": {
+                "start": {
+                  "screen": [
+                    0,
+                    0
+                  ],
+                  "active": [
+                    0,
+                    0
+                  ],
+                  "viewport": [
+                    0,
+                    0
+                  ]
+                },
+                "end": {
+                  "screen": [
+                    0,
+                    0
+                  ],
+                  "active": [
+                    0,
+                    0
+                  ],
+                  "viewport": [
+                    0,
+                    0
+                  ]
+                }
+              }
+            }
+          ],
+          "alternate": null,
+          "primary_placeholders": [],
+          "alternate_placeholders": null
+        }
+      }
+    ],
+    "events": [
+      {
+        "kind": "write",
+        "data": "1b5f47693d393b4f4b1b5c1b5f47693d313b4f4b1b5c1b5f47693d333b4f4b1b5c",
+        "notification": null,
+        "progress": null,
+        "clipboard": null,
+        "dnd_state": null
+      }
+    ],
+    "widths": [],
+    "parser": null,
+    "snapshots": [],
+    "snapshot_progress": [],
+    "mode_results": [],
+    "parsed_colors": [],
+    "grid_results": [],
+    "page_layout": null,
+    "glyph_results": [],
+    "page_results": [],
+    "dnd_results": [],
+    "graphics_ticks": []
+  },
+  {
+    "id": "preexisting/graphics/transient-priority",
+    "ok": true,
+    "err": null,
+    "capabilities": [
+      "drag-and-drop",
+      "terminal.pages",
+      "graphics.glyphs",
+      "terminal.page-layout",
+      "terminal.selection",
+      "terminal.search",
+      "terminal.tracked",
+      "graphics.kitty",
+      "graphics.png",
+      "protocol.dcs",
+      "terminal.write",
+      "terminal.resize",
+      "terminal.reset",
+      "terminal.observe",
+      "terminal.cells",
+      "terminal.styles",
+      "terminal.screens",
+      "terminal.cursor",
+      "terminal.modes",
+      "terminal.colors",
+      "effects.pty",
+      "effects.title",
+      "effects.pwd",
+      "effects.bell",
+      "effects.host",
+      "clipboard",
+      "unicode.width",
+      "input.key",
+      "input.mouse",
+      "input.focus-paste",
+      "parser.raw-events",
+      "snapshot.cross-decode",
+      "snapshot.streaming",
+      "snapshot.fixtures"
+    ],
+    "observations": [
+      {
+        "cols": 12,
+        "rows": 3,
+        "alternate_active": false,
+        "primary": {
+          "cursor": {
+            "x": 0,
+            "y": 0,
+            "pending_wrap": false,
+            "shape": "block",
+            "style": {
+              "foreground": {
+                "kind": "default",
+                "value": []
+              },
+              "background": {
+                "kind": "default",
+                "value": []
+              },
+              "underline_color": {
+                "kind": "default",
+                "value": []
+              },
+              "bold": false,
+              "faint": false,
+              "italic": false,
+              "blink": false,
+              "inverse": false,
+              "invisible": false,
+              "strikethrough": false,
+              "overline": false,
+              "underline": "none"
+            },
+            "hyperlink": null,
+            "protected": false,
+            "semantic": "output"
+          },
+          "rows": [
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            },
+            {
+              "cells": [
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                },
+                {
+                  "text": [],
+                  "width": 1,
+                  "spacer_head": false,
+                  "style": {
+                    "foreground": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "background": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "underline_color": {
+                      "kind": "default",
+                      "value": []
+                    },
+                    "bold": false,
+                    "faint": false,
+                    "italic": false,
+                    "blink": false,
+                    "inverse": false,
+                    "invisible": false,
+                    "strikethrough": false,
+                    "overline": false,
+                    "underline": "none"
+                  },
+                  "hyperlink": null,
+                  "protected": false,
+                  "semantic": "output"
+                }
+              ],
+              "wrapped": false
+            }
+          ],
+          "history": []
+        },
+        "alternate": null,
+        "margins": [
+          0,
+          2,
+          0,
+          11
+        ],
+        "title": "",
+        "pwd": "",
+        "modes": [],
+        "mode_effects": null,
+        "colors": null,
+        "semantic": null,
+        "graphics": {
+          "primary": [
+            {
+              "id": 3,
+              "number": 0,
+              "width": 1,
+              "height": 1,
+              "pixels": "010203ff",
+              "displayed_pixels": "010203ff",
+              "frames": [],
+              "current_frame": 0,
+              "root_gap_ms": 0,
+              "animation_state": 1,
+              "max_loops": 0,
+              "completed_loops": 0,
+              "frame_shown_at_ms": null
+            },
+            {
+              "id": 9,
+              "number": 0,
+              "width": 1,
+              "height": 1,
+              "pixels": "010203ff",
+              "displayed_pixels": "010203ff",
+              "frames": [],
+              "current_frame": 0,
+              "root_gap_ms": 0,
+              "animation_state": 1,
+              "max_loops": 0,
+              "completed_loops": 0,
+              "frame_shown_at_ms": null
+            }
+          ],
+          "alternate": null
+        },
+        "graphics_placements": {
+          "primary": [],
+          "alternate": null,
+          "primary_placeholders": [],
+          "alternate_placeholders": null
+        }
+      }
+    ],
+    "events": [
+      {
+        "kind": "write",
+        "data": "1b5f47693d393b4f4b1b5c1b5f47693d313b4f4b1b5c1b5f47693d333b4f4b1b5c",
+        "notification": null,
+        "progress": null,
+        "clipboard": null,
+        "dnd_state": null
+      }
+    ],
+    "widths": [],
+    "parser": null,
+    "snapshots": [],
+    "snapshot_progress": [],
+    "mode_results": [],
+    "parsed_colors": [],
+    "grid_results": [],
+    "page_layout": null,
+    "glyph_results": [],
+    "page_results": [],
+    "dnd_results": [],
+    "graphics_ticks": []
+  }
+]

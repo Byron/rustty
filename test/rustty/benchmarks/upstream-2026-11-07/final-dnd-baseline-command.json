@@ -1,0 +1,15 @@
+{
+  "cwd": "/Users/byron/dev/github.com/ghostty-org/ghostty",
+  "argv": [
+    "target/release/examples/parity-runner",
+    "--no-build",
+    "--rust-bin", "/private/tmp/rustty-reintegrate.leadij/linked-before-parity",
+    "--zig-bin", "zig-out/bin/vt-oracle",
+    "--fixtures", "/private/tmp/rustty-reintegrate.leadij/final-dnd-snapshot-fixtures.json",
+    "--artifacts", "/private/tmp/rustty-reintegrate.leadij/final-dnd-snapshot-before-linked",
+    "--max-failures", "100"
+  ],
+  "log": "/private/tmp/rustty-reintegrate.leadij/final-dnd-snapshot-before-linked.log",
+  "exit_code": 1,
+  "result": "27 comparisons, 27 exact older lifecycle error differences; no early abort"
+}

@@ -1,0 +1,1 @@
+{"engine":"rustty","operation":"stream_file","name":"selfcheck-style-wide-links","iterations":2,"elapsed_ns":62833,"units_per_iteration":139,"cell_bytes":8,"checksum":8376364026207819422,"history_rows":0,"page_bytes":409600,"page_count":1,"owned_bytes":471291}

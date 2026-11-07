@@ -1,0 +1,4 @@
+{
+  "status": "superseded without timing",
+  "note": "Page bulk helper already compiled out of line; V1/V2 print_utf8 and print_ascii have identical instruction counts and stack allocation. Replaced by restoring original inlined unlinked resource guard."
+}

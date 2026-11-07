@@ -1,0 +1,35 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.94s
+     Running tests/terminal.rs (target/debug/deps/terminal-559ef4eb684968ab)
+
+running 27 tests
+test erase_retains_background_but_clears_other_style_and_protects_cells ... ok
+test legacy_combining_without_wrap_is_ignored_at_column_zero ... ok
+test margins_scroll_only_the_defined_region ... ok
+test effects_and_terminal_replies_are_ordered ... ok
+test alternate_screen_modes_preserve_the_primary ... ok
+test sgr_colon_subparameters_and_cursor_shapes ... ok
+test reflow_preserves_text_selection_and_reference ... ok
+test resize_retains_blank_cells_copied_from_a_wrapped_source_row ... ok
+test minimum_byte_budget_retains_small_linked_history_after_reflow ... ok
+test viewport_snapshot_excludes_history_and_hides_scrolled_cursor ... ok
+test insertion_preserves_soft_wrap_and_edits_remove_stale_wide_padding ... ok
+test combining_at_right_edge_respects_grapheme_and_wrap_modes ... ok
+test vt_overwrites_wide_cells_as_a_unit ... ok
+test resize_reflows_cursor_blanks_and_keeps_wide_padding_at_the_edge ... ok
+test resize_clamps_saved_and_external_pins_after_a_hard_line_break ... ok
+test resize_blank_pins_follow_hard_breaks_soft_continuations_and_pending_wrap ... ok
+test graphemes_have_bounded_storage_and_track_width ... ok
+test resize_skips_an_empty_wrap_continuation_without_ending_the_line ... ok
+test wrapping_scrolling_and_tracked_references ... ok
+test resize_saved_cursor_blank_columns_begin_after_a_hard_line_break ... ok
+test resize_unwraps_before_growing_the_active_area ... ok
+test zero_line_limit_keeps_history_but_zero_bytes_disables_it ... ok
+test limits_prune_by_bytes_and_lines_and_invalidate_removed_content ... ok
+test widening_without_reflow_preserves_spacer_attributes ... ok
+test wrapped_graphemes_preserve_suffixes_when_scrolling_discards_the_source ... ok
+test generated_edits_keep_wide_cells_and_cursor_in_bounds ... ok
+test chunk_boundaries_do_not_change_terminal_results ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+

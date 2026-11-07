@@ -1,0 +1,16 @@
+   Compiling serde_json v1.0.151
+   Compiling syn v2.0.119
+    Checking bytemuck v1.25.2
+    Checking tiny-skia-path v0.11.4
+    Checking tiny-skia v0.11.4
+    Checking rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+   Compiling windows-implement v0.60.2
+   Compiling windows-interface v0.59.3
+    Checking windows-core v0.62.2
+    Checking windows-future v0.3.2
+    Checking windows-numerics v0.3.1
+    Checking windows-collections v0.3.2
+    Checking windows v0.62.2
+    Checking rustty-font v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-font)
+    Checking rustty-render v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-render)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.80s

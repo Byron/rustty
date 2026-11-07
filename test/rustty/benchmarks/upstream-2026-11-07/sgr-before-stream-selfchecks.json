@@ -1,0 +1,87 @@
+[
+  {
+    "input": "plain",
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 1,
+      "elapsed_ns": 15851875,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    }
+  },
+  {
+    "input": "styled-1",
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 1,
+      "elapsed_ns": 53944792,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 564,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    }
+  },
+  {
+    "input": "styled-2",
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-2",
+      "iterations": 1,
+      "elapsed_ns": 60160625,
+      "units_per_iteration": 8388510,
+      "cell_bytes": 8,
+      "checksum": 12966706845396462931,
+      "history_rows": 318,
+      "page_bytes": 933888,
+      "page_count": 2,
+      "owned_bytes": 948224
+    }
+  },
+  {
+    "input": "styled-3",
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-3",
+      "iterations": 1,
+      "elapsed_ns": 65121417,
+      "units_per_iteration": 8388595,
+      "cell_bytes": 8,
+      "checksum": 10588578405522194252,
+      "history_rows": 419,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 995328
+    }
+  },
+  {
+    "input": "styled-4",
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 1,
+      "elapsed_ns": 66949583,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 506,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    }
+  }
+]

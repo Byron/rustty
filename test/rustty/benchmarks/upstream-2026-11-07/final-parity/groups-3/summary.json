@@ -1,0 +1,32 @@
+{
+  "aborted": false,
+  "checked": 18742,
+  "coverage_gaps": [],
+  "covered": [
+    "clipboard",
+    "effects.bell",
+    "effects.host",
+    "effects.pty",
+    "effects.pwd",
+    "effects.title",
+    "parser.events",
+    "snapshot.cross-decode",
+    "terminal.cells",
+    "terminal.cursor",
+    "terminal.observe",
+    "terminal.pages",
+    "terminal.reset",
+    "terminal.resize",
+    "terminal.screens",
+    "terminal.search",
+    "terminal.selection",
+    "terminal.styles",
+    "terminal.tracked",
+    "terminal.write",
+    "unicode.width"
+  ],
+  "error": null,
+  "failures": 30,
+  "full_parity": false,
+  "mode": "smoke"
+}

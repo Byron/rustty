@@ -1,0 +1,27 @@
+{
+  "reason": "Move test-only glob import into its test function so Criterion harness=false builds do not warn.",
+  "changed_file": "test/rustty/stream-file-bench.rs",
+  "validation": "cargo +1.95.0 clippy --locked --offline -p rustty-vt --bench primitives --example stream-file -- -D warnings -A clippy::unnecessary_lazy_evaluations passed; excluded existing program_status lint.",
+  "only_tree_difference_after_replay": "2 inserted and2removed import-scope lines in benchmark test; production untouched",
+  "mapping": [
+    {
+      "change": "uxpryuy",
+      "before": "52a8151b87527b769272789947473e99b912c8c8",
+      "after": "1e1fbf90d084dc8c77a75ec254493f9b3c9ce09f"
+    },
+    {
+      "change": "ztmmomo",
+      "before": "06ddbdb5a9bead738cd6a07efe6618dbc3718e26",
+      "after": "ddfc413a633940d665a81e32806b3e97fda87f23"
+    },
+    {
+      "change": "nokoswn",
+      "before": "cbfb73cef5207820602731a175d58010fd8ef7a9",
+      "after": "3882d7da60158d3042ae33efeb5bca72fcc4b085"
+    }
+  ],
+  "attached_branch": "rustty",
+  "clean": true,
+  "saved_rebase": false,
+  "original_changes_verified": 289
+}

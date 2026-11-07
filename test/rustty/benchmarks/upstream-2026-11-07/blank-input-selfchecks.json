@@ -1,0 +1,942 @@
+[
+  {
+    "name": "erase-2-120x80",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-120x80",
+        "iterations": 1,
+        "elapsed_ns": 4944668458,
+        "units_per_iteration": 8388576,
+        "cell_bytes": 8,
+        "checksum": 17817866299983508797,
+        "history_rows": 676,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-120x80",
+        "iterations": 1,
+        "elapsed_ns": 507612750,
+        "units_per_iteration": 8388576,
+        "cell_bytes": 8,
+        "checksum": 17817866299983508797,
+        "history_rows": 676,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-2-120x80",
+        "iterations": 1,
+        "elapsed_ns": 46197916,
+        "units_per_iteration": 8388576,
+        "cell_bytes": 8,
+        "checksum": 17817866299983508797,
+        "history_rows": 676,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-2-120x12",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-120x12",
+        "iterations": 1,
+        "elapsed_ns": 858024709,
+        "units_per_iteration": 8388576,
+        "cell_bytes": 8,
+        "checksum": 18067499296696956266,
+        "history_rows": 386,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-120x12",
+        "iterations": 1,
+        "elapsed_ns": 271627250,
+        "units_per_iteration": 8388576,
+        "cell_bytes": 8,
+        "checksum": 18067499296696956266,
+        "history_rows": 386,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-2-120x12",
+        "iterations": 1,
+        "elapsed_ns": 44197792,
+        "units_per_iteration": 8388576,
+        "cell_bytes": 8,
+        "checksum": 18067499296696956266,
+        "history_rows": 386,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-2-300x100",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-300x100",
+        "iterations": 1,
+        "elapsed_ns": 15214005000,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 14056786017496566925,
+        "history_rows": 157,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-300x100",
+        "iterations": 1,
+        "elapsed_ns": 862791333,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 14056786017496566925,
+        "history_rows": 157,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-2-300x100",
+        "iterations": 1,
+        "elapsed_ns": 73345459,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 14056786017496566925,
+        "history_rows": 157,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-22-120x80",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-22-120x80",
+        "iterations": 1,
+        "elapsed_ns": 1063710625,
+        "units_per_iteration": 8388555,
+        "cell_bytes": 8,
+        "checksum": 4953096785789894441,
+        "history_rows": 565,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-22-120x80",
+        "iterations": 1,
+        "elapsed_ns": 414850292,
+        "units_per_iteration": 8388555,
+        "cell_bytes": 8,
+        "checksum": 4953096785789894441,
+        "history_rows": 565,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-22-120x80",
+        "iterations": 1,
+        "elapsed_ns": 123862584,
+        "units_per_iteration": 8388555,
+        "cell_bytes": 8,
+        "checksum": 4953096785789894441,
+        "history_rows": 565,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-22-120x12",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-22-120x12",
+        "iterations": 1,
+        "elapsed_ns": 263788041,
+        "units_per_iteration": 8388594,
+        "cell_bytes": 8,
+        "checksum": 3673597610884523761,
+        "history_rows": 400,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-22-120x12",
+        "iterations": 1,
+        "elapsed_ns": 160655542,
+        "units_per_iteration": 8388594,
+        "cell_bytes": 8,
+        "checksum": 3673597610884523761,
+        "history_rows": 400,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-22-120x12",
+        "iterations": 1,
+        "elapsed_ns": 44606667,
+        "units_per_iteration": 8388594,
+        "cell_bytes": 8,
+        "checksum": 3673597610884523761,
+        "history_rows": 400,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-22-300x100",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-22-300x100",
+        "iterations": 1,
+        "elapsed_ns": 2714903917,
+        "units_per_iteration": 8388575,
+        "cell_bytes": 8,
+        "checksum": 16091300484225941906,
+        "history_rows": 115,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-22-300x100",
+        "iterations": 1,
+        "elapsed_ns": 680845542,
+        "units_per_iteration": 8388575,
+        "cell_bytes": 8,
+        "checksum": 16091300484225941906,
+        "history_rows": 115,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-22-300x100",
+        "iterations": 1,
+        "elapsed_ns": 312147041,
+        "units_per_iteration": 8388575,
+        "cell_bytes": 8,
+        "checksum": 16091300484225941906,
+        "history_rows": 115,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-rate-120x80",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-rate-120x80",
+        "iterations": 1,
+        "elapsed_ns": 2118136834,
+        "units_per_iteration": 8388606,
+        "cell_bytes": 8,
+        "checksum": 18188111785067963331,
+        "history_rows": 639,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-rate-120x80",
+        "iterations": 1,
+        "elapsed_ns": 463015375,
+        "units_per_iteration": 8388606,
+        "cell_bytes": 8,
+        "checksum": 18188111785067963331,
+        "history_rows": 639,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-rate-120x80",
+        "iterations": 1,
+        "elapsed_ns": 52358334,
+        "units_per_iteration": 8388606,
+        "cell_bytes": 8,
+        "checksum": 18188111785067963331,
+        "history_rows": 639,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-rate-120x12",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-rate-120x12",
+        "iterations": 1,
+        "elapsed_ns": 415398167,
+        "units_per_iteration": 8388599,
+        "cell_bytes": 8,
+        "checksum": 4497862575549352046,
+        "history_rows": 457,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-rate-120x12",
+        "iterations": 1,
+        "elapsed_ns": 299069583,
+        "units_per_iteration": 8388599,
+        "cell_bytes": 8,
+        "checksum": 4497862575549352046,
+        "history_rows": 457,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-rate-120x12",
+        "iterations": 1,
+        "elapsed_ns": 45913083,
+        "units_per_iteration": 8388599,
+        "cell_bytes": 8,
+        "checksum": 4497862575549352046,
+        "history_rows": 457,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-rate-300x100",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-rate-300x100",
+        "iterations": 1,
+        "elapsed_ns": 6468820000,
+        "units_per_iteration": 8388578,
+        "cell_bytes": 8,
+        "checksum": 6820105642309039561,
+        "history_rows": 89,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-rate-300x100",
+        "iterations": 1,
+        "elapsed_ns": 904595500,
+        "units_per_iteration": 8388578,
+        "cell_bytes": 8,
+        "checksum": 6820105642309039561,
+        "history_rows": 89,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-rate-300x100",
+        "iterations": 1,
+        "elapsed_ns": 85429417,
+        "units_per_iteration": 8388578,
+        "cell_bytes": 8,
+        "checksum": 6820105642309039561,
+        "history_rows": 89,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-lines-120x80",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-lines-120x80",
+        "iterations": 1,
+        "elapsed_ns": 891013000,
+        "units_per_iteration": 8388158,
+        "cell_bytes": 8,
+        "checksum": 15037719607299085294,
+        "history_rows": 242,
+        "page_bytes": 409600,
+        "page_count": 1,
+        "owned_bytes": 391040
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-lines-120x80",
+        "iterations": 1,
+        "elapsed_ns": 100707083,
+        "units_per_iteration": 8388158,
+        "cell_bytes": 8,
+        "checksum": 15037719607299085294,
+        "history_rows": 242,
+        "page_bytes": 409600,
+        "page_count": 1,
+        "owned_bytes": 391040
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-lines-120x80",
+        "iterations": 1,
+        "elapsed_ns": 22348959,
+        "units_per_iteration": 8388158,
+        "cell_bytes": 8,
+        "checksum": 15037719607299085294,
+        "history_rows": 242,
+        "page_bytes": 409600,
+        "page_count": 1,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-lines-120x12",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-lines-120x12",
+        "iterations": 1,
+        "elapsed_ns": 403605959,
+        "units_per_iteration": 8388272,
+        "cell_bytes": 8,
+        "checksum": 17392516883866352729,
+        "history_rows": 746,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-lines-120x12",
+        "iterations": 1,
+        "elapsed_ns": 74533667,
+        "units_per_iteration": 8388272,
+        "cell_bytes": 8,
+        "checksum": 17392516883866352729,
+        "history_rows": 746,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-lines-120x12",
+        "iterations": 1,
+        "elapsed_ns": 23771042,
+        "units_per_iteration": 8388272,
+        "cell_bytes": 8,
+        "checksum": 17392516883866352729,
+        "history_rows": 746,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-lines-300x100",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-lines-300x100",
+        "iterations": 1,
+        "elapsed_ns": 2262523959,
+        "units_per_iteration": 8388154,
+        "cell_bytes": 8,
+        "checksum": 1917893333592797034,
+        "history_rows": 178,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-lines-300x100",
+        "iterations": 1,
+        "elapsed_ns": 138472583,
+        "units_per_iteration": 8388154,
+        "cell_bytes": 8,
+        "checksum": 1917893333592797034,
+        "history_rows": 178,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-lines-300x100",
+        "iterations": 1,
+        "elapsed_ns": 25562042,
+        "units_per_iteration": 8388154,
+        "cell_bytes": 8,
+        "checksum": 1917893333592797034,
+        "history_rows": 178,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "plain",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "plain",
+        "iterations": 1,
+        "elapsed_ns": 15700834,
+        "units_per_iteration": 8388587,
+        "cell_bytes": 8,
+        "checksum": 18031999217808237406,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "plain",
+        "iterations": 1,
+        "elapsed_ns": 14206458,
+        "units_per_iteration": 8388587,
+        "cell_bytes": 8,
+        "checksum": 18031999217808237406,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "plain",
+        "iterations": 1,
+        "elapsed_ns": 6005875,
+        "units_per_iteration": 8388587,
+        "cell_bytes": 8,
+        "checksum": 18031999217808237406,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "plain-styled-protected",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "plain-styled-protected",
+        "iterations": 1,
+        "elapsed_ns": 18506208,
+        "units_per_iteration": 8388602,
+        "cell_bytes": 8,
+        "checksum": 18255222369340065892,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "plain-styled-protected",
+        "iterations": 1,
+        "elapsed_ns": 18606541,
+        "units_per_iteration": 8388602,
+        "cell_bytes": 8,
+        "checksum": 18255222369340065892,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "plain-styled-protected",
+        "iterations": 1,
+        "elapsed_ns": 64870291,
+        "units_per_iteration": 8388602,
+        "cell_bytes": 8,
+        "checksum": 18255222369340065892,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-background",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-background",
+        "iterations": 1,
+        "elapsed_ns": 662986000,
+        "units_per_iteration": 1136826,
+        "cell_bytes": 8,
+        "checksum": 1570597373751205645,
+        "history_rows": 249,
+        "page_bytes": 409600,
+        "page_count": 1,
+        "owned_bytes": 391040
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-background",
+        "iterations": 1,
+        "elapsed_ns": 663322583,
+        "units_per_iteration": 1136826,
+        "cell_bytes": 8,
+        "checksum": 1570597373751205645,
+        "history_rows": 249,
+        "page_bytes": 409600,
+        "page_count": 1,
+        "owned_bytes": 391040
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-background",
+        "iterations": 1,
+        "elapsed_ns": 50120833,
+        "units_per_iteration": 1136826,
+        "cell_bytes": 8,
+        "checksum": 1570597373751205645,
+        "history_rows": 249,
+        "page_bytes": 409600,
+        "page_count": 1,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "styled-1",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-1",
+        "iterations": 1,
+        "elapsed_ns": 48107042,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 12899486017603866576,
+        "history_rows": 431,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 767856
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-1",
+        "iterations": 1,
+        "elapsed_ns": 48558916,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 12899486017603866576,
+        "history_rows": 431,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 767856
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-1",
+        "iterations": 1,
+        "elapsed_ns": 26015667,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 12899486017603866576,
+        "history_rows": 431,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "styled-4",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-4",
+        "iterations": 1,
+        "elapsed_ns": 37680584,
+        "units_per_iteration": 8388583,
+        "cell_bytes": 8,
+        "checksum": 16292896308437353651,
+        "history_rows": 356,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 767856
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-4",
+        "iterations": 1,
+        "elapsed_ns": 37913583,
+        "units_per_iteration": 8388583,
+        "cell_bytes": 8,
+        "checksum": 16292896308437353651,
+        "history_rows": 356,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 767856
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-4",
+        "iterations": 1,
+        "elapsed_ns": 22818292,
+        "units_per_iteration": 8388583,
+        "cell_bytes": 8,
+        "checksum": 16292896308437353651,
+        "history_rows": 356,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "wide",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "wide",
+        "iterations": 1,
+        "elapsed_ns": 11825042,
+        "units_per_iteration": 8388608,
+        "cell_bytes": 8,
+        "checksum": 6919583819099272309,
+        "history_rows": 679,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "wide",
+        "iterations": 1,
+        "elapsed_ns": 11932958,
+        "units_per_iteration": 8388608,
+        "cell_bytes": 8,
+        "checksum": 6919583819099272309,
+        "history_rows": 679,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "wide",
+        "iterations": 1,
+        "elapsed_ns": 5422125,
+        "units_per_iteration": 8388608,
+        "cell_bytes": 8,
+        "checksum": 6919583819099272309,
+        "history_rows": 679,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "wide-spaces",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "wide-spaces",
+        "iterations": 1,
+        "elapsed_ns": 50839792,
+        "units_per_iteration": 8388608,
+        "cell_bytes": 8,
+        "checksum": 13951838532526411225,
+        "history_rows": 522,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "wide-spaces",
+        "iterations": 1,
+        "elapsed_ns": 51876583,
+        "units_per_iteration": 8388608,
+        "cell_bytes": 8,
+        "checksum": 13951838532526411225,
+        "history_rows": 522,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "wide-spaces",
+        "iterations": 1,
+        "elapsed_ns": 10311625,
+        "units_per_iteration": 8388608,
+        "cell_bytes": 8,
+        "checksum": 13951838532526411225,
+        "history_rows": 522,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "mixed-wide",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "mixed-wide",
+        "iterations": 1,
+        "elapsed_ns": 68383792,
+        "units_per_iteration": 8388608,
+        "cell_bytes": 8,
+        "checksum": 12794299148985468789,
+        "history_rows": 368,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "mixed-wide",
+        "iterations": 1,
+        "elapsed_ns": 69877750,
+        "units_per_iteration": 8388608,
+        "cell_bytes": 8,
+        "checksum": 12794299148985468789,
+        "history_rows": 368,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "mixed-wide",
+        "iterations": 1,
+        "elapsed_ns": 11231958,
+        "units_per_iteration": 8388608,
+        "cell_bytes": 8,
+        "checksum": 12794299148985468789,
+        "history_rows": 368,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  }
+]

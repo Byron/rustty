@@ -1,0 +1,12 @@
+{
+  "source_identity": "final-parser-stream-source-identity.json",
+  "source_proof": {
+    "rust_parser_and_native_observer": "Entire Rust parser lib/table, Rust parser adapter and Zig raw observer byte-identical atc06197283,b57ffe1,f2b7e134. Native Parser and OSC source byte-identical6ba144158\u21925acdbf154.",
+    "native_parser_origin": "520d8f55ace5186f71bb796cffc9350e4973d790",
+    "rust_cancellation_port": "046e2ba536e22433ce8bf6caf259521a0b6033fe",
+    "observer_origin": "e7ed282ab179ca18201068de31f485b9dc22d37f",
+    "mechanism": "zig-parser.zig appends synthetic rawOSC before callingParser.next whenever leavingosc_string and discards actualosc_dispatch actions. Nativeosc.Parser.end returnsnull forCAN/SUB, so these extraevents are never emitted byproductionParser.",
+    "disposition": "older reference-observer bug, not a production-parser or terminal-behavior difference",
+    "scope": "No baseline oracle replay claimed forrawparser; complete unchanged-source proof plus per-response exactartifact alignment. This audit does not change production, fixtures, or strict classifier."
+  }
+}

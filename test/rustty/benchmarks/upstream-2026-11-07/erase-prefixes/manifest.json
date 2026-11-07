@@ -1,0 +1,72 @@
+[
+  {
+    "name": "erase-2-120x80",
+    "parent": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/erase-2-120x80.vt",
+    "parent_sha256": "4d6d61fa457e0e63af0cc19cca86885537f4ee625690a14824524d7f4cb2f1de",
+    "bytes": 1048541,
+    "sha256": "e85ed3102da5cbb2bae7cc9773a62822027faac7ef3e4aea513581d6ba123fe7",
+    "counts": {
+      "ED2": 17657,
+      "ED22": 0,
+      "EL2": 17657,
+      "EL0": 0,
+      "CRLF": 17657
+    }
+  },
+  {
+    "name": "erase-2-120x12",
+    "parent": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/erase-2-120x12.vt",
+    "parent_sha256": "87f8e1359b5e4bc22442bd8b87e24e93a373cefaa6458a92459d8345c8cdc943",
+    "bytes": 1048575,
+    "sha256": "95ebc9fc58bce591bbcb1a3d492084f22b929b0e7ae5f67e1541a6e3c85bc43b",
+    "counts": {
+      "ED2": 18046,
+      "ED22": 0,
+      "EL2": 18046,
+      "EL0": 0,
+      "CRLF": 18046
+    }
+  },
+  {
+    "name": "erase-2-300x100",
+    "parent": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/erase-2-300x100.vt",
+    "parent_sha256": "111864ad45a6bb6fc5d053c1f13ad719db004eb390035b72a6f865203691877d",
+    "bytes": 1048564,
+    "sha256": "94ee7cfe8928b9b027b003953be75be0fef0bf0a49b8f9cdbcd215d8b601ccb3",
+    "counts": {
+      "ED2": 17479,
+      "ED22": 0,
+      "EL2": 17479,
+      "EL0": 0,
+      "CRLF": 17479
+    }
+  },
+  {
+    "name": "erase-22-120x80",
+    "parent": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/erase-22-120x80.vt",
+    "parent_sha256": "d836fd4ebe4b75fabf71bc13d4d0630ce12c43e69d1800144085741d2e10fc72",
+    "bytes": 1048531,
+    "sha256": "b1f0e4e8f30d8e0e55a622f634f1cba78a0cfe4b453d91ba62116abd02fe2ceb",
+    "counts": {
+      "ED2": 0,
+      "ED22": 17363,
+      "EL2": 17363,
+      "EL0": 0,
+      "CRLF": 17363
+    }
+  },
+  {
+    "name": "erase-rate-120x80",
+    "parent": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/erase-rate-120x80.vt",
+    "parent_sha256": "56634756c5b4ad723320f4c482a21952cdb1d4698dec835836e6df2c98abcf0b",
+    "bytes": 1048576,
+    "sha256": "31d0cc53d8a3f6103e6fe90c5da75ff31b83322411f91d215cc85e5543a9dc69",
+    "counts": {
+      "ED2": 7224,
+      "ED22": 0,
+      "EL2": 7224,
+      "EL0": 0,
+      "CRLF": 72532
+    }
+  }
+]

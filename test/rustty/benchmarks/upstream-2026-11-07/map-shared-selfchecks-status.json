@@ -1,0 +1,74 @@
+[
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-0.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-10000.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": false
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-120x80-50000000.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": false
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-0.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-10000.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": false,
+    "before_full_history_valid": false
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-full-215x215-50000000.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": false,
+    "before_full_history_valid": false
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-0.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-10000.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-120x80-50000000.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-0.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-10000.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": true
+  },
+  {
+    "config": "/private/tmp/rustty-reintegrate.leadij/stream-configs/links-short-215x215-50000000.json",
+    "candidate_matches_native": true,
+    "before_visible_matches_native": true,
+    "before_full_history_valid": true
+  }
+]

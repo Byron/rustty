@@ -1,0 +1,52 @@
+{
+  "stopped_at": 1794052513.14644,
+  "reason": "Root authorized artifact I/O buffering optimization after identifying large unbuffered save_failure writes. All six complete corrected parser shards are retained; the entire partial rest run will be replaced.",
+  "coordinator_exit_status": 130,
+  "complete": false,
+  "source_commit": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+  "terminated_rest": {
+    "name": "rest",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/runner",
+      "--no-build",
+      "--rust-bin",
+      "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/rust",
+      "--zig-bin",
+      "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/binaries/zig",
+      "--artifacts",
+      "/private/tmp/rustty-reintegrate.leadij/final-parity-corrected-group2/rest",
+      "--max-failures",
+      "100000",
+      "--timeout",
+      "60",
+      "--generated",
+      "100",
+      "--seed",
+      "0",
+      "--input",
+      "--page-layout",
+      "--pages",
+      "--snapshots",
+      "--snapshot-wire"
+    ],
+    "groups": [
+      "input",
+      "page-layout",
+      "pages",
+      "snapshots",
+      "snapshot-wire"
+    ],
+    "generated": 100,
+    "seed": 0,
+    "smoke_comparisons": 181,
+    "expected_comparisons": 17170,
+    "started": 1794051978.813629,
+    "pid": 16572,
+    "cancelled": true,
+    "exit_status": -15,
+    "finished": 1794052513.074257
+  },
+  "run_json_sha256": "33a9423dde05e155cbc9c44749c08e4d6ddd41afc68b6e69ae5156a8d3613d5b",
+  "retained_parser_comparisons": 2028,
+  "retained_parser_failures": 0
+}

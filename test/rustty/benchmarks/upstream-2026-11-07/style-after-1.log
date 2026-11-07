@@ -1,0 +1,41 @@
+Rustty Cell: 8 bytes
+Benchmarking rustty/resource_churn/plain
+Benchmarking rustty/resource_churn/plain: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/plain: Collecting 20 samples in estimated 2.0001 s (1.9M iterations)
+Benchmarking rustty/resource_churn/plain: Analyzing
+rustty/resource_churn/plain
+                        time:   [1.0163 µs 1.0416 µs 1.0752 µs]
+                        thrpt:  [1.1905 Gelem/s 1.2288 Gelem/s 1.2595 Gelem/s]
+                 change:
+                        time:   [−1.2785% +1.0470% +3.6952%] (p = 0.49 > 0.05)
+                        thrpt:  [−3.5635% −1.0361% +1.2951%]
+                        No change in performance detected.
+Found 3 outliers among 20 measurements (15.00%)
+  3 (15.00%) high severe
+Benchmarking rustty/resource_churn/style
+Benchmarking rustty/resource_churn/style: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/style: Collecting 20 samples in estimated 2.0189 s (14k iterations)
+Benchmarking rustty/resource_churn/style: Analyzing
+rustty/resource_churn/style
+                        time:   [141.80 µs 143.07 µs 144.05 µs]
+                        thrpt:  [8.8856 Melem/s 8.9465 Melem/s 9.0267 Melem/s]
+                 change:
+                        time:   [+0.8185% +1.5340% +2.2449%] (p = 0.00 < 0.05)
+                        thrpt:  [−2.1956% −1.5108% −0.8118%]
+                        Change within noise threshold.
+Benchmarking rustty/resource_churn/hyperlink
+Benchmarking rustty/resource_churn/hyperlink: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/hyperlink: Collecting 20 samples in estimated 2.1058 s (3360 iterations)
+Benchmarking rustty/resource_churn/hyperlink: Analyzing
+rustty/resource_churn/hyperlink
+                        time:   [618.10 µs 620.39 µs 622.21 µs]
+                        thrpt:  [2.0572 Melem/s 2.0632 Melem/s 2.0709 Melem/s]
+                 change:
+                        time:   [−1.6204% −0.8946% −0.1338%] (p = 0.03 < 0.05)
+                        thrpt:  [+0.1339% +0.9026% +1.6471%]
+                        Change within noise threshold.
+
+kitty_upload/unique_256px_4_terminals: sources=4, source_bytes=1048576
+kitty_upload/duplicate_256px_4_terminals: sources=1, source_bytes=262144
+kitty_upload/unique_1024px_4_terminals: sources=4, source_bytes=16777216
+kitty_upload/duplicate_1024px_4_terminals: sources=1, source_bytes=4194304

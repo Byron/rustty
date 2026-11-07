@@ -1,0 +1,35 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.82s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 4 tests
+test screen::tests::sgr_reset_does_not_grow_for_a_discarded_style ... FAILED
+test screen::tests::sgr_failed_final_admission_restores_the_presequence_style ... FAILED
+test screen::tests::sgr_admits_only_the_final_style_and_preserves_live_cells ... ok
+test screen::tests::sgr_final_style_reuse_and_reset_do_not_admit_intermediate_styles ... ok
+
+failures:
+
+---- screen::tests::sgr_reset_does_not_grow_for_a_discarded_style stdout ----
+
+thread 'screen::tests::sgr_reset_does_not_grow_for_a_discarded_style' (96433814) panicked at crates/rustty-vt/src/screen/tests.rs:128:5:
+assertion `left == right` failed
+  left: PageCapacity { cols: 80, rows: 592, styles: 4096, hyperlink_bytes: 192, grapheme_bytes: 8192, string_bytes: 2048 }
+ right: PageCapacity { cols: 80, rows: 592, styles: 128, hyperlink_bytes: 192, grapheme_bytes: 8192, string_bytes: 2048 }
+
+---- screen::tests::sgr_failed_final_admission_restores_the_presequence_style stdout ----
+
+thread 'screen::tests::sgr_failed_final_admission_restores_the_presequence_style' (96433812) panicked at crates/rustty-vt/src/screen/tests.rs:195:5:
+assertion `left == right` failed
+  left: Style { foreground: Default, background: Default, underline_color: Default, bold: true, faint: false, italic: true, blink: false, inverse: false, invisible: false, strikethrough: false, overline: false, underline: None, tmux_ansi: 0, tmux_tab: 0 }
+ right: Style { foreground: Default, background: Default, underline_color: Default, bold: true, faint: false, italic: false, blink: false, inverse: false, invisible: false, strikethrough: false, overline: false, underline: None, tmux_ansi: 0, tmux_tab: 0 }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    screen::tests::sgr_failed_final_admission_restores_the_presequence_style
+    screen::tests::sgr_reset_does_not_grow_for_a_discarded_style
+
+test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 199 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p rustty-vt --lib`

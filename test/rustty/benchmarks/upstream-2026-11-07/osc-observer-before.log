@@ -1,0 +1,7 @@
+FAIL parser/osc-cancel: response.parser.events: Zig length 15, Rust length 13
+  /private/tmp/rustty-reintegrate.leadij/osc-observer-before/failures/000001
+FAIL parser/osc-cancel/scalar: response.parser.events: Zig length 15, Rust length 13
+  /private/tmp/rustty-reintegrate.leadij/osc-observer-before/failures/000002
+FAIL parser/osc-cancel/chunks: response.parser.events: Zig length 15, Rust length 13
+  /private/tmp/rustty-reintegrate.leadij/osc-observer-before/failures/000003
+3 comparisons, 3 failures, 0 coverage gaps; full parity not established

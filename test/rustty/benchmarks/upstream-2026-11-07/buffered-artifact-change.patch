@@ -1,0 +1,16 @@
+diff --git a/test/rustty/parity-runner.rs b/test/rustty/parity-runner.rs
+index 18f98b556dce60fcd409ccbd45a2395a9fe74169..c34213632971b6ddfd6a8833802cadf34b143361 100644
+--- a/test/rustty/parity-runner.rs
++++ b/test/rustty/parity-runner.rs
+@@ -711,9 +711,10 @@ impl Runner {
+             ("zig", &comparison.values[0]),
+             ("rust", &comparison.values[1]),
+         ] {
+-            let mut file = File::create(path.join(format!("{name}.json")))?;
++            let mut file = io::BufWriter::new(File::create(path.join(format!("{name}.json")))?);
+             serde_json::to_writer_pretty(&mut file, value)?;
+             writeln!(file)?;
++            file.flush()?;
+         }
+         fs::write(path.join("difference.txt"), format!("{reason}\n"))?;
+         Ok(path

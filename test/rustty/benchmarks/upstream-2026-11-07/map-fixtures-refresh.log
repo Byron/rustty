@@ -1,0 +1,4 @@
+page-layout: 386 fixtures, 386 comparisons, 5,923 bytes
+pages: 687 fixtures, 2061 comparisons, 173,536 bytes
+snapshots: 112 fixtures, 336 comparisons, 4,094 bytes
+snapshot-wire: 2186 fixtures, 3712 comparisons, 151,034 bytes

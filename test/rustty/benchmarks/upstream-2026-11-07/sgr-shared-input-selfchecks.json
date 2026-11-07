@@ -1,0 +1,247 @@
+[
+  {
+    "input": "plain",
+    "input_sha256": "4cdd7b374bee9cd459a51cb1440d33c0ba48097b280a3ecfb8bb89910301a700",
+    "before": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 1,
+      "elapsed_ns": 15851875,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "after_and_native": {
+      "rustty": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "plain",
+        "iterations": 2,
+        "elapsed_ns": 30555917,
+        "units_per_iteration": 8388587,
+        "cell_bytes": 8,
+        "checksum": 18031999217808237406,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 781696
+      },
+      "ghostty": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "plain",
+        "iterations": 2,
+        "elapsed_ns": 12065209,
+        "units_per_iteration": 8388587,
+        "cell_bytes": 8,
+        "checksum": 18031999217808237406,
+        "history_rows": 615,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    },
+    "equal": true
+  },
+  {
+    "input": "styled-1",
+    "input_sha256": "51854f3b4b2a481794bd1826b50d30fb49bd90f29f124af62f89df6849c6f464",
+    "before": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-1",
+      "iterations": 1,
+      "elapsed_ns": 53944792,
+      "units_per_iteration": 8388604,
+      "cell_bytes": 8,
+      "checksum": 12899486017603866576,
+      "history_rows": 564,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "after_and_native": {
+      "rustty": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-1",
+        "iterations": 2,
+        "elapsed_ns": 103437792,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 12899486017603866576,
+        "history_rows": 564,
+        "page_bytes": 1048576,
+        "page_count": 2,
+        "owned_bytes": 1034880
+      },
+      "ghostty": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-1",
+        "iterations": 2,
+        "elapsed_ns": 52062043,
+        "units_per_iteration": 8388604,
+        "cell_bytes": 8,
+        "checksum": 12899486017603866576,
+        "history_rows": 431,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    },
+    "equal": true
+  },
+  {
+    "input": "styled-2",
+    "input_sha256": "f26f8ac9bccd54338ee498e7cf729d6d716f4ceb1554f4f8f478e1fcdb07bcb8",
+    "before": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-2",
+      "iterations": 1,
+      "elapsed_ns": 60160625,
+      "units_per_iteration": 8388510,
+      "cell_bytes": 8,
+      "checksum": 12966706845396462931,
+      "history_rows": 318,
+      "page_bytes": 933888,
+      "page_count": 2,
+      "owned_bytes": 948224
+    },
+    "after_and_native": {
+      "rustty": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-2",
+        "iterations": 2,
+        "elapsed_ns": 90732542,
+        "units_per_iteration": 8388510,
+        "cell_bytes": 8,
+        "checksum": 12966706845396462931,
+        "history_rows": 318,
+        "page_bytes": 933888,
+        "page_count": 2,
+        "owned_bytes": 948224
+      },
+      "ghostty": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-2",
+        "iterations": 2,
+        "elapsed_ns": 46795001,
+        "units_per_iteration": 8388510,
+        "cell_bytes": 8,
+        "checksum": 12966706845396462931,
+        "history_rows": 451,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    },
+    "equal": true
+  },
+  {
+    "input": "styled-3",
+    "input_sha256": "2e60267fc1f768019aba52f11b62ebd95587db1bc23cd9822f8e42c340321cf5",
+    "before": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-3",
+      "iterations": 1,
+      "elapsed_ns": 65121417,
+      "units_per_iteration": 8388595,
+      "cell_bytes": 8,
+      "checksum": 10588578405522194252,
+      "history_rows": 419,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 995328
+    },
+    "after_and_native": {
+      "rustty": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-3",
+        "iterations": 2,
+        "elapsed_ns": 84444416,
+        "units_per_iteration": 8388595,
+        "cell_bytes": 8,
+        "checksum": 10588578405522194252,
+        "history_rows": 419,
+        "page_bytes": 1048576,
+        "page_count": 2,
+        "owned_bytes": 995328
+      },
+      "ghostty": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-3",
+        "iterations": 2,
+        "elapsed_ns": 44788749,
+        "units_per_iteration": 8388595,
+        "cell_bytes": 8,
+        "checksum": 10588578405522194252,
+        "history_rows": 257,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    },
+    "equal": true
+  },
+  {
+    "input": "styled-4",
+    "input_sha256": "577fac0ce91c4892413461e3ce7c227f8e25eab7b0b857025485d5dff3e644c3",
+    "before": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "styled-4",
+      "iterations": 1,
+      "elapsed_ns": 66949583,
+      "units_per_iteration": 8388583,
+      "cell_bytes": 8,
+      "checksum": 16292896308437353651,
+      "history_rows": 506,
+      "page_bytes": 1048576,
+      "page_count": 2,
+      "owned_bytes": 1034880
+    },
+    "after_and_native": {
+      "rustty": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "styled-4",
+        "iterations": 2,
+        "elapsed_ns": 79794500,
+        "units_per_iteration": 8388583,
+        "cell_bytes": 8,
+        "checksum": 16292896308437353651,
+        "history_rows": 506,
+        "page_bytes": 1048576,
+        "page_count": 2,
+        "owned_bytes": 1034880
+      },
+      "ghostty": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "styled-4",
+        "iterations": 2,
+        "elapsed_ns": 45671875,
+        "units_per_iteration": 8388583,
+        "cell_bytes": 8,
+        "checksum": 16292896308437353651,
+        "history_rows": 356,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    },
+    "equal": true
+  }
+]

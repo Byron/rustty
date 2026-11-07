@@ -1,0 +1,32 @@
+{
+  "aborted": false,
+  "checked": 17170,
+  "coverage_gaps": [],
+  "covered": [
+    "effects.bell",
+    "effects.pty",
+    "effects.pwd",
+    "effects.title",
+    "input.focus-paste",
+    "input.key",
+    "input.mouse",
+    "snapshot.cross-decode",
+    "snapshot.fixtures",
+    "snapshot.streaming",
+    "terminal.cells",
+    "terminal.cursor",
+    "terminal.observe",
+    "terminal.page-layout",
+    "terminal.pages",
+    "terminal.reset",
+    "terminal.resize",
+    "terminal.screens",
+    "terminal.styles",
+    "terminal.write",
+    "unicode.width"
+  ],
+  "error": null,
+  "failures": 2061,
+  "full_parity": false,
+  "mode": "smoke"
+}

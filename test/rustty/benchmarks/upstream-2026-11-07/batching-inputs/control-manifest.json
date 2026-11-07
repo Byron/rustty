@@ -1,0 +1,24 @@
+[
+  {
+    "name": "combining-control",
+    "pattern": "áb̂c̃d̈",
+    "pattern_hex": "61cc8162cc8263cc8364cc88",
+    "byte_limit": 1048576,
+    "formula": "pattern_utf8 * (1048576 // len(pattern_utf8))",
+    "bytes": 1048572,
+    "sha256": "1be1a6aeff32b4f0370e4e80f3a7236159140b6ca9896b0e73bf6df750b5ff04",
+    "matches_formula": true,
+    "source": "crates/rustty-vt/benches/primitives.rs existing combining/emoji workload strings"
+  },
+  {
+    "name": "emoji-control",
+    "pattern": "👩‍💻👨‍🚀",
+    "pattern_hex": "f09f91a9e2808df09f92bbf09f91a8e2808df09f9a80",
+    "byte_limit": 1048576,
+    "formula": "pattern_utf8 * (1048576 // len(pattern_utf8))",
+    "bytes": 1048564,
+    "sha256": "25fe1f246bf79014bd27219ee62a21e9fa404267ec33f6a2fbd7fd68321852e3",
+    "matches_formula": true,
+    "source": "crates/rustty-vt/benches/primitives.rs existing combining/emoji workload strings"
+  }
+]

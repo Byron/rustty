@@ -1,0 +1,12 @@
+{
+  "aborted": false,
+  "checked": 339,
+  "coverage_gaps": [],
+  "covered": [
+    "parser.raw-events"
+  ],
+  "error": null,
+  "failures": 0,
+  "full_parity": false,
+  "mode": "smoke"
+}

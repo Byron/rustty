@@ -1,0 +1,77 @@
+   Compiling rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+   Compiling tmuxx-terminal v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-terminal)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.91s
+     Running unittests src/lib.rs (target/debug/deps/tmuxx_terminal-f39194bfa7ad63bd)
+
+running 1 test
+test tests::active_screen_text_keeps_cold_history_and_ignores_viewport_scroll ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.01s
+
+     Running tests/capture_reference.rs (target/debug/deps/capture_reference-65ddb80be870179c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.00s
+
+     Running tests/images_pixels_reference.rs (target/debug/deps/images_pixels_reference-7b17a4be9c68eec5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/images_quota.rs (target/debug/deps/images_quota-af906480972d7300)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/images_quota_reference.rs (target/debug/deps/images_quota_reference-3078426488e2343d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/images_reference.rs (target/debug/deps/images_reference-efad0fd3789acd98)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/native_input_reference.rs (target/debug/deps/native_input_reference-b9794ea81cc96721)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/pointer_shapes.rs (target/debug/deps/pointer_shapes-5485d5671eacf5ee)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/raw_capture_reference.rs (target/debug/deps/raw_capture_reference-83dea44da246290a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/save_all_modes.rs (target/debug/deps/save_all_modes-e98252c2242afbb9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/shell_reference.rs (target/debug/deps/shell_reference-b6b1296f277fd919)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/unicode_reference.rs (target/debug/deps/unicode_reference-a33240c6b8d50b7b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

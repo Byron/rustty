@@ -1,0 +1,39 @@
+Rustty Cell: 8 bytes
+Benchmarking rustty/resource_churn/plain
+Benchmarking rustty/resource_churn/plain: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/plain: Collecting 20 samples in estimated 2.0002 s (1.9M iterations)
+Benchmarking rustty/resource_churn/plain: Analyzing
+rustty/resource_churn/plain
+                        time:   [1.0469 µs 1.0493 µs 1.0522 µs]
+                        thrpt:  [1.2165 Gelem/s 1.2198 Gelem/s 1.2227 Gelem/s]
+                 change:
+                        time:   [+0.4222% +0.8226% +1.2227%] (p = 0.00 < 0.05)
+                        thrpt:  [−1.2080% −0.8159% −0.4204%]
+                        Change within noise threshold.
+Benchmarking rustty/resource_churn/style
+Benchmarking rustty/resource_churn/style: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/style: Collecting 20 samples in estimated 2.0377 s (9450 iterations)
+Benchmarking rustty/resource_churn/style: Analyzing
+rustty/resource_churn/style
+                        time:   [213.71 µs 214.42 µs 215.19 µs]
+                        thrpt:  [5.9482 Melem/s 5.9697 Melem/s 5.9894 Melem/s]
+                 change:
+                        time:   [+0.0830% +0.5651% +1.0275%] (p = 0.04 < 0.05)
+                        thrpt:  [−1.0170% −0.5620% −0.0829%]
+                        Change within noise threshold.
+Benchmarking rustty/resource_churn/hyperlink
+Benchmarking rustty/resource_churn/hyperlink: Warming up for 1.0000 s
+Benchmarking rustty/resource_churn/hyperlink: Collecting 20 samples in estimated 2.0717 s (2100 iterations)
+Benchmarking rustty/resource_churn/hyperlink: Analyzing
+rustty/resource_churn/hyperlink
+                        time:   [1.0647 ms 1.0769 ms 1.0899 ms]
+                        thrpt:  [1.1745 Melem/s 1.1886 Melem/s 1.2022 Melem/s]
+                 change:
+                        time:   [+1.9523% +2.9668% +3.9993%] (p = 0.00 < 0.05)
+                        thrpt:  [−3.8456% −2.8813% −1.9149%]
+                        Performance has regressed.
+
+kitty_upload/unique_256px_4_terminals: sources=4, source_bytes=1048576
+kitty_upload/duplicate_256px_4_terminals: sources=1, source_bytes=262144
+kitty_upload/unique_1024px_4_terminals: sources=4, source_bytes=16777216
+kitty_upload/duplicate_1024px_4_terminals: sources=1, source_bytes=4194304

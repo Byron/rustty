@@ -1,0 +1,417 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.70s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 247 tests
+test dnd::tests::oversized_sequence_hints_are_rejected_before_visiting_or_allocating_items ... ok
+test glyph::tests::capture_configuration_is_latched_at_identifier ... ok
+test compression::tests::compression_leaves_incompressible_and_oversized_buffers_resident ... ok
+test glyph::tests::outline_coordinates_and_decoding_limits ... ok
+test graphics::images::tests::byte_accounting_tracks_shared_buffers_replacement_and_public_mutation ... ok
+test glyph::tests::reset_clears_registrations_and_retains_configuration ... ok
+test graphics::images::tests::clones_and_arbitrary_map_mutation_keep_lookups_independent ... ok
+test compression::tests::compression_preserves_words_and_reuses_immutable_restore_encoding ... ok
+test graphics::images::tests::lowest_free_id_follows_insertion_removal_cloning_and_public_mutation ... ok
+test graphics::images::tests::numbered_lookup_tracks_replacements_removals_and_public_mutation ... ok
+test graphics::pixels::tests::equal_pixels_share_but_checksum_collisions_and_dimensions_do_not ... ok
+test graphics::pixels::tests::concurrent_uploads_share_one_owner ... ok
+test graphics::quota::tests::global_usage_order_ancestor_protection_and_size_pressure ... ok
+test graphics::placements::tests::keyed_updates_survive_swaps_bulk_removal_and_snapshot_mutations ... ok
+test graphics::sixel::tests::decoder_bounds_palette_and_background ... ok
+test graphics::tests::animation_frames_are_bounded_and_advance_on_host_clock ... ok
+test graphics::tests::animation_idle_cache_skips_unchanged_images ... ok
+test graphics::tests::animation_idle_cache_tracks_clones_and_public_container_replacement ... ok
+test graphics::tests::animation_idle_cache_wakes_parked_loading_animations_for_new_frames ... ok
+test graphics::tests::animation_idle_cache_tracks_public_frames_pixels_and_image_replacement ... ok
+test glyph::tests::replacement_moves_fifo_but_failed_replacement_preserves_entry ... ok
+test graphics::tests::anonymous_and_numbered_images_use_independent_id_allocation ... ok
+test graphics::tests::anonymous_placement_ids_do_not_collide_with_external_ids ... ok
+test graphics::tests::erased_history_releases_placement_quota_and_keeps_source_pixels ... ok
+test graphics::tests::deduplicated_images_keep_independent_quotas_and_snapshot_lifetimes ... ok
+test graphics::tests::eviction_uses_transmission_age_after_animation_ticks ... ok
+test graphics::tests::frame_upload_survives_playback_changes ... ok
+test graphics::tests::frame_reservations_preserve_the_target_and_reuse_freed_capacity ... ok
+test graphics::tests::invalid_dimensions_and_mutually_exclusive_ids_do_not_store ... ok
+test graphics::tests::numbered_lookup_preserves_transmission_order_through_animation_and_snapshots ... ok
+test graphics::tests::placement_size_uses_shared_integer_geometry ... ok
+test graphics::tests::png_accepts_missing_trailer_but_requires_complete_pixels_and_checksum ... ok
+test graphics::tests::relative_chain_saturates_each_link_and_rejects_missing_ancestors ... ok
+test graphics::tests::png_and_zlib_uploads_decode_to_rgba ... ok
+test graphics::tests::keyed_deletion_preserves_other_tiles_and_reaps_relative_descendants ... ok
+test graphics::tests::transmission_ids_are_chosen_before_chunking_and_pixel_validation ... ok
+test graphics::tests::transmit_query_chunks_place_delete_and_quiet ... ok
+test graphics::tests::relative_parent_validation_preserves_placements_on_failure ... ok
+test graphics::tests::upload_discards_publicly_retained_placements_of_a_reused_image_id ... ok
+test input::tests::key_modes_and_ime ... ok
+test graphics::pixels::tests::index_is_bounded_and_does_not_own_pixels ... ok
+test input::tests::keyboard_consumption_and_control_distinctions ... ok
+test input::tests::kitty_reports_modifiers_repeats_release_and_associated_text ... ok
+test input::tests::legacy_backspace_preserves_control_alt_and_shift ... ok
+test graphics::tests::whole_image_deletion_preserves_independently_placed_descendant_images ... ok
+test input::tests::mouse_leave_allows_motion_when_reentering_the_same_cell ... ok
+test input::tests::mouse_drag_bounds_pixel_rounding_and_extra_buttons ... ok
+test input::tests::mouse_leave_requires_only_pixel_format_and_resets_tracking_before_guards ... ok
+test input::tests::option_text_and_terminal_alt_have_distinct_legacy_and_kitty_output ... ok
+test input::tests::mouse_protocol_and_focus ... ok
+test input::tests::mouse_tracking_uses_padded_cells_and_keeps_pixel_motion ... ok
+test input::tests::paste_preserves_binary_text_and_checks_safety_before_encoding ... ok
+test input::tests::paste_protection_checks_both_line_terminators ... ok
+test input::tests::paste_frames_strip_unsafe_bytes_and_preserve_utf8 ... ok
+test modes::tests::serde_mode_maps_require_the_supported_keys ... ok
+test notification::tests::forged_list_lengths_are_rejected_before_reading_or_allocating_elements ... ok
+test modes::tests::packed_modes_preserve_every_snapshot_bit_and_mask_unknown_bits ... ok
+test packed::blank_tests::marking_a_row_written_clears_only_the_blank_hint_and_sets_dirty ... ok
+test packed::tests::background_union_and_row_reset ... ok
+test packed::tests::exact_cell_layout_and_independent_fields ... ok
+test page::text_span_tests::text_span_metadata_survives_row_rotation_moves_and_resource_rebuilds ... ok
+test page_layout::hyperlink_tests::hyperlink_map_and_set_have_independent_capacities ... ok
+test page_layout::hyperlink_tests::hyperlink_map_rounds_once_and_preserves_its_request_when_adjusting_columns ... ok
+test page_layout::hyperlink_tests::old_capacity_json_defaults_the_new_map_field ... ok
+test page_layout::tests::arithmetic_overflows_are_explicit ... ok
+test page::text_span_tests::text_span_sources_are_charged_once_and_released_with_their_last_part ... ok
+test page_layout::tests::column_adjustment_caps_rows_without_growing_the_page ... ok
+test page_layout::tests::column_adjustment_preserves_resources_and_fills_available_rows ... ok
+test page_layout::tests::invalid_or_unrepresentable_capacity_is_rejected_without_allocation ... ok
+test page_layout::tests::macos_arm64_initial_capacity_matches_native_observation ... ok
+test page_layout::tests::native_standard_resource_layout ... ok
+test page_layout::tests::packed_style_layout_keeps_member_alignment_distinct ... ok
+test page_layout::tests::pooled_and_exact_pages_have_distinct_charges ... ok
+test page_layout::tests::wide_initial_page_retains_standard_rows_when_pool_cannot_fit_one ... ok
+test page_layout::tests::zero_resource_maps_retain_their_native_headers ... ok
+test page_list::capacity::tests::a_light_link_page_carries_at_least_32_unique_links_when_shrinking ... ok
+test page_list::capacity::tests::fit_rows_handles_empty_one_row_and_u16_row_limits ... ok
+test page_list::capacity::tests::a_tall_styled_burst_returns_to_the_byte_floor ... ok
+test page_list::capacity::tests::fit_rows_preserves_aligned_grid_boundaries_with_independent_link_storage ... ok
+test page_list::capacity::tests::history_ages_each_resource_independently_and_next_is_read_only ... ok
+test page_list::capacity::tests::impossible_carried_metadata_falls_back_without_committing_history ... ok
+test page_list::capacity::tests::new_pages_carry_live_style_capacity ... ok
+test page_list::capacity::tests::resource_usage_counts_live_values_and_retained_string_storage ... ok
+test packed::blank_tests::grouped_predicates_match_scalar_text_and_native_display_emptiness ... ok
+test page_list::capacity::tests::growing_large_carried_pages_enforces_bytes_and_owned_history_budget ... ok
+test page_list::capacity::tests::pool_sized_fit_keeps_90_percent_density_or_retains_full_rows ... ok
+test page_list::capacity::tests::three_previous_pages_survive_light_use_but_two_empty_pages_drop_a_burst ... ok
+test page_list::capacity::tests::underused_resources_shrink_to_scaled_headroom_and_keep_standard_floors ... ok
+test page_list::capacity::tests::trimmed_pages_measure_style_and_string_demand_per_standard_row ... ok
+test page_list::tests::growth_reuses_the_evicted_standard_allocation_without_a_cache ... ok
+test compression::tests::compression_restarts_after_partial_page_trims_without_serial_changes ... ok
+test compression::tests::short_historical_selection_restores_one_page ... ok
+test page_list::tests::growth_preserves_native_line_and_byte_floors ... ok
+test page_list::tests::reverse_lookup_matches_forward_after_page_changes ... ok
+test page_resources::tests::discarded_hyperlink_reserves_incoming_strings_before_reclaim ... ok
+test page_resources::tests::discarded_set_tail_restores_probe_chain_and_collision_capacity ... ok
+test page_resources::tests::exhausted_large_spans_leave_the_bitmap_unchanged ... ok
+test compression::tests::skipped_rows_materialize_only_requested_page ... ok
+test page_resources::tests::grapheme_clones_keep_offsets_when_repacking_would_exhaust_capacity ... ok
+test page_resources::tests::grapheme_text_survives_failed_growth_and_follows_its_allocation ... ok
+test page_resources::tests::hyperlink_deduplication_and_failed_uri_free_temporary_strings ... ok
+test page_resources::tests::hyperlink_hash_matches_native_page_entry_vectors ... ok
+test page_resources::tests::live_set_preserves_lookup_through_dead_longer_probe ... ok
+test page_resources::tests::live_set_reaped_membership_preserves_last_bucket_and_payloads ... ok
+test page_resources::tests::hyperlink_reclaimed_ids_free_both_strings_without_losing_live_cells ... ok
+test page_resources::tests::live_set_reclaims_id_passed_over_during_insert ... ok
+test page_resources::tests::live_set_rehash_threshold_counts_living_entries ... ok
+test page_resources::tests::live_set_rejects_zero_release_count - should panic ... ok
+test page_resources::tests::live_set_reuse_cursor_defaults_and_resets ... ok
+test page_resources::tests::live_set_reuses_dead_ids_and_trims_before_duplicate_lookup ... ok
+test page_resources::tests::native_chunk_rounding_and_small_capacity ... ok
+test page_resources::tests::native_first_fit_and_search_hint_preserve_partial_words ... ok
+test page_resources::tests::native_large_spans_cross_words_and_preserve_neighbors_when_freed ... ok
+test page_resources::tests::native_large_spans_restart_at_the_next_partial_word ... ok
+test page_resources::tests::native_multi_chunk_graphemes_free_the_rounded_allocation ... ok
+test page_resources::tests::native_small_spans_do_not_join_holes_across_word_boundaries ... ok
+test page_resources::tests::preferred_style_ids_retain_only_matching_live_values ... ok
+test page_resources::tests::rebuilding_shares_link_payloads_but_reflow_still_reserves_strings ... ok
+test page_resources::tests::sparse_grapheme_slots_follow_chunks_not_map_capacity ... ok
+test page_resources::tests::style_admission_refcounts_break_displacement_ties ... ok
+test page_resources::tests::live_set_reclaims_exhausted_ids_across_repeated_churn ... ok
+test page_list::capacity::tests::one_unique_link_per_row_projects_each_hyperlink_resource_once ... ok
+test page_resources::tests::style_admission_collision_limit_rejects_even_unrelated_new_values ... ok
+test compression::tests::metadata_navigation_and_active_selection_keep_history_cold ... ok
+test page_resources::tests::style_admission_reserves_zero_and_reuses_live_values_when_full ... ok
+test screen::capture::tests::enabling_tmux_capture_does_not_invent_untracked_bounds ... ok
+test screen::hyperlink_capacity_tests::dense_links_survive_reflow_and_cell_copies_without_growing_the_set ... ok
+test compression::tests::compression_disabled_policy_and_small_budgets_preserve_retention ... ok
+test screen::hyperlink_capacity_tests::growing_a_full_hyperlink_map_preserves_set_and_string_capacity ... ok
+test screen::capture::tests::tmux_capture_survives_screen_switches_reset_and_checkpoint_restore ... ok
+test compression::tests::viewport_reads_only_visible_rows_without_restoring_cold_history ... ok
+test screen::hyperlink_capacity_tests::page_json_accepts_an_explicit_independent_zero_map ... ok
+test screen::hyperlink_capacity_tests::printing_one_long_link_does_not_grow_the_distinct_link_set ... ok
+test screen::hyperlink_capacity_tests::zero_hyperlink_dimensions_grow_independently ... ok
+test compression::tests::compression_is_bounded_skips_viewport_and_preserves_snapshot_and_selection ... ok
+test screen::resize::tests::height_reduction_clamps_live_and_saved_cursors_pushed_into_history ... ok
+test screen::resize::tests::reflow_runs_resume_after_partial_copy_and_scalar_fallback ... ok
+test screen::resize::tests::reflow_style_cache_follows_resource_relocation ... ok
+test screen::hyperlink_capacity_tests::legacy_or_explicit_small_hints_keep_existing_json_growth_behavior ... ok
+test screen::resize::tests::unmanaged_reflow_matches_resource_copying ... ok
+test screen::serde_impl::tests::contextual_json_preserves_graphemes_through_live_mutation_and_native_snapshots ... ok
+test screen::serde_impl::tests::contextual_json_rejects_oversized_graphemes_and_empty_cursor_links ... ok
+test screen::tests::blank_backgrounds_switch_between_inline_and_managed_styles ... ok
+test screen::hyperlink_capacity_tests::legacy_screen_json_restores_dense_links_without_the_new_capacity_field ... ok
+test screen::tests::accepted_streaming_history_updates_semantic_prompt_seen_after_reset ... ok
+test screen::tests::blank_tests::blank_erases_preserve_required_semantic_and_wrap_metadata_changes ... ok
+test screen::tests::blank_tests::blank_destination_batches_retain_styles_and_invalidate_the_hint ... ok
+test screen::tests::blank_tests::repeated_blank_erases_preserve_clean_rows_and_revisions ... ok
+test screen::tests::blank_tests::colored_and_protected_rows_are_never_known_blank ... ok
+test screen::tests::blank_tests::restored_and_exposed_zero_rows_recover_the_blank_hint ... ok
+test screen::tests::detached_resources_outlive_source_mutation_and_destruction ... ok
+test screen::tests::erased_history_invalidates_its_tracked_points_only ... ok
+test screen::tests::exposed_rows_are_blank_after_truncation_rotation_and_recycling ... ok
+test screen::tests::failed_style_rebuild_preserves_words_maps_and_references ... ok
+test screen::tests::grapheme_growth_uses_native_page_capacity ... ok
+test screen::tests::blank_tests::blank_rows_track_writes_erases_copies_and_reflow ... ok
+test screen::tests::index_preserves_cursor_resources_and_generation ... ok
+test page_resources::tests::borrowed_hyperlink_hash_matches_contiguous_keys_at_every_boundary ... ok
+test screen::tests::linked_row_batches_retain_every_occupied_cell_and_the_cursor ... ok
+test screen::tests::mixed_row_writer_crosses_width_changes_and_restyles_exact_cells ... ok
+test screen::tests::native_style_hash_matches_canonical_packed_fields ... ok
+test screen::tests::grouped_style_comparison_matches_derived_equality ... ok
+test screen::tests::page_rotations_preserve_slots_and_recycling_renews_identity ... ok
+test screen::tests::plain_copies_release_payload_charges ... ok
+test screen::tests::native_metadata_sorted_runs_follow_style_page_splits ... ok
+test screen::tests::printing_widens_before_clamping_public_cursor_edits ... ok
+test screen::tests::linked_batches_grow_at_actual_map_boundaries_without_losing_refs ... ok
+test screen::tests::reflow_remaps_style_runs_and_anchors_across_source_pages ... ok
+test screen::tests::region_attributes_grow_and_release_page_style_resources ... ok
+test screen::tests::row_revisions_follow_content_and_stable_physical_slots ... ok
+test screen::tests::row_used_distinguishes_empty_cells_from_text_and_backgrounds ... ok
+test printing::tests::stores_match_scalar_and_preserve_output_sentinels ... ok
+test screen::tests::scrolling_widens_all_active_pages_after_restore ... ok
+test screen::tests::semantic_prompt_seen_survives_copies_and_derives_from_restored_state ... ok
+test screen::tests::sgr_admits_only_the_final_style_and_preserves_live_cells ... ok
+test screen::tests::sgr_failed_final_admission_restores_the_presequence_style ... ok
+test screen::tests::sgr_final_style_reuse_and_reset_do_not_admit_intermediate_styles ... ok
+test screen::tests::sgr_reset_does_not_grow_for_a_discarded_style ... ok
+test screen::tests::mixed_batches_reacquire_styles_after_crossing_a_page ... ok
+test screen::tests::unlinked_mixed_batches_release_a_stale_cursor_link_after_public_clear ... ok
+test screen::tests::wrapped_transfers_share_unchanged_text_and_preserve_detached_snapshots ... ok
+test graphics::unicode::tests::diacritic_lookup_matches_the_full_table_for_every_codepoint ... ok
+test screen::tests::scroll_clear_pruning_keeps_cursor_page_resources_valid ... ok
+test screen::view_metadata::tests::checkpoint_view_metadata_restores_history_shell_ansi_tabs_and_continuation ... ok
+test screen::view_metadata::tests::physical_cell_counts_validate_widths_without_reading_cells ... ok
+test screen::view_metadata::tests::invalid_view_metadata_never_partially_replaces_either_screen ... ok
+test printing::tests::printable_scan_matches_scalar_at_every_boundary ... ok
+test screen::view_metadata::tests::tab_metadata_rejects_explicit_width_spaces_after_page_navigation ... ok
+test screen::tests::reflow_publishes_payload_charges_before_padding_and_history_pruning ... ok
+test search::terminal::tests::selection_wraps_without_replacing_text_selection ... ok
+test screen::tests::native_metadata_sparse_tabs_validate_forward_across_pages ... ok
+test screen::tests::inline_text_matches_utf8_for_every_scalar ... ok
+test screen::tests::linked_batches_preserve_full_retained_history_across_page_growth ... ok
+test search::terminal::tests::history_requires_incremental_feeds_and_tick_owns_its_data ... ok
+test search::tests::cached_links_follow_current_cells_and_explicit_links_across_wraps ... ok
+test search::tests::matching_crosses_soft_wraps_and_keeps_cell_coordinates ... ok
+test search::tests::search_starts_with_the_latest_match_including_history_and_soft_wraps ... ok
+test search::tests::viewport_cache_distinguishes_replaced_and_cloned_page_lists ... ok
+test search::tests::explicit_links_group_by_display_uri_across_distinct_ids_and_raw_bytes ... ok
+test search::tests::viewport_dirty_tracking_observes_page_layout_changes ... ok
+test search::tests::viewport_cache_is_owned_and_needle_changes_restart_it ... ok
+test search::terminal::tests::dropping_search_does_not_leave_pins_affecting_reflow ... ok
+test search::terminal::tests::returning_to_active_viewport_discards_the_search_pin_column ... ok
+test search::tests::viewport_hints_clip_wrapped_edges_and_preserve_complete_targets ... ok
+test screen::tests::unscroll_across_pages_preserves_resource_ownership ... ok
+test selection_gesture::tests::autoscroll_resolves_after_scrolling_and_cancels_invalid_anchor ... ok
+test selection_gesture::tests::deep_press_consumes_even_an_empty_word ... ok
+test selection_gesture::tests::repeats_preserve_anchor_and_accept_native_nan_comparisons ... ok
+test search::tests::viewport_hints_sort_physical_rows_and_deduplicate_only_repeated_spans ... ok
+test selection_gesture::tests::same_cell_requires_threshold_and_clamps_nonfinite_pixels ... ok
+test selection_gesture::tests::reset_and_recycled_screens_cannot_reuse_anchors ... ok
+test snapshot::hyperlink_tests::old_snapshot_hints_keep_their_derived_map_and_saturate_at_the_item_boundary ... ok
+test selection_gesture::tests::triple_click_drag_keeps_blank_lines_in_both_directions ... ok
+test search::tests::viewport_hints_keep_diagnostics_separate_from_open_targets_and_urls ... ok
+test search::tests::point_links_only_cache_the_clicked_logical_line_with_large_history ... ok
+test snapshot::hyperlink_tests::single_snapshot_hint_covers_independent_hyperlink_tables ... ok
+test terminal::graphics_rejection_tests::oversized_control_headers_are_bounded_and_recover_at_the_terminator ... ok
+test unicode::tests::baseline_width_rules ... ok
+test terminal::graphics_rejection_tests::disabling_a_live_upload_releases_payload_capacity_and_cannot_revive_it ... ok
+test unicode::tests::ordinary_boundaries_preserve_state_transitions_and_special_joins ... ok
+test visual::tests::alternate_display_follows_all_primary_rows_without_live_state ... ok
+test search::tests::viewport_hints_skip_incomplete_wrapped_targets_but_keep_visible_osc8 ... ok
+test search::tests::point_links_match_exhaustive_links_across_wraps_edits_and_explicit_spans ... ok
+test visual::tests::different_startup_output_keeps_history_and_live_parser_state ... ok
+test visual::tests::historical_colors_and_graphemes_survive_new_theme_and_resize ... ok
+test visual::tests::extreme_imported_row_ids_are_normalized_before_resize_and_new_output ... ok
+test search::tests::viewport_hints_leave_unrelated_compressed_history_cold ... ok
+test visual::tests::malformed_visuals_fail_before_replacing_destination ... ok
+test unicode::tests::indexed_properties_match_every_unicode_scalar ... ok
+test screen::view_metadata::tests::colorful_history_metadata_has_no_text_or_repeated_full_styles ... ok
+test visual::tests::empty_display_omits_banner_but_scrollback_keeps_it ... ok
+test visual::tests::image_id_collisions_and_unicode_placeholders_keep_both_screens ... ok
+test visual::tests::silent_children_and_resized_matching_prompts_do_not_add_a_band ... ok
+test visual::tests::restored_band_alternates_subtle_shades_of_the_receiving_background ... ok
+test visual::tests::matching_shell_output_replaces_the_tail_across_repeated_restores ... ok
+test visual::tests::restored_band_is_centered_and_leaves_new_output_unstyled ... ok
+test snapshot::hyperlink_tests::saturated_snapshot_hint_retains_more_links_than_the_old_map_could_hold ... ok
+test visual::tests::history_pages_survive_tmux_limits_and_reflow ... ok
+test search::tests::file_path_links_match_build_output_across_soft_wraps ... ok
+test terminal::graphics_policy_tests::disabled_graphics_payloads_never_accumulate ... ok
+test screen::tests::resource_ownership_survives_edits_reflow_snapshots_and_eviction ... ok
+test printing::tests::utf8_decode_matches_scalar_values_boundaries_and_sentinels ... ok
+test compression::tests::compression_survives_clone_reflow_unscroll_and_history_lifecycle ... ok
+test page_list::capacity::tests::clones_restores_reflow_and_reset_start_fresh_hint_history ... ok
+test screen::tests::reflow_preserves_styled_history_across_many_destination_pages ... ok
+test screen::serde_impl::tests::compact_cells_preserve_screens_and_bound_expansion ... ok
+test printing::tests::destination_scans_match_scalar_for_every_field_and_mismatch ... ok
+
+test result: ok. 247 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.43s
+
+     Running tests/batched_input.rs (target/debug/deps/batched_input-05f632310748f0c0)
+
+running 11 tests
+test ignored_scalars_preserve_public_cursor_edits_before_batched_printing ... ok
+test printable_runs_preserve_effect_order_and_cursor_queries ... ok
+test linked_batches_preserve_public_display_overrides_and_missing_ids ... ok
+test linked_repaint_and_pending_wrap_handoffs_match_scalar_printing ... ok
+test mixed_width_handoffs_and_decode_boundaries_match_scalar_printing ... ok
+test apc_batches_preserve_pixels_glyph_limits_and_unfinished_payloads ... ok
+test printable_runs_resume_from_snapshots_at_every_byte_boundary ... ok
+test long_utf8_groups_and_malformed_tails_match_byte_delivery ... ok
+test packed_runs_cross_scratch_and_destination_boundaries ... ok
+test printable_runs_match_scalar_printing ... ok
+test zwj_pairs_preserve_scalar_admission_and_wrapping ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
+     Running tests/charsets.rs (target/debug/deps/charsets-6d10f963a1fb6e57)
+
+running 7 tests
+test legacy_mapping_keeps_original_width_and_repeat_codepoint ... ok
+test widening_a_wrapped_character_does_not_apply_a_new_charset ... ok
+test wrapped_existing_grapheme_keeps_its_original_base ... ok
+test wide_character_consumes_single_shift_before_spacer_writes ... ok
+test legacy_charsets_leave_unicode_above_their_range_unmapped ... ok
+test single_shift_is_consumed_by_combining_and_ignored_characters ... ok
+test legacy_charset_batches_match_scalar_writes_across_styles_and_boundaries ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests/feed_boundaries.rs (target/debug/deps/feed_boundaries-8c228041de5d97dc)
+
+running 3 tests
+test host_callbacks_finish_before_the_boundary_and_leave_the_suffix_unprocessed ... ok
+test boundary_feeds_preserve_full_feed_effect_order_and_terminal_state ... ok
+test snapshot_at_a_start_boundary_only_retains_consumed_input ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/grapheme_wrap.rs (target/debug/deps/grapheme_wrap-f7ec849be96d3e19)
+
+running 3 tests
+test widening_grapheme_below_scroll_region_keeps_its_suffix ... ok
+test widening_grapheme_on_single_row_preserves_cluster_and_history ... ok
+test printing_beyond_right_margin_uses_margin_after_each_kind_of_wrap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/hyperlinks.rs (target/debug/deps/hyperlinks-f40eb82d806095cf)
+
+running 9 tests
+test restoring_a_cursor_does_not_restore_or_default_semantic_content ... ok
+test resizing_keeps_explicit_links_and_the_next_implicit_id ... ok
+test repeated_1049_exit_still_restores_the_saved_cursor ... ok
+test invalid_link_endings_preserve_the_prior_link_and_snapshot_identity ... ok
+test restoring_a_cursor_preserves_the_active_hyperlink ... ok
+test hyperlink_options_keep_the_last_nonempty_id_until_traversal_stops ... ok
+test same_screen_switches_preserve_active_hyperlinks ... ok
+test resizing_renews_implicit_cursor_links_without_changing_printed_links ... ok
+test screen_cursor_copies_carry_the_next_implicit_hyperlink_id ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/page_lifecycle.rs (target/debug/deps/page_lifecycle-567cd80f10451dc6)
+
+running 3 tests
+test tail_growth_and_byte_recycling_keep_whole_native_pages ... ok
+test line_pruning_and_history_clear_preserve_the_active_boundary_page ... ok
+test snapshot_keeps_page_groups_and_charges_restored_pages_at_pool_size ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/semantic.rs (target/debug/deps/semantic-2ba23da87f0a701f)
+
+running 14 tests
+test complete_display_erasure_scrolls_a_bottom_prompt_into_history ... ok
+test complete_display_erasure_ignores_a_discarded_prompt_row ... ok
+test semantic_commands_reject_invalid_actions_and_capture_overflow ... ok
+test complete_display_erasure_tracks_rows_from_public_cursor_semantics ... ok
+test whole_row_erasure_clears_prompt_markers_only_when_unprotected ... ok
+test complete_display_erasure_keeps_prompt_history_across_soft_reset_only ... ok
+test complete_display_erasure_scrolls_input_without_a_prompt_marker ... ok
+test output_markers_reset_semantics_independently_of_host_events ... ok
+test prompt_options_keep_native_priority_and_snapshot_click_modes ... ok
+test complete_display_erasure_follows_input_copied_from_alternate_screen ... ok
+test semantic_fresh_lines_respect_the_cursor_and_left_margin ... ok
+test input_terminated_by_eol_survives_wrap_snapshot_and_screen_copy ... ok
+test complete_display_erasure_restores_an_input_cursor_before_its_first_linefeed ... ok
+test complete_display_erasure_retains_imported_prompt_rows_with_output_cursor ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/shared_hyperlinks.rs (target/debug/deps/shared_hyperlinks-fbbb0def5abe0549)
+
+running 4 tests
+test renewing_the_cursor_link_preserves_published_cell_identities ... ok
+test cells_share_links_through_wide_text_reflow_viewports_and_snapshots ... ok
+test json_preserves_distinct_display_strings_for_equal_opaque_native_links ... ok
+test shared_links_preserve_flat_cell_and_cursor_json ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/snapshot.rs (target/debug/deps/snapshot-ff750452272474dc)
+
+running 33 tests
+test invalid_utf8_metadata_and_links_survive_without_loss ... ok
+test history_restore_preserves_mixed_physical_rows_while_live_input_arrives ... ok
+test ghostty_fixture_streams_history_and_leaves_transport_unread ... ok
+test maximum_four_byte_grapheme_preserves_snapshot_and_suffix_limit ... ok
+test history_budget_cannot_bypass_forged_header_or_active_page_limits ... ok
+test ghostty_sparse_page_preserves_styles_links_graphemes_and_wide_cells ... ok
+test kitty_keyboard_ring_overflows_pops_and_resumes_after_restore ... ok
+test default_right_charset_is_preserved_by_cursor_and_screen_lifecycles ... ok
+test decode_continuation_budget_does_not_limit_later_capture ... ok
+test index_scroll_widens_mixed_pages_before_moving_rows ... ok
+test repeated_nul_prints_empty_cells_with_the_current_pen ... ok
+test distinct_grapheme_payloads_survive_page_transfer_reflow_and_live_erase ... ok
+test restored_defaults_survive_configuration_changes_and_protocol_resets ... ok
+test skipped_snapshot_records_still_validate_lengths_checksums_and_known_order ... ok
+test snapshot_rejects_empty_cursor_link_strings_before_resource_admission ... ok
+test mixed_physical_widths_survive_observation_and_grow_before_mutation ... ok
+test narrow_restored_pages_support_direct_cursor_and_row_edits ... ok
+test exact_snapshot_decode_checks_eof_without_consuming_transport_bytes ... ok
+test snapshot_clamps_cursor_to_logical_and_physical_widths ... ok
+test streaming_history_checks_width_when_each_page_arrives ... ok
+test streaming_restore_obeys_page_budget_and_discards_history_after_resize ... ok
+test terminal_reset_keeps_the_primary_history_restore_destination ... ok
+test multirow_page_snapshots_keep_all_owned_resources ... ok
+test streaming_restore_uses_the_minimum_scrollback_budget ... ok
+test unknown_cursor_default_flags_preserve_host_cursor_preferences ... ok
+test snapshot_grapheme_capacity_drops_whole_clusters_and_limits_suffix_length ... ok
+test unscroll_widens_restored_history_beneath_an_existing_cursor ... ok
+test history_budget_can_change_only_after_active_screen_validation ... ok
+test snapshot_skips_unknown_records_at_every_boundary ... ok
+test snapshot_propagates_io_failures_at_record_boundaries ... ok
+test snapshot_preserves_screen_attributes_and_pending_parser ... ok
+test corrupt_truncated_and_excessive_snapshots_are_rejected ... ok
+test raised_decode_budget_keeps_the_normal_capture_limit ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.46s
+
+     Running tests/text_sizing.rs (target/debug/deps/text_sizing-3f5c91772068683d)
+
+running 15 tests
+test replacing_a_wrapped_span_retires_obsolete_padding ... ok
+test width_only_probes_and_normal_width_requests_are_honest ... ok
+test insert_delete_and_erase_keep_only_complete_spans ... ok
+test overwriting_a_head_or_tail_removes_the_entire_span ... ok
+test overwriting_span_tails_preserves_the_current_erase_background ... ok
+test snapshot_during_an_osc_upload_keeps_the_text_pending_until_its_terminator ... ok
+test erasing_a_legacy_orphan_wide_head_stays_inside_its_physical_row ... ok
+test wrapping_no_wrap_and_reflow_keep_spans_atomic_and_omit_padding ... ok
+test mixed_legacy_graphemes_and_span_metadata_keep_independent_snapshot_sources ... ok
+test combining_input_preserves_explicit_width_and_detached_text ... ok
+test snapshot_metadata_is_optional_bounded_and_validated ... ok
+test skipped_history_still_validates_span_sources ... ok
+test text_capture_is_atomic_bounded_and_safe_utf8 ... ok
+test large_span_pages_use_bounded_complete_snapshot_chunks ... ok
+test history_row_moves_compression_and_snapshots_preserve_sources ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.04s
+

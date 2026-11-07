@@ -1,0 +1,29 @@
+    Checking rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+    Checking rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+error: unnecessary closure used with `bool::then`
+   --> crates/rustty-vt/src/program_status.rs:148:19
+    |
+148 |               kind: (state == State::Blocked)
+    |  ___________________^
+149 | |                 .then(|| match kind {
+150 | |                     b"permission" => Some(Kind::Permission),
+151 | |                     b"question" => Some(Kind::Question),
+152 | |                     b"auth" => Some(Kind::Auth),
+153 | |                     _ => None,
+154 | |                 })
+    | |__________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#unnecessary_lazy_evaluations
+    = note: `-D clippy::unnecessary-lazy-evaluations` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_lazy_evaluations)]`
+help: use `then_some` instead
+    |
+149 ~                 .then_some(match kind {
+150 +                     b"permission" => Some(Kind::Permission),
+151 +                     b"question" => Some(Kind::Question),
+152 +                     b"auth" => Some(Kind::Auth),
+153 +                     _ => None,
+154 +                 })
+    |
+
+error: could not compile `rustty-vt` (lib) due to 1 previous error

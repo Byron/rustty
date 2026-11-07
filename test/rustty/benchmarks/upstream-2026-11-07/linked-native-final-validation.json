@@ -1,0 +1,31 @@
+{
+  "candidate": "V8 final accepted",
+  "runner": "target/release/examples/parity-runner",
+  "runner_sha256": "0a2dbe6ec2d5a01aad642a689d49727ea9a699279a2fe0b54d64c67db5e14de7",
+  "rust_binary": {
+    "path": "/private/tmp/rustty-reintegrate.leadij/linked-v8-after-parity",
+    "sha256": "e575c280123c53f46caed59c7469484feae59b81ab5d87982cb7ef671da1e1b5"
+  },
+  "zig_binary": {
+    "path": "zig-out/bin/vt-oracle",
+    "sha256": "207c9e9b176ce9af981606c928be483dfe867c0a8e02a2a7702c2969b59166f3"
+  },
+  "fixture_sha256": "a115592a75cb6f81c674425fcbc872b0a8637f2d7ca96fe949da65a6131a9415",
+  "cases": 44,
+  "comparisons": 132,
+  "shards": 4,
+  "failures": 0,
+  "coverage_gaps": 0,
+  "snapshot_cases": 42,
+  "direct_cases": 2,
+  "summaries": [
+    "/private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-0/summary.json",
+    "/private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-1/summary.json",
+    "/private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-2/summary.json",
+    "/private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-3/summary.json"
+  ],
+  "commands": "/private/tmp/rustty-reintegrate.leadij/linked-final-validation-commands.json",
+  "note": "New boundary capture cases use explicit IDs; implicit pending-wrap/repaint is retained in Rust tests and other native cases. Both engines prune the two small-budget snapshots identically; those input cases remain direct, and corresponding50M cases retain roundtrips. Historical V4/Python evidence is preserved separately.",
+  "measured_revision": "cc309adab78b012fc15200306eab5883268eb31d",
+  "tix_change": "nnwzqpm"
+}

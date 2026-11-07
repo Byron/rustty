@@ -1,0 +1,36 @@
+{
+  "origin": "b438193fb",
+  "origin_date": "2026-11-04",
+  "snapshots_optional_tag": "0x8001",
+  "note": "Existing per-screen pointer-shape stacks extension; encoder and decoder blocks are unchanged from original stack to final source.",
+  "sections": [
+    {
+      "ref": "c06197283",
+      "path": "crates/rustty-vt/src/snapshot.rs",
+      "section": "pointer_shapes_encoder",
+      "bytes": 172,
+      "sha256": "e7f08b1a7ad358f1ad45b52b286adf8a64b2d83cf21465dd2f392e835a53d22f"
+    },
+    {
+      "ref": "c06197283",
+      "path": "crates/rustty-vt/src/snapshot.rs",
+      "section": "pointer_shapes_decoder",
+      "bytes": 616,
+      "sha256": "13b788ed91091a3cb72a68c6813cdd483afb2547bc388f0a0abf2e7abbfc12db"
+    },
+    {
+      "ref": "ca7e1373",
+      "path": "crates/rustty-vt/src/snapshot.rs",
+      "section": "pointer_shapes_encoder",
+      "bytes": 172,
+      "sha256": "e7f08b1a7ad358f1ad45b52b286adf8a64b2d83cf21465dd2f392e835a53d22f"
+    },
+    {
+      "ref": "ca7e1373",
+      "path": "crates/rustty-vt/src/snapshot.rs",
+      "section": "pointer_shapes_decoder",
+      "bytes": 616,
+      "sha256": "13b788ed91091a3cb72a68c6813cdd483afb2547bc388f0a0abf2e7abbfc12db"
+    }
+  ]
+}

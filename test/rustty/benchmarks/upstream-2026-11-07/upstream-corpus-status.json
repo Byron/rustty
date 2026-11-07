@@ -1,0 +1,14 @@
+{
+  "status": "success",
+  "exit_code": 0,
+  "command": [
+    "python3",
+    "/private/tmp/rustty-reintegrate.leadij/generate-upstream-corpora.py",
+    "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/ghostty-gen"
+  ],
+  "corpora": 22,
+  "total_bytes": 184547607,
+  "seed_reproducibility": "All22 full inputs match separately generated64KiB prefix at seed42.",
+  "validation": "All22 generator structural checks passed; terminal replay comparisons pending.",
+  "measurements_run": false
+}

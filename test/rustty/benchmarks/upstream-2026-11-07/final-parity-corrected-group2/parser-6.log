@@ -1,0 +1,4 @@
+Checked 100 comparisons (parser/corpus/parser-cmin/id_000236,time_0,execs_0,orig_id_001362,src_001301,time_23372,execs_1249024,op_havoc,rep_5)
+Checked 200 comparisons (parser/corpus/parser-cmin/id_000496,time_0,execs_0,orig_id_002317,src_002003,time_681637,execs_34941752,op_havoc,rep_5/scalar)
+Checked 300 comparisons (parser/corpus/parser-cmin/id_000805,src_000804,time_2096251,execs_12056405,op_havoc,rep_6/chunks)
+339 comparisons, 0 failures, 0 coverage gaps; full parity not established

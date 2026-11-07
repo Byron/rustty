@@ -1,0 +1,10 @@
+[
+  {
+    "name": "corpora",
+    "cmd": "python3 /private/tmp/rustty-reintegrate.leadij/check-final-cumulative-stream-corpora.py > /private/tmp/rustty-reintegrate.leadij/final-cumulative-stream-corpora-selfchecks.log 2>&1"
+  },
+  {
+    "name": "dense",
+    "cmd": "GHOSTTY_PRIMITIVES_BIN=/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives target/release/deps/primitives-88b1d6ada0ec94ee reflow_history_content/mixed-dense-links --test > /private/tmp/rustty-reintegrate.leadij/final-cumulative-dense-reflow.log 2>&1"
+  }
+]

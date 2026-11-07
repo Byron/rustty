@@ -1,0 +1,22 @@
+Rustty renderer: gpu — Apple M4 Max (Metal, IntegratedGpu)
+Native smoke: shell output received
+Native smoke: numbered Quad Peek badges matched spatial targets, nested roots, prefix release, arrow/click overrides, removed targets and consumed key tails
+Native smoke: configured pane, quad, nested zoom and Quad Peek animations kept endpoint grids and partially visible neighbors throughout the slide; quarter/midpoint/three-quarter captures saved
+Native smoke: splits, tabs, and quadrant actions passed
+Native smoke: requesting frame, visible=true, occluded=false, frames=124, format=Some(Bgra8Unorm)
+Native smoke: double-click selected words, paths, and links without losing selections on mouse-up
+Native smoke: Command-hover links followed the pane, modifiers, wide cells, capture policy, and changed text without repeat redraws
+Native smoke: selection followed wheel scrolling and timed pane-edge scrolling through release
+Native smoke: scrolling, file drops, and protected emoji drops followed the pointer without changing focus
+Native smoke: terminal rendering and synchronized output passed; progress reused terminal content, stopped while occluded, and refreshed after reveal
+Native smoke: per-pane Find preserved geometry, queries, focus, scrolling, tabs, and zoom; focused/unfocused captures saved
+Native smoke: unzoomed Quad Peek prefix and native-focus release check passed
+Native smoke: 256 pointer moves across panes and split gaps stayed deferred without rebuilding the Stream Deck dashboard; workspace changes refreshed it
+Native smoke: focus labels survived focus clicks and dismissed on subsequent window clicks
+Native smoke: indefinite progress rendered 2135 frames in 2.000s (1067.3 FPS)
+Native smoke: 20 masked hidden-tab titles caused 2 settling frames
+Native smoke: 21 tab-header frames needed only 0 pane preparations
+Native smoke: 50 active masked titles at 25 Hz updated native/saved titles with zero frames and pane preparations
+Native smoke: global/connection themes and session window appearance actions passed with palette/report/native propagation, new-window inheritance, reload/reset and saved-setting preservation
+Native smoke: server menus retained live counts without snapshots; reconnect preserved sessions and idle stop reported a clean shutdown
+Native smoke passed: /private/tmp/rustty-reintegrate.leadij/appearance-smoke-final

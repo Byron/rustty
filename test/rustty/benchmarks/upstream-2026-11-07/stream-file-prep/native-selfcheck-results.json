@@ -1,0 +1,66 @@
+{
+  "binary": "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/vt-primitives",
+  "binary_sha256": "f686433339623af03ca5e4d5436cf85453bd37547ebb3422db53b554a0c47bd8",
+  "checks": [
+    {
+      "name": "explicit-name",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/vt-primitives",
+        "stream_file",
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/explicit-name.json",
+        "2"
+      ],
+      "status": 0,
+      "stdout": "{\"engine\":\"ghostty\",\"operation\":\"stream_file\",\"name\":\"selfcheck-style-wide-links\",\"iterations\":2,\"elapsed_ns\":5792,\"units_per_iteration\":139,\"cell_bytes\":8,\"checksum\":8376364026207819422,\"history_rows\":0,\"page_bytes\":409600,\"page_count\":1,\"owned_bytes\":null}\n",
+      "stderr": ""
+    },
+    {
+      "name": "default-name",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/vt-primitives",
+        "stream_file",
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/default-name.json",
+        "2"
+      ],
+      "status": 0,
+      "stdout": "{\"engine\":\"ghostty\",\"operation\":\"stream_file\",\"name\":\"file\",\"iterations\":2,\"elapsed_ns\":5042,\"units_per_iteration\":139,\"cell_bytes\":8,\"checksum\":8376364026207819422,\"history_rows\":0,\"page_bytes\":409600,\"page_count\":1,\"owned_bytes\":null}\n",
+      "stderr": ""
+    },
+    {
+      "name": "zero-columns",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/vt-primitives",
+        "stream_file",
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/zero-columns.json",
+        "1"
+      ],
+      "status": 1,
+      "stdout": "",
+      "stderr": "error: InvalidConfig\n"
+    },
+    {
+      "name": "zero-iterations",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/vt-primitives",
+        "stream_file",
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/zero-iterations.json",
+        "0"
+      ],
+      "status": 1,
+      "stdout": "",
+      "stderr": "error: InvalidIterations\n"
+    },
+    {
+      "name": "empty-input",
+      "argv": [
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/vt-primitives",
+        "stream_file",
+        "/private/tmp/rustty-reintegrate.leadij/stream-file-prep/empty-input.json",
+        "1"
+      ],
+      "status": 1,
+      "stdout": "",
+      "stderr": "error: EmptyInput\n"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "name": "linked-wide",
+    "source": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/wide.vt",
+    "source_sha256": "41cee5d4b161b8a220d0e6780e4a5f7fdb2cfab17d224c6b43ca7dee8cd5f9c3",
+    "prefix_hex": "1b5d383b3b68747470733a2f2f62617463682e746573741b5c",
+    "suffix_hex": "1b5d383b3b1b5c",
+    "bytes": 8388640,
+    "sha256": "b72338d92a400c3f2a82a57c4fe65688e6172104eafab03228a9fc4bc2f48773",
+    "formula": "prefix + source_bytes + suffix"
+  },
+  {
+    "name": "linked-mixed-wide",
+    "source": "/private/tmp/rustty-reintegrate.leadij/upstream-corpora/mixed-wide.vt",
+    "source_sha256": "db971032476c9e51e7d99793403f18c19074980f3690c0916a951e1d8789b089",
+    "prefix_hex": "1b5d383b3b68747470733a2f2f62617463682e746573741b5c",
+    "suffix_hex": "1b5d383b3b1b5c",
+    "bytes": 8388640,
+    "sha256": "21bc5e5e0cce29ef38caf4e859d2a5bd513dd60bb17302ee136bdfbc67dbaa13",
+    "formula": "prefix + source_bytes + suffix"
+  },
+  {
+    "name": "linked-combining-control",
+    "source": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/combining-control.vt",
+    "source_sha256": "1be1a6aeff32b4f0370e4e80f3a7236159140b6ca9896b0e73bf6df750b5ff04",
+    "prefix_hex": "1b5d383b3b68747470733a2f2f62617463682e746573741b5c",
+    "suffix_hex": "1b5d383b3b1b5c",
+    "bytes": 1048604,
+    "sha256": "3a4125cb4a69a59d0e26eed07a10483ab2194f5efabae0467af5422d16059672",
+    "formula": "prefix + source_bytes + suffix"
+  },
+  {
+    "name": "linked-emoji-control",
+    "source": "/private/tmp/rustty-reintegrate.leadij/batching-inputs/emoji-control.vt",
+    "source_sha256": "25fe1f246bf79014bd27219ee62a21e9fa404267ec33f6a2fbd7fd68321852e3",
+    "prefix_hex": "1b5d383b3b68747470733a2f2f62617463682e746573741b5c",
+    "suffix_hex": "1b5d383b3b1b5c",
+    "bytes": 1048596,
+    "sha256": "92a4cdcac0f060802b0e3bf70e4d014e7dcacdccb0e42c4167f65a42e61d1d45",
+    "formula": "prefix + source_bytes + suffix"
+  }
+]

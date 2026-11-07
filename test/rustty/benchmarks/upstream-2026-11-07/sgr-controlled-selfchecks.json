@@ -1,0 +1,52 @@
+[
+  {
+    "version": "before",
+    "case": "plain",
+    "status": 0
+  },
+  {
+    "version": "before",
+    "case": "sgr-1",
+    "status": 0
+  },
+  {
+    "version": "before",
+    "case": "sgr-2",
+    "status": 0
+  },
+  {
+    "version": "before",
+    "case": "sgr-3",
+    "status": 0
+  },
+  {
+    "version": "before",
+    "case": "sgr-4",
+    "status": 0
+  },
+  {
+    "version": "after",
+    "case": "plain",
+    "status": 0
+  },
+  {
+    "version": "after",
+    "case": "sgr-1",
+    "status": 0
+  },
+  {
+    "version": "after",
+    "case": "sgr-2",
+    "status": 0
+  },
+  {
+    "version": "after",
+    "case": "sgr-3",
+    "status": 0
+  },
+  {
+    "version": "after",
+    "case": "sgr-4",
+    "status": 0
+  }
+]

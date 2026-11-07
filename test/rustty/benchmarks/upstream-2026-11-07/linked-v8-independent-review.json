@@ -1,0 +1,17 @@
+{
+  "result": "No actionable correctness finding",
+  "scope": "Read-only V8 bounded specialization and stale-link regression review; no builds, tests, or oracle execution",
+  "source_sha256": {
+    "crates/rustty-vt/src/terminal.rs": "03ee27bac07f31914551f5032e35eb94e765c595417266d45c06dc2166cb0952",
+    "crates/rustty-vt/src/screen.rs": "7ab1ab4fcd9b00616c9172c2afafc7db8175542e4e64961cd229e8040d5a6559",
+    "crates/rustty-vt/src/screen/tests.rs": "a7f5681414dd8496d8b3782e3ae6aed7785f25825b3cb64bf2a3dca6a32e65b7"
+  },
+  "checks": [
+    "The single private MAYBE_LINKED boolean covers only the Terminal UTF8 row loop and Screen codepoint writer; ASCII, scalar guards and shared mixed kernels remain unchanged.",
+    "Event selection occurs after the existing scalar/tmux guards and inspects the current public hyperlink. Printable text cannot open an absent link within this loop.",
+    "False keeps cursor_resources_match with public/private absence checks, so stale internal references return to scalar synchronization. Map quota, mixed-map capacity, attachment and eligibility-filter work compile out.",
+    "True retains dynamic cursor_link presence and resource identity validation because scalar fallback may close a link. Its count0 ZWJ guard still allows the helper again after closure.",
+    "The new stale-link regression creates a real cursor link, clears only public hyperlink, compares mixed feed with scalar printing and checks both complete snapshot equality and resource references.",
+    "The two direct Screen test callers explicitly select false for unlinked mixed cells and true for linked cell/cursor references."
+  ]
+}

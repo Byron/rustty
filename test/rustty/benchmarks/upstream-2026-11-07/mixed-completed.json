@@ -1,0 +1,31 @@
+{
+  "revision": "1aa7813cdb93cf59cc9ac869654d705a9e1291db",
+  "change": "yppsryw",
+  "tests": {
+    "lib": 243,
+    "integration": 100,
+    "native_comparisons": 162,
+    "native_cases": 54,
+    "shared_selfchecks": 39
+  },
+  "threshold": 4,
+  "upstream_threshold": 32,
+  "measurements": "/private/tmp/rustty-reintegrate.leadij/mixed-measurement-summary.json",
+  "raw_measurements": "/private/tmp/rustty-reintegrate.leadij/mixed-timings.json",
+  "run_metadata": "/private/tmp/rustty-reintegrate.leadij/mixed-measurement-run.json",
+  "native_log": "/private/tmp/rustty-reintegrate.leadij/mixed-native-final.log",
+  "tests_log": "/private/tmp/rustty-reintegrate.leadij/mixed-final-tests.log",
+  "clippy_log": "/private/tmp/rustty-reintegrate.leadij/mixed-final-clippy.log",
+  "binaries": {
+    "stream": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/mixed-after-stream",
+      "sha256": "69b1bef6a065b80dc6846b7f4aa335dd18fb6b338479ad5690f18fd696eb96c7"
+    },
+    "parity": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/mixed-after-parity",
+      "sha256": "1b7e7b8e36865eb22932effc079899975d27d2b04aeced8b550ab3110ac9fdb6"
+    }
+  },
+  "note": "V1 through V8 tuning checkpoints retained separately; final selected cutoff4 with block hint and uniform template reuse. Timing runs precede commit and identify frozen binaries by hash.",
+  "native_runner": "Python test/rustty/parity_reference.py (historical run before correction to Rust parity-runner during linked work)"
+}

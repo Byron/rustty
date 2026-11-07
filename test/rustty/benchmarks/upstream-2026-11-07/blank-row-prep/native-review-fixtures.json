@@ -1,0 +1,296 @@
+[
+  {
+    "request": {
+      "id": "grid/blank-rows/empty-repeated",
+      "cols": 8,
+      "rows": 4,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b324b1b5b3858"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a1b5b324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b333b35481b5b4a1b5b314a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "58"
+        },
+        {
+          "op": "observe"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor",
+      "terminal.semantic",
+      "terminal.resize"
+    ]
+  },
+  {
+    "request": {
+      "id": "grid/blank-rows/blank-prompt-selective",
+      "cols": 8,
+      "rows": 4,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5d3133333b5007"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324b"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "58"
+        },
+        {
+          "op": "observe"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor",
+      "terminal.semantic",
+      "terminal.resize"
+    ]
+  },
+  {
+    "request": {
+      "id": "grid/blank-rows/cleared-wrap-metadata",
+      "cols": 8,
+      "rows": 4,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "6162636465666768696a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b481b5b324b1b5b323b31481b5b324b"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "58"
+        },
+        {
+          "op": "observe"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor",
+      "terminal.semantic",
+      "terminal.resize"
+    ]
+  },
+  {
+    "request": {
+      "id": "grid/blank-rows/released-resources-repeated",
+      "cols": 8,
+      "rows": 4,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b313b33316d1b5d383b69643d613b68747470733a2f2f6578616d706c652e746573742f610765cc81e7958c1b5d383b3b071b5b306d"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a1b5b324b"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "706c61696e"
+        },
+        {
+          "op": "observe"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor",
+      "terminal.semantic",
+      "terminal.resize"
+    ]
+  },
+  {
+    "request": {
+      "id": "grid/blank-rows/colored-blank-and-selective",
+      "cols": 8,
+      "rows": 4,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b34383b353b306d1b5b324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b34383b323b303b303b306d1b5b324b"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b306d1b5b324a1b5b312271581b5b302271"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a"
+        },
+        {
+          "op": "observe"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor",
+      "terminal.semantic",
+      "terminal.resize"
+    ]
+  },
+  {
+    "request": {
+      "id": "grid/blank-rows/blank-reflow-and-reuse",
+      "cols": 8,
+      "rows": 4,
+      "observe_semantic": true,
+      "operations": [
+        {
+          "op": "write",
+          "data": "6162631b5b323b31481b5b34346d1b5b324b1b5b306d"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "resize",
+          "cols": 3,
+          "rows": 4
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "resize",
+          "cols": 9,
+          "rows": 4
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a1b5b324a"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "0a0a0a0a0a0a0a0a0a0a0a0a58"
+        },
+        {
+          "op": "observe"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.cells",
+      "terminal.cursor",
+      "terminal.semantic",
+      "terminal.resize"
+    ]
+  }
+]

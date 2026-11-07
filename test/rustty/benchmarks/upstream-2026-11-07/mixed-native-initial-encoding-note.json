@@ -1,0 +1,27 @@
+{
+  "id": "pages/graphemes/mixed-batch/wide-space-edge/0",
+  "baseline": "595623207b12eafe0d178e15ac26d67a1aabf472",
+  "visible_difference": null,
+  "record_tags": {
+    "zig": [
+      1,
+      2,
+      3,
+      7,
+      5,
+      4,
+      6
+    ],
+    "before": [
+      1,
+      2,
+      3,
+      32769,
+      7,
+      5,
+      4,
+      6
+    ]
+  },
+  "reason": "Raw snapshot bytes differ because Rust emits optional POINTER_SHAPES record 0x8001. New cases use established snapshot cross-decode/resume comparison instead."
+}

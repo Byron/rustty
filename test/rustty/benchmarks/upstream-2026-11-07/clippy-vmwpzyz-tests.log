@@ -1,0 +1,24 @@
+   Compiling rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+   Compiling tmuxx-terminal v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-terminal)
+   Compiling tmuxx-protocol v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-protocol)
+   Compiling tmuxx-unix-ipc v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-unix-ipc)
+   Compiling tmuxx-core v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-core)
+   Compiling tmuxx-runtime v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.14s
+     Running unittests src/lib.rs (target/debug/deps/tmuxx_runtime-9e293c67fc9dc33f)
+
+running 10 tests
+test delivery::tests::native_closing_cancels_unstarted_commands_and_rejects_late_requests ... ok
+test delivery::tests::rejected_recovery_snapshot_closes_without_resuming_delta_stream ... ok
+test delivery::tests::abandoned_closing_client_releases_its_final_barrier ... ok
+test delivery::tests::closing_latest_size_owner_falls_back_among_multiple_survivors ... ok
+test delivery::tests::critical_backlog_and_final_barriers_share_finite_budgets ... ok
+test delivery::tests::closing_transport_releases_host_election_focus_and_size_authority ... ok
+test delivery::tests::full_snapshot_queue_retries_after_ack_without_resuming_skipped_deltas ... ok
+test delivery::tests::two_final_barriers_wait_for_snapshot_ack_and_precede_close ... ok
+test delivery::tests::remain_on_exit_uses_latest_snapshot_without_a_final_barrier ... ok
+test delivery::tests::lagging_view_recovers_current_checkpoint_and_keeps_critical_order ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 63 filtered out; finished in 0.04s
+

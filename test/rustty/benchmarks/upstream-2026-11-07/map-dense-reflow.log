@@ -1,0 +1,14 @@
+Rustty Cell: 8 bytes
+Testing rustty/reflow_history_content/mixed-dense-links/8192
+Validating 8192 records of mixed-dense-links after input
+Validating narrowed history at 64 columns
+Validating primed history at 128 columns
+Success
+
+Testing ghostty/reflow_history_content/mixed-dense-links/8192
+Success
+
+kitty_upload/unique_256px_4_terminals: sources=4, source_bytes=1048576
+kitty_upload/duplicate_256px_4_terminals: sources=1, source_bytes=262144
+kitty_upload/unique_1024px_4_terminals: sources=4, source_bytes=16777216
+kitty_upload/duplicate_1024px_4_terminals: sources=1, source_bytes=4194304

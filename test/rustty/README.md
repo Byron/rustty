@@ -10,6 +10,9 @@ The [CSI/OSC implementation inventory](SEQUENCES.md) traces recognized commands
 through the VT, PTY, renderer, and macOS app, including intentional no-ops and
 features that currently exist only in the library.
 
+The [November 7 reintegration review](UPSTREAM-2026-11-07.md) records the exact
+incoming range, port dispositions, focused checks and remaining differences.
+
 The reference tools require Zig 0.17, matching upstream.
 
 This directory compares the Rust implementation with the current Ghostty Zig
@@ -79,7 +82,7 @@ reference queries before using each group, so stale page capacities or snapshot
 assumptions cannot silently pass. Rust-produced snapshot payloads remain
 historical compatibility fixtures. Seeded random cases are generated in Rust
 with Python's integer-seeded MT19937 behavior, including negative and large
-seeds. The configured groups plus `--generated 100` retain 61,587 comparisons;
+seeds. The configured groups plus `--generated 100` retain 61,825 comparisons;
 `--thorough` also adds exhaustive splits and the separate coverage gate.
 
 Fixture regeneration and reference-runner checks are offline Python tools:

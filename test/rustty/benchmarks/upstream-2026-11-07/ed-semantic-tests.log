@@ -1,0 +1,22 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+     Running tests/semantic.rs (target/debug/deps/semantic-2ba23da87f0a701f)
+
+running 14 tests
+test complete_display_erasure_ignores_a_discarded_prompt_row ... ok
+test whole_row_erasure_clears_prompt_markers_only_when_unprotected ... ok
+test complete_display_erasure_scrolls_a_bottom_prompt_into_history ... ok
+test semantic_commands_reject_invalid_actions_and_capture_overflow ... ok
+test output_markers_reset_semantics_independently_of_host_events ... ok
+test complete_display_erasure_scrolls_input_without_a_prompt_marker ... ok
+test complete_display_erasure_tracks_rows_from_public_cursor_semantics ... ok
+test complete_display_erasure_keeps_prompt_history_across_soft_reset_only ... ok
+test semantic_fresh_lines_respect_the_cursor_and_left_margin ... ok
+test prompt_options_keep_native_priority_and_snapshot_click_modes ... ok
+test complete_display_erasure_follows_input_copied_from_alternate_screen ... ok
+test input_terminated_by_eol_survives_wrap_snapshot_and_screen_copy ... ok
+test complete_display_erasure_restores_an_input_cursor_before_its_first_linefeed ... ok
+test complete_display_erasure_retains_imported_prompt_rows_with_output_cursor ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

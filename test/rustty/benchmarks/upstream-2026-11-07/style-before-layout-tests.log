@@ -1,0 +1,48 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/rustty_vt-456fb0a4a9c42ddd)
+
+running 10 tests
+test page_layout::tests::invalid_or_unrepresentable_capacity_is_rejected_without_allocation ... ok
+test page_layout::tests::zero_resource_maps_retain_their_native_headers ... ok
+test page_layout::tests::wide_initial_page_retains_standard_rows_when_pool_cannot_fit_one ... ok
+test page_layout::tests::arithmetic_overflows_are_explicit ... ok
+test page_layout::tests::pooled_and_exact_pages_have_distinct_charges ... ok
+test page_layout::tests::column_adjustment_caps_rows_without_growing_the_page ... ok
+test page_layout::tests::column_adjustment_preserves_resources_and_fills_available_rows ... ok
+test page_layout::tests::packed_style_layout_keeps_member_alignment_distinct ... FAILED
+test page_layout::tests::native_standard_resource_layout ... FAILED
+test page_layout::tests::macos_arm64_initial_capacity_matches_native_observation ... FAILED
+
+failures:
+
+---- page_layout::tests::packed_style_layout_keeps_member_alignment_distinct stdout ----
+
+thread 'page_layout::tests::packed_style_layout_keeps_member_alignment_distinct' (96413523) panicked at crates/rustty-vt/src/page_layout.rs:401:9:
+assertion `left == right` failed
+  left: (36, 4, 8)
+ right: (32, 16, 16)
+
+---- page_layout::tests::native_standard_resource_layout stdout ----
+
+thread 'page_layout::tests::native_standard_resource_layout' (96413522) panicked at crates/rustty-vt/src/page_layout.rs:382:9:
+assertion `left == right` failed
+  left: 26124
+ right: 25708
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- page_layout::tests::macos_arm64_initial_capacity_matches_native_observation stdout ----
+
+thread 'page_layout::tests::macos_arm64_initial_capacity_matches_native_observation' (96413521) panicked at crates/rustty-vt/src/page_layout.rs:413:9:
+assertion `left == right` failed
+  left: 591
+ right: 592
+
+
+failures:
+    page_layout::tests::macos_arm64_initial_capacity_matches_native_observation
+    page_layout::tests::native_standard_resource_layout
+    page_layout::tests::packed_style_layout_keeps_member_alignment_distinct
+
+test result: FAILED. 7 passed; 3 failed; 0 ignored; 0 measured; 189 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p rustty-vt --lib`

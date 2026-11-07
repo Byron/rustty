@@ -1,0 +1,10 @@
+{
+  "rust": {
+    "path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/debug/examples/parity",
+    "sha256": "dd49beee623f1bb73a9a7ff15a1970c694aa9c49742f339f2175c50621c77c05"
+  },
+  "zig": {
+    "path": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-oracle",
+    "sha256": "207c9e9b176ce9af981606c928be483dfe867c0a8e02a2a7702c2969b59166f3"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "after": [
+    {
+      "data": "1b5b32621b5b366e",
+      "op": "write"
+    }
+  ],
+  "cols": 7,
+  "id": "pages/hyperlinks/batched/event-boundary/False/mixed",
+  "kind": "snapshot",
+  "observe_semantic": true,
+  "operations": [
+    {
+      "op": "pages"
+    },
+    {
+      "data": "1b5b3f32303237681b5d383b3b687474703a2f2f6578616d706c652e746573741b5c61626364656667",
+      "op": "write"
+    },
+    {
+      "data": "e4b8ad2061e8aa9e2062e2989df09f8fbbe4b8ad2061e8aa9e2062e2989df09f8fbbe4b8ad2061e8aa9e2062e2989df09f8fbb",
+      "op": "write"
+    },
+    {
+      "op": "pages"
+    },
+    {
+      "op": "observe"
+    }
+  ],
+  "rows": 3
+}

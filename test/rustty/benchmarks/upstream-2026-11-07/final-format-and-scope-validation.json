@@ -1,0 +1,42 @@
+{
+  "source_commit": "ca7e13730a0a10d97392e1c1e13e8b41442ae98b",
+  "rust_format": {
+    "command": "cargo +1.95.0 fmt --all --check",
+    "exit_code": 0
+  },
+  "zig_format": {
+    "command": "zig fmt --check test/rustty/zig-parser.zig test/rustty/zig-oracle.zig test/rustty/zig-primitives.zig test/rustty/zig-stream-file-bench.zig",
+    "exit_code": 0
+  },
+  "ghostty_production_scope": {
+    "reference": "55d67c753ae03037c2ca8f6ebe4fc21817e4cbc3",
+    "checked_paths": [
+      "src",
+      "macos",
+      "include",
+      "pkg",
+      "build.zig",
+      "build.zig.zon"
+    ],
+    "diff_empty": true,
+    "note": "The reference checkpoint includes inherited mainline changes. This verifies no subsequent Ghostty production changes were introduced."
+  },
+  "logs": {
+    "final-corrected-format.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "final-corrected-zig-format.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "final-corrected-native-build.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "final-corrected-rust-tools-build.log": {
+      "sha256": "d520244e219430c218dd3f10d54a294a6ffde8d0e2e58b24f2c9be5512147a0c",
+      "bytes": 265
+    }
+  }
+}

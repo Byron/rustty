@@ -31,7 +31,7 @@ Zig implementation.
 This repository retains Ghostty's source and history alongside the Rust workspace
 so changes can be studied, tested, and compared directly. Some resources, including
 shell integration, themes, and font assets, are reused with their original
-licenses. The [upstream review](test/rustty/UPSTREAM-2026-10.md) and
+licenses. The [upstream review](test/rustty/UPSTREAM-2026-11-07.md) and
 [compatibility checks](test/rustty/README.md) document that work. Following mainline
 is an ongoing process, not a claim that every Ghostty feature is already present.
 
@@ -213,7 +213,7 @@ are in the [desktop guide](crates/rustty-app/README.md).
 - [Outliner, pins, and workspace navigation](docs/rustty/outliner.md)
 - [tmuxx commands and server setup](tmuxx/README.md)
 - [Stream Deck dashboard](docs/rustty/stream-deck.md)
-- [Ghostty compatibility checks](test/rustty/README.md) and [upstream review](test/rustty/UPSTREAM-2026-10.md)
+- [Ghostty compatibility checks](test/rustty/README.md) and [upstream review](test/rustty/UPSTREAM-2026-11-07.md)
 - [Performance measurements and their limits](test/rustty/BENCHMARKS.md)
 
 Rustty is MIT-licensed; see [LICENSE](LICENSE). It builds on the work of

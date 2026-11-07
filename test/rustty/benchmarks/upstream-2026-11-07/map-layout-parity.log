@@ -1,0 +1,6 @@
+Checked 100 comparisons (corpus/uk-invalid-utf8/chunks)
+Checked 200 comparisons (page-layout/initial/256)
+Checked 300 comparisons (page-layout/resource/styles/255)
+Checked 400 comparisons (page-layout/resource/string_bytes/65535)
+Checked 500 comparisons (page-layout/mixed/7)
+567 comparisons, 0 failures, 0 coverage gaps; full parity not established

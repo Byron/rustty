@@ -1,0 +1,11 @@
+[package]
+name = "rustty-reintegrate-perf"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+rustty-vt = { path = "/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

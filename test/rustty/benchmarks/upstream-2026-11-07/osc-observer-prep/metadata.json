@@ -1,0 +1,66 @@
+{
+  "scope": "Prepared source/test-observer correction only; no repository edits, builds or oracle execution.",
+  "target": {
+    "tix": "vvnxupx",
+    "current_commit": "8fcf08e0dafe8c935248009a204215dd0684f580",
+    "original_cancellation_commit": "046e2ba536e22433ce8bf6caf259521a0b6033fe",
+    "subject": "fix(rustty): discard cancelled OSC commands",
+    "author": "Codex <codex@openai.com>"
+  },
+  "order": {
+    "before_tix": "nuqtxqt",
+    "later_commit": "397c3883498d538b38a0ff4fcc8591e9c0608c6a",
+    "target_is_ancestor": true,
+    "descendant_steps_through_later": 65,
+    "first_descendant": "0210d1588d83a78f550ed8247940ed1514a110d5",
+    "last_descendant": "397c3883498d538b38a0ff4fcc8591e9c0608c6a"
+  },
+  "files": {
+    "test/rustty/zig-parser.zig": {
+      "current_before_sha256": "2e95d2d1e248ff6d8089a5a9bfde4fcb229f98a89687baa98689beb2a2a73a6f",
+      "current_after_sha256": "dde782eaa29d7b783385e7592d04131853dd9b385525d4e509aa5e1b614e0cc5",
+      "ancestor_before_sha256": "c88fc175e85c910c7f6ab713e1eebecb6530b13fdfe60a5de6a58c392c57a1d5",
+      "ancestor_after_sha256": "9c3d7811cdf7eff3e579125c02efb429b45225a71b3a6848ab1a46df7760cc43"
+    },
+    "test/rustty/parity_reference.py": {
+      "current_before_sha256": "83cebea191dd2f9056ce44c4da917863dae7eed72d78a8bfa594b2b6db036594",
+      "current_after_sha256": "9376b165308830235dac2783c3e2873ba098c8707ec72bed5c1e669280efbc17",
+      "ancestor_before_sha256": "78f5a37fb484409253bd7edc3208224502f0fded0054bc2bb52bdd0f3e74b606",
+      "ancestor_after_sha256": "94388896f8891830ba575073bbc92fb49c2109194b9253488ea8929605497b34"
+    }
+  },
+  "patch": "osc-observer-prep/ancestor.patch",
+  "current_patch": "osc-observer-prep/observer.patch",
+  "reason": "The raw native observer predates the Rust cancellation fix and emits synthetic OSC events on every exit. Amend its cancellation predicate into the existing cancellation semantic change, before later owner/lifetime QA at nuqtxqt.",
+  "regression": "Extend existing parser/osc-cancel without changing case IDs/count: CAN and SUB cancel incomplete title OSC; valid title BEL remains; unsupported raw OSC terminates with BEL immediately before CAN and with ESC-backslash immediately before SUB.",
+  "compatibility": "Keep pre-validation raw capture and ignore validated .osc_dispatch; otherwise unsupported but terminated raw OSC would disappear. No Rust production behavior changes.",
+  "instructions": "Root AGENTS.md applies. Search found no test/AGENTS.md or test/rustty/AGENTS.md; test/fuzz-libghostty/AGENTS.md is not an ancestor of edited paths.",
+  "validation_status": "Prepared only; root must run regression before/after and parser/native suites after replay.",
+  "regression_payload_sha256": "3c5fd765dab855937315f42b2e2cef6f6894cd3f4c1b7ba4301ff5b840ab2e9f",
+  "expected_raw_osc": [
+    {
+      "data_hex": "323b646f6e65",
+      "bell": true
+    },
+    {
+      "data_hex": "393939393b7261772d62656c",
+      "bell": true
+    },
+    {
+      "data_hex": "393939393b7261772d7374",
+      "bell": false
+    }
+  ],
+  "syntax_check": "Python AST parsed; focused bytes extracted from the changed existing seed; no module imported or oracle run.",
+  "observer_origin": {
+    "original": "e7ed282ab",
+    "current": "cad5f78425c9ee8985fcc2fc43d24eb2c2e1cce2",
+    "tix": "txqqmwp",
+    "precedes_cancellation_target": true
+  },
+  "patch_sha256": {
+    "ancestor.patch": "f40f0a56a4d10185947cfabc447e454d3f078a48e0793a93053be1d2da9dd8fb",
+    "observer.patch": "ac686dd7a69e9e8f9be811c555a4c015e91d99ae8486fa6abcda1c4aa244f555",
+    "regression.json": "5aa50cc47bb226a28913838f58c2dea9ed17dc59df3e82d74741d37582215baf"
+  }
+}

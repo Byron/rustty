@@ -1,0 +1,30 @@
+{
+  "candidate": "V8",
+  "commands": [
+    {
+      "name": "native-0",
+      "cmd": "target/release/examples/parity-runner --no-build --rust-bin /private/tmp/rustty-reintegrate.leadij/linked-after-parity --zig-bin zig-out/bin/vt-oracle --fixtures /private/tmp/rustty-reintegrate.leadij/linked-native-final-shard-0.json --artifacts /private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-0 > /private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-0.log 2>&1"
+    },
+    {
+      "name": "native-1",
+      "cmd": "target/release/examples/parity-runner --no-build --rust-bin /private/tmp/rustty-reintegrate.leadij/linked-after-parity --zig-bin zig-out/bin/vt-oracle --fixtures /private/tmp/rustty-reintegrate.leadij/linked-native-final-shard-1.json --artifacts /private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-1 > /private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-1.log 2>&1"
+    },
+    {
+      "name": "native-2",
+      "cmd": "target/release/examples/parity-runner --no-build --rust-bin /private/tmp/rustty-reintegrate.leadij/linked-after-parity --zig-bin zig-out/bin/vt-oracle --fixtures /private/tmp/rustty-reintegrate.leadij/linked-native-final-shard-2.json --artifacts /private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-2 > /private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-2.log 2>&1"
+    },
+    {
+      "name": "native-3",
+      "cmd": "target/release/examples/parity-runner --no-build --rust-bin /private/tmp/rustty-reintegrate.leadij/linked-after-parity --zig-bin zig-out/bin/vt-oracle --fixtures /private/tmp/rustty-reintegrate.leadij/linked-native-final-shard-3.json --artifacts /private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-3 > /private/tmp/rustty-reintegrate.leadij/linked-native-final3-rust-3.log 2>&1"
+    },
+    {
+      "name": "rust-validation",
+      "cmd": "set -e\ncargo +1.95.0 test --locked --offline -p rustty-vt --lib --test batched_input --test charsets --test grapheme_wrap --test hyperlinks --test shared_hyperlinks --test page_lifecycle --test feed_boundaries --test text_sizing --test snapshot --test semantic > /private/tmp/rustty-reintegrate.leadij/linked-final-tests.log 2>&1\ncargo +1.95.0 clippy --locked --offline -p rustty-vt --all-targets -- -D warnings > /private/tmp/rustty-reintegrate.leadij/linked-final-clippy.log 2>&1\nGHOSTTY_PRIMITIVES_BIN=/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives cargo +1.95.0 bench --locked --offline -p rustty-vt --bench primitives -- reflow_history_content/mixed-dense-links --test > /private/tmp/rustty-reintegrate.leadij/linked-final-dense-reflow.log 2>&1\ncargo +1.95.0 fmt -p rustty-vt -- --check > /private/tmp/rustty-reintegrate.leadij/linked-final-format.log 2>&1\ngit diff --check >> /private/tmp/rustty-reintegrate.leadij/linked-final-format.log 2>&1"
+    },
+    {
+      "name": "shared-selfchecks",
+      "cmd": "set -e\npython3 /private/tmp/rustty-reintegrate.leadij/measure-linked.py check > /private/tmp/rustty-reintegrate.leadij/linked-final-selfchecks.log 2>&1\npython3 /private/tmp/rustty-reintegrate.leadij/check-final-stream-corpora.py > /private/tmp/rustty-reintegrate.leadij/final-stream-corpora-selfchecks.log 2>&1"
+    }
+  ],
+  "build_command": "cargo +1.95.0 build --locked --offline --release -p rustty-vt --example parity --example stream-file"
+}

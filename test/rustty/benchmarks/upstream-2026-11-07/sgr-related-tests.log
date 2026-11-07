@@ -1,0 +1,114 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.21s
+     Running tests/page_lifecycle.rs (target/debug/deps/page_lifecycle-567cd80f10451dc6)
+
+running 3 tests
+test tail_growth_and_byte_recycling_keep_whole_native_pages ... ok
+test line_pruning_and_history_clear_preserve_the_active_boundary_page ... ok
+test snapshot_keeps_page_groups_and_charges_restored_pages_at_pool_size ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/region_attributes.rs (target/debug/deps/region_attributes-140e00750bcd9767)
+
+running 8 tests
+test coordinates_default_clip_and_follow_origin_without_moving_the_cursor ... ok
+test stream_and_rectangular_extents_preserve_unaddressed_attributes ... ok
+test region_reset_preserves_retained_tmux_tabs_and_unknown_csi_colons_stay_ignored ... ok
+test soft_reset_restores_stream_extent_without_erasing_text ... ok
+test styling_preserves_wide_text_links_protection_selection_and_pen ... ok
+test extent_snapshot_defaults_old_records_and_rejects_invalid_extensions ... ok
+test extent_survives_screen_switch_and_snapshot_and_resets_with_ris ... ok
+test extended_region_rendition_accepts_fragmented_colon_groups ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/sgr.rs (target/debug/deps/sgr-459c68829ad5b5ae)
+
+running 4 tests
+test color_values_follow_native_u8_truncation ... ok
+test invalid_colon_groups_preserve_state_and_later_semicolon_attributes ... ok
+test malformed_colors_leave_unconsumed_parameters_as_attributes ... ok
+test kitty_resets_bold_and_faint_independently_without_changing_other_rendition ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/snapshot.rs (target/debug/deps/snapshot-ff750452272474dc)
+
+running 33 tests
+test kitty_keyboard_ring_overflows_pops_and_resumes_after_restore ... ok
+test history_budget_cannot_bypass_forged_header_or_active_page_limits ... ok
+test invalid_utf8_metadata_and_links_survive_without_loss ... ok
+test history_restore_preserves_mixed_physical_rows_while_live_input_arrives ... ok
+test ghostty_sparse_page_preserves_styles_links_graphemes_and_wide_cells ... ok
+test ghostty_fixture_streams_history_and_leaves_transport_unread ... ok
+test skipped_snapshot_records_still_validate_lengths_checksums_and_known_order ... ok
+test maximum_four_byte_grapheme_preserves_snapshot_and_suffix_limit ... ok
+test repeated_nul_prints_empty_cells_with_the_current_pen ... ok
+test restored_defaults_survive_configuration_changes_and_protocol_resets ... ok
+test default_right_charset_is_preserved_by_cursor_and_screen_lifecycles ... ok
+test snapshot_rejects_empty_cursor_link_strings_before_resource_admission ... ok
+test distinct_grapheme_payloads_survive_page_transfer_reflow_and_live_erase ... ok
+test index_scroll_widens_mixed_pages_before_moving_rows ... ok
+test snapshot_clamps_cursor_to_logical_and_physical_widths ... ok
+test decode_continuation_budget_does_not_limit_later_capture ... ok
+test streaming_restore_uses_the_minimum_scrollback_budget ... ok
+test snapshot_grapheme_capacity_drops_whole_clusters_and_limits_suffix_length ... ok
+test terminal_reset_keeps_the_primary_history_restore_destination ... ok
+test unknown_cursor_default_flags_preserve_host_cursor_preferences ... ok
+test unscroll_widens_restored_history_beneath_an_existing_cursor ... ok
+test streaming_history_checks_width_when_each_page_arrives ... ok
+test streaming_restore_obeys_page_budget_and_discards_history_after_resize ... ok
+test narrow_restored_pages_support_direct_cursor_and_row_edits ... ok
+test exact_snapshot_decode_checks_eof_without_consuming_transport_bytes ... ok
+test mixed_physical_widths_survive_observation_and_grow_before_mutation ... ok
+test multirow_page_snapshots_keep_all_owned_resources ... ok
+test snapshot_skips_unknown_records_at_every_boundary ... ok
+test history_budget_can_change_only_after_active_screen_validation ... ok
+test snapshot_propagates_io_failures_at_record_boundaries ... ok
+test snapshot_preserves_screen_attributes_and_pending_parser ... ok
+test corrupt_truncated_and_excessive_snapshots_are_rejected ... ok
+test raised_decode_budget_keeps_the_normal_capture_limit ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.48s
+
+     Running tests/terminal.rs (target/debug/deps/terminal-559ef4eb684968ab)
+
+running 27 tests
+test legacy_combining_without_wrap_is_ignored_at_column_zero ... ok
+test erase_retains_background_but_clears_other_style_and_protects_cells ... ok
+test margins_scroll_only_the_defined_region ... ok
+test alternate_screen_modes_preserve_the_primary ... ok
+test effects_and_terminal_replies_are_ordered ... ok
+test sgr_colon_subparameters_and_cursor_shapes ... ok
+test reflow_preserves_text_selection_and_reference ... ok
+test graphemes_have_bounded_storage_and_track_width ... ok
+test minimum_byte_budget_retains_small_linked_history_after_reflow ... ok
+test vt_overwrites_wide_cells_as_a_unit ... ok
+test insertion_preserves_soft_wrap_and_edits_remove_stale_wide_padding ... ok
+test combining_at_right_edge_respects_grapheme_and_wrap_modes ... ok
+test resize_retains_blank_cells_copied_from_a_wrapped_source_row ... ok
+test resize_clamps_saved_and_external_pins_after_a_hard_line_break ... ok
+test viewport_snapshot_excludes_history_and_hides_scrolled_cursor ... ok
+test resize_reflows_cursor_blanks_and_keeps_wide_padding_at_the_edge ... ok
+test resize_blank_pins_follow_hard_breaks_soft_continuations_and_pending_wrap ... ok
+test wrapping_scrolling_and_tracked_references ... ok
+test resize_unwraps_before_growing_the_active_area ... ok
+test resize_skips_an_empty_wrap_continuation_without_ending_the_line ... ok
+test resize_saved_cursor_blank_columns_begin_after_a_hard_line_break ... ok
+test zero_line_limit_keeps_history_but_zero_bytes_disables_it ... ok
+test limits_prune_by_bytes_and_lines_and_invalidate_removed_content ... ok
+test widening_without_reflow_preserves_spacer_attributes ... ok
+test wrapped_graphemes_preserve_suffixes_when_scrolling_discards_the_source ... ok
+test generated_edits_keep_wide_cells_and_cursor_in_bounds ... ok
+test chunk_boundaries_do_not_change_terminal_results ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running unittests ../../test/rustty/rust-stream-file.rs (target/debug/examples/stream_file-1dcea893f3cfca03)
+
+running 1 test
+test workload::tests::reset_and_chunking_retain_styles_widths_links_and_mode_defaults ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+

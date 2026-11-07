@@ -1,0 +1,16 @@
+{
+  "commit": "03be726e243bdc235bd641420f511fc2b7792f8e",
+  "command": "TMPDIR=/tmp cargo +1.95.0 test --locked --offline -p rustty-vt --features scalar-kernels -- --test-threads=1",
+  "exit_code": 0,
+  "test_target_summaries": 74,
+  "totals": {
+    "passed": 714,
+    "failed": 0,
+    "ignored": 0,
+    "measured": 0,
+    "filtered": 0
+  },
+  "log_sha256": "06dc066472ee4612573bc1428462e7e8058f17798edbe20a89873697e29d3cef",
+  "production_source_tree": "30aceac6fbccc470aea395cf79a99e8114a3ba6f",
+  "scope": "Full scalar-kernels VT package tests including examples and doctests; target summaries retained in raw log."
+}

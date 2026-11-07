@@ -1,0 +1,72 @@
+{
+  "case_count": 1152,
+  "all_fields_explained": true,
+  "extra_events": 43338,
+  "cancel_bytes": {
+    "24": 27177,
+    "26": 16161
+  },
+  "unexplained": [],
+  "run_status": {
+    "kind": "permanently_incomplete_initial_run",
+    "reason": "Root stopped group2 after confirming stale canceled-OSC observer; coordinator session10124 exited130 and waited for its process group. A new run follows the observer repair.",
+    "coordinator_exit_status": 130,
+    "partial_run_evidence_only": true,
+    "full_archive_completion_claimed": false
+  },
+  "artifact_integrity": {
+    "saved_directories": 1153,
+    "complete_directories": 1152,
+    "incomplete_directories": [
+      {
+        "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-2/failures/011573",
+        "id": "parser/corpus/parser-cmin/id_000630,time_0,execs_0,orig_id_002535,src_002333,time_910141,execs_35962959,op_havoc,rep_32",
+        "problems": [
+          "rust.json: Unterminated string starting at: line 53406 column 9 (char 1155970)",
+          "difference.txt: missing"
+        ],
+        "retained_files": {
+          "request.json": {
+            "sha256": "0ef2b7f500ff9c29ecda0e0d211397c75c598882daf1acf30bbcb76c40333f13",
+            "bytes": 157341
+          },
+          "zig.json": {
+            "sha256": "ff7af2aabdfd933140f214212d4a26f19c2acf5dda1b6e5c83f995d7a4927137",
+            "bytes": 6470743
+          },
+          "rust.json": {
+            "sha256": "dead14058ba82b128620f5fc581c967bd783fbd8d16de9b0bc0acb4fde447099",
+            "bytes": 1155975
+          }
+        },
+        "counted_as_complete": false
+      }
+    ],
+    "other_complete_categories": [],
+    "all_saved_directories_accounted_for": true
+  },
+  "as_of_utc": "2026-11-07T11:40:21.657548+00:00",
+  "broad_shard_summary_at_audit": {
+    "aborted": true,
+    "full_parity": false
+  },
+  "artifact_script_sha256": "8af01b67d2270295ee99a3c686ce38329d8336c4951b8cece847dfb22f1f1259",
+  "files": {
+    "final-parser-failure-map.json": {
+      "bytes": 1701490,
+      "sha256": "9f1e58216f885c28986d1a28ca8bc6fc996e7a2c657e3e6117e1b58c6db8a408"
+    },
+    "final-parser-artifact-attribution.json": {
+      "bytes": 17725894,
+      "sha256": "e003a1178c535b03c98c4b30d989ba2decbc4fc6231b20e981a863276011f4cd"
+    },
+    "final-parser-stopped-attribution.log": {
+      "bytes": 2262,
+      "sha256": "340a6dc777699d13fd78df4325a80e4bd0a8a27427471ae7c9003811794f5270"
+    },
+    "audit-final-parser-artifacts.py": {
+      "bytes": 5058,
+      "sha256": "8af01b67d2270295ee99a3c686ce38329d8336c4951b8cece847dfb22f1f1259"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+   Compiling rustty-render v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-render)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.32s
+     Running unittests src/lib.rs (target/debug/deps/rustty_render-377ef52ec0cb3d52)
+
+running 1 test
+test prepare::shaper_rows::shaper_modes_keep_style_sprite_and_wide_boundaries_without_rasterizing ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 62 filtered out; finished in 0.08s
+

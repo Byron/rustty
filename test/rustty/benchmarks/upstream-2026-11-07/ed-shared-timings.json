@@ -1,0 +1,1424 @@
+[
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "100"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 100,
+      "elapsed_ns": 1462104913,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "100"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 100,
+      "elapsed_ns": 1478376995,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "plain",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "100"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 100,
+      "elapsed_ns": 577825168,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-2-120x80",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x80.json",
+      "2"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x80",
+      "iterations": 2,
+      "elapsed_ns": 1290734625,
+      "units_per_iteration": 1048541,
+      "cell_bytes": 8,
+      "checksum": 5254477465540570173,
+      "history_rows": 249,
+      "page_bytes": 409600,
+      "page_count": 1,
+      "owned_bytes": 391040
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-2-120x80",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x80.json",
+      "2"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x80",
+      "iterations": 2,
+      "elapsed_ns": 1256867250,
+      "units_per_iteration": 1048541,
+      "cell_bytes": 8,
+      "checksum": 5254477465540570173,
+      "history_rows": 249,
+      "page_bytes": 409600,
+      "page_count": 1,
+      "owned_bytes": 391040
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-2-120x80",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x80.json",
+      "2"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-2-120x80",
+      "iterations": 2,
+      "elapsed_ns": 10982125,
+      "units_per_iteration": 1048541,
+      "cell_bytes": 8,
+      "checksum": 5254477465540570173,
+      "history_rows": 249,
+      "page_bytes": 409600,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-2-120x12",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x12.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x12",
+      "iterations": 8,
+      "elapsed_ns": 892824332,
+      "units_per_iteration": 1048575,
+      "cell_bytes": 8,
+      "checksum": 3755577868682083495,
+      "history_rows": 408,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-2-120x12",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x12.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x12",
+      "iterations": 8,
+      "elapsed_ns": 858881457,
+      "units_per_iteration": 1048575,
+      "cell_bytes": 8,
+      "checksum": 3755577868682083495,
+      "history_rows": 408,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-2-120x12",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x12.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-2-120x12",
+      "iterations": 8,
+      "elapsed_ns": 41960585,
+      "units_per_iteration": 1048575,
+      "cell_bytes": 8,
+      "checksum": 3755577868682083495,
+      "history_rows": 408,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-2-300x100",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-300x100.json",
+      "1"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-300x100",
+      "iterations": 1,
+      "elapsed_ns": 1922790375,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 936995356256480217,
+      "history_rows": 194,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 773584
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-2-300x100",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-300x100.json",
+      "1"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-300x100",
+      "iterations": 1,
+      "elapsed_ns": 1813968625,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 936995356256480217,
+      "history_rows": 194,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 773584
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-2-300x100",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-300x100.json",
+      "1"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-2-300x100",
+      "iterations": 1,
+      "elapsed_ns": 8755750,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 936995356256480217,
+      "history_rows": 194,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-22-120x80",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-22-120x80.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-22-120x80",
+      "iterations": 8,
+      "elapsed_ns": 1030403917,
+      "units_per_iteration": 1048531,
+      "cell_bytes": 8,
+      "checksum": 8692881763686392879,
+      "history_rows": 318,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-22-120x80",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-22-120x80.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-22-120x80",
+      "iterations": 8,
+      "elapsed_ns": 1047863834,
+      "units_per_iteration": 1048531,
+      "cell_bytes": 8,
+      "checksum": 8692881763686392879,
+      "history_rows": 318,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-22-120x80",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-22-120x80.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-22-120x80",
+      "iterations": 8,
+      "elapsed_ns": 118619456,
+      "units_per_iteration": 1048531,
+      "cell_bytes": 8,
+      "checksum": 8692881763686392879,
+      "history_rows": 318,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-rate-120x80",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-rate-120x80.json",
+      "4"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-rate-120x80",
+      "iterations": 4,
+      "elapsed_ns": 1135303750,
+      "units_per_iteration": 1048576,
+      "cell_bytes": 8,
+      "checksum": 17243635126788336514,
+      "history_rows": 694,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-rate-120x80",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-rate-120x80.json",
+      "4"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-rate-120x80",
+      "iterations": 4,
+      "elapsed_ns": 1035636083,
+      "units_per_iteration": 1048576,
+      "cell_bytes": 8,
+      "checksum": 17243635126788336514,
+      "history_rows": 694,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 1,
+    "name": "erase-rate-120x80",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-rate-120x80.json",
+      "4"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-rate-120x80",
+      "iterations": 4,
+      "elapsed_ns": 24646125,
+      "units_per_iteration": 1048576,
+      "cell_bytes": 8,
+      "checksum": 17243635126788336514,
+      "history_rows": 694,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "100"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 100,
+      "elapsed_ns": 589344459,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "100"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 100,
+      "elapsed_ns": 1502529164,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "100"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 100,
+      "elapsed_ns": 1494943954,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-2-120x80",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x80.json",
+      "2"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-2-120x80",
+      "iterations": 2,
+      "elapsed_ns": 11188749,
+      "units_per_iteration": 1048541,
+      "cell_bytes": 8,
+      "checksum": 5254477465540570173,
+      "history_rows": 249,
+      "page_bytes": 409600,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-2-120x80",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x80.json",
+      "2"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x80",
+      "iterations": 2,
+      "elapsed_ns": 1216487625,
+      "units_per_iteration": 1048541,
+      "cell_bytes": 8,
+      "checksum": 5254477465540570173,
+      "history_rows": 249,
+      "page_bytes": 409600,
+      "page_count": 1,
+      "owned_bytes": 391040
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-2-120x80",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x80.json",
+      "2"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x80",
+      "iterations": 2,
+      "elapsed_ns": 1346279292,
+      "units_per_iteration": 1048541,
+      "cell_bytes": 8,
+      "checksum": 5254477465540570173,
+      "history_rows": 249,
+      "page_bytes": 409600,
+      "page_count": 1,
+      "owned_bytes": 391040
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-2-120x12",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x12.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-2-120x12",
+      "iterations": 8,
+      "elapsed_ns": 42415000,
+      "units_per_iteration": 1048575,
+      "cell_bytes": 8,
+      "checksum": 3755577868682083495,
+      "history_rows": 408,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-2-120x12",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x12.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x12",
+      "iterations": 8,
+      "elapsed_ns": 908399168,
+      "units_per_iteration": 1048575,
+      "cell_bytes": 8,
+      "checksum": 3755577868682083495,
+      "history_rows": 408,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-2-120x12",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x12.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x12",
+      "iterations": 8,
+      "elapsed_ns": 905550041,
+      "units_per_iteration": 1048575,
+      "cell_bytes": 8,
+      "checksum": 3755577868682083495,
+      "history_rows": 408,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-2-300x100",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-300x100.json",
+      "1"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-2-300x100",
+      "iterations": 1,
+      "elapsed_ns": 8752459,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 936995356256480217,
+      "history_rows": 194,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-2-300x100",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-300x100.json",
+      "1"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-300x100",
+      "iterations": 1,
+      "elapsed_ns": 1842833042,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 936995356256480217,
+      "history_rows": 194,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 773584
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-2-300x100",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-300x100.json",
+      "1"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-300x100",
+      "iterations": 1,
+      "elapsed_ns": 1881860625,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 936995356256480217,
+      "history_rows": 194,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 773584
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-22-120x80",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-22-120x80.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-22-120x80",
+      "iterations": 8,
+      "elapsed_ns": 121477083,
+      "units_per_iteration": 1048531,
+      "cell_bytes": 8,
+      "checksum": 8692881763686392879,
+      "history_rows": 318,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-22-120x80",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-22-120x80.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-22-120x80",
+      "iterations": 8,
+      "elapsed_ns": 1087750541,
+      "units_per_iteration": 1048531,
+      "cell_bytes": 8,
+      "checksum": 8692881763686392879,
+      "history_rows": 318,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-22-120x80",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-22-120x80.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-22-120x80",
+      "iterations": 8,
+      "elapsed_ns": 1049431083,
+      "units_per_iteration": 1048531,
+      "cell_bytes": 8,
+      "checksum": 8692881763686392879,
+      "history_rows": 318,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-rate-120x80",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-rate-120x80.json",
+      "4"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-rate-120x80",
+      "iterations": 4,
+      "elapsed_ns": 24726040,
+      "units_per_iteration": 1048576,
+      "cell_bytes": 8,
+      "checksum": 17243635126788336514,
+      "history_rows": 694,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-rate-120x80",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-rate-120x80.json",
+      "4"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-rate-120x80",
+      "iterations": 4,
+      "elapsed_ns": 1101341417,
+      "units_per_iteration": 1048576,
+      "cell_bytes": 8,
+      "checksum": 17243635126788336514,
+      "history_rows": 694,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "name": "erase-rate-120x80",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-rate-120x80.json",
+      "4"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-rate-120x80",
+      "iterations": 4,
+      "elapsed_ns": 1131421624,
+      "units_per_iteration": 1048576,
+      "cell_bytes": 8,
+      "checksum": 17243635126788336514,
+      "history_rows": 694,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "100"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 100,
+      "elapsed_ns": 1504835377,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "100"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 100,
+      "elapsed_ns": 1518805079,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 781696
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "plain",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/plain.json",
+      "100"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "plain",
+      "iterations": 100,
+      "elapsed_ns": 594945125,
+      "units_per_iteration": 8388587,
+      "cell_bytes": 8,
+      "checksum": 18031999217808237406,
+      "history_rows": 615,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-2-120x80",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x80.json",
+      "2"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x80",
+      "iterations": 2,
+      "elapsed_ns": 1281175209,
+      "units_per_iteration": 1048541,
+      "cell_bytes": 8,
+      "checksum": 5254477465540570173,
+      "history_rows": 249,
+      "page_bytes": 409600,
+      "page_count": 1,
+      "owned_bytes": 391040
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-2-120x80",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x80.json",
+      "2"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x80",
+      "iterations": 2,
+      "elapsed_ns": 1230878207,
+      "units_per_iteration": 1048541,
+      "cell_bytes": 8,
+      "checksum": 5254477465540570173,
+      "history_rows": 249,
+      "page_bytes": 409600,
+      "page_count": 1,
+      "owned_bytes": 391040
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-2-120x80",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x80.json",
+      "2"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-2-120x80",
+      "iterations": 2,
+      "elapsed_ns": 11084959,
+      "units_per_iteration": 1048541,
+      "cell_bytes": 8,
+      "checksum": 5254477465540570173,
+      "history_rows": 249,
+      "page_bytes": 409600,
+      "page_count": 1,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-2-120x12",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x12.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x12",
+      "iterations": 8,
+      "elapsed_ns": 935235252,
+      "units_per_iteration": 1048575,
+      "cell_bytes": 8,
+      "checksum": 3755577868682083495,
+      "history_rows": 408,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-2-120x12",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x12.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-120x12",
+      "iterations": 8,
+      "elapsed_ns": 907451167,
+      "units_per_iteration": 1048575,
+      "cell_bytes": 8,
+      "checksum": 3755577868682083495,
+      "history_rows": 408,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-2-120x12",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-120x12.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-2-120x12",
+      "iterations": 8,
+      "elapsed_ns": 43374834,
+      "units_per_iteration": 1048575,
+      "cell_bytes": 8,
+      "checksum": 3755577868682083495,
+      "history_rows": 408,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-2-300x100",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-300x100.json",
+      "1"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-300x100",
+      "iterations": 1,
+      "elapsed_ns": 1886991042,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 936995356256480217,
+      "history_rows": 194,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 773584
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-2-300x100",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-300x100.json",
+      "1"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-2-300x100",
+      "iterations": 1,
+      "elapsed_ns": 1824242959,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 936995356256480217,
+      "history_rows": 194,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 773584
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-2-300x100",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-2-300x100.json",
+      "1"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-2-300x100",
+      "iterations": 1,
+      "elapsed_ns": 8751875,
+      "units_per_iteration": 1048564,
+      "cell_bytes": 8,
+      "checksum": 936995356256480217,
+      "history_rows": 194,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-22-120x80",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-22-120x80.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-22-120x80",
+      "iterations": 8,
+      "elapsed_ns": 1057378167,
+      "units_per_iteration": 1048531,
+      "cell_bytes": 8,
+      "checksum": 8692881763686392879,
+      "history_rows": 318,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-22-120x80",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-22-120x80.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-22-120x80",
+      "iterations": 8,
+      "elapsed_ns": 1072815624,
+      "units_per_iteration": 1048531,
+      "cell_bytes": 8,
+      "checksum": 8692881763686392879,
+      "history_rows": 318,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-22-120x80",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-22-120x80.json",
+      "8"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-22-120x80",
+      "iterations": 8,
+      "elapsed_ns": 122065208,
+      "units_per_iteration": 1048531,
+      "cell_bytes": 8,
+      "checksum": 8692881763686392879,
+      "history_rows": 318,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-rate-120x80",
+    "version": "before",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-before-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-rate-120x80.json",
+      "4"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-rate-120x80",
+      "iterations": 4,
+      "elapsed_ns": 1158873875,
+      "units_per_iteration": 1048576,
+      "cell_bytes": 8,
+      "checksum": 17243635126788336514,
+      "history_rows": 694,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-rate-120x80",
+    "version": "after",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/ed-after-stream",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-rate-120x80.json",
+      "4"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "rustty",
+      "operation": "stream_file",
+      "name": "erase-rate-120x80",
+      "iterations": 4,
+      "elapsed_ns": 1079327543,
+      "units_per_iteration": 1048576,
+      "cell_bytes": 8,
+      "checksum": 17243635126788336514,
+      "history_rows": 694,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": 782080
+    },
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "name": "erase-rate-120x80",
+    "version": "native",
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/sgr-native-primitives",
+      "stream_file",
+      "/private/tmp/rustty-reintegrate.leadij/stream-configs/ed-prefix-erase-rate-120x80.json",
+      "4"
+    ],
+    "status": 0,
+    "result": {
+      "engine": "ghostty",
+      "operation": "stream_file",
+      "name": "erase-rate-120x80",
+      "iterations": 4,
+      "elapsed_ns": 24891043,
+      "units_per_iteration": 1048576,
+      "cell_bytes": 8,
+      "checksum": 17243635126788336514,
+      "history_rows": 694,
+      "page_bytes": 819200,
+      "page_count": 2,
+      "owned_bytes": null
+    },
+    "stderr": ""
+  }
+]

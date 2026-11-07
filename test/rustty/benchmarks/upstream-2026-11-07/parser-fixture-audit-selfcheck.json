@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "python3",
+    "/private/tmp/rustty-reintegrate.leadij/audit-parser-fixture-refresh.py",
+    "--selfcheck"
+  ],
+  "status": "passed",
+  "scope": "Synthetic in-memory comparison assertions only; no real refresh, repository edits, builds or oracle calls.",
+  "script_sha256": "d47c76aaebfae52ba2388bb1636e31cc75222799786cac3fa283383be9866383",
+  "helper_sha256": "6a398b745a862e027ed9cf7df686cbdb0185e1bb3f0d0551e15d5399cd4b5c6c",
+  "covered": [
+    "accepted exact parser change",
+    "missing ID",
+    "changed coverage",
+    "changed probe",
+    "directory membership",
+    "unexpected input CRC",
+    "changed DND record",
+    "missing expected parser change",
+    "wrong group"
+  ]
+}

@@ -1,0 +1,100 @@
+[
+  {
+    "lines": 219,
+    "bytes": 34793,
+    "sha256": "54970dafa2d78d957e2b9e4774c1d12dace06f390ba489ace052ff0c77023302",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "full-prefix-219",
+        "iterations": 1,
+        "elapsed_ns": 5689875,
+        "units_per_iteration": 34793,
+        "cell_bytes": 8,
+        "checksum": 1422259704867264670,
+        "history_rows": 140,
+        "page_bytes": 737280,
+        "page_count": 1,
+        "owned_bytes": 750746
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "full-prefix-219",
+        "iterations": 1,
+        "elapsed_ns": 4949000,
+        "units_per_iteration": 34793,
+        "cell_bytes": 8,
+        "checksum": 17586557975153729802,
+        "history_rows": 140,
+        "page_bytes": 901120,
+        "page_count": 1,
+        "owned_bytes": 763242
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "full-prefix-219",
+        "iterations": 1,
+        "elapsed_ns": 1700375,
+        "units_per_iteration": 34793,
+        "cell_bytes": 8,
+        "checksum": 17586557975153729802,
+        "history_rows": 140,
+        "page_bytes": 933888,
+        "page_count": 1,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "lines": 300,
+    "bytes": 47664,
+    "sha256": "cc7a03a073c1963ca109c78a63110424249a46d465fa9f1e06589066e44fcab6",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "full-prefix-300",
+        "iterations": 1,
+        "elapsed_ns": 10966750,
+        "units_per_iteration": 47664,
+        "cell_bytes": 8,
+        "checksum": 3725540225006281853,
+        "history_rows": 221,
+        "page_bytes": 983040,
+        "page_count": 1,
+        "owned_bytes": 751980
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "full-prefix-300",
+        "iterations": 1,
+        "elapsed_ns": 6953500,
+        "units_per_iteration": 47664,
+        "cell_bytes": 8,
+        "checksum": 4108484921685097189,
+        "history_rows": 221,
+        "page_bytes": 917504,
+        "page_count": 1,
+        "owned_bytes": 1082048
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "full-prefix-300",
+        "iterations": 1,
+        "elapsed_ns": 1819334,
+        "units_per_iteration": 47664,
+        "cell_bytes": 8,
+        "checksum": 4108484921685097189,
+        "history_rows": 221,
+        "page_bytes": 933888,
+        "page_count": 1,
+        "owned_bytes": null
+      }
+    }
+  }
+]

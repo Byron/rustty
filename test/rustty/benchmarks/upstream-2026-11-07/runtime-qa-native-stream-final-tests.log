@@ -1,0 +1,10 @@
+   Compiling tmuxx-runtime v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/tmuxx/crates/tmuxx-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.41s
+     Running tests/native_stream_consistency.rs (target/debug/deps/native_stream_consistency-0770d5e2e0c46b24)
+
+running 2 tests
+test blocked_native_view_recovers_while_healthy_view_and_pty_survive ... ok
+test live_native_snapshot_has_one_cut_and_updates_follow_its_end ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.94s
+

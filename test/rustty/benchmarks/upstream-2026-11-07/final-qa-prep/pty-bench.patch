@@ -1,0 +1,17 @@
+--- a/test/rustty/pty-bench.rs
++++ b/test/rustty/pty-bench.rs
+@@ -269,10 +269,10 @@
+                 if !errors.is_empty() {
+                     return Err(io::Error::other(format!("connection: {errors:?}")));
+                 }
+-                if let Some(graph) = conn.graph() {
+-                    if let Some(pane) = graph.panes.first() {
+-                        break pane.id;
+-                    }
++                if let Some(graph) = conn.graph()
++                    && let Some(pane) = graph.panes.first()
++                {
++                    break pane.id;
+                 }
+                 if Instant::now() >= deadline {
+                     return Err(io::Error::new(

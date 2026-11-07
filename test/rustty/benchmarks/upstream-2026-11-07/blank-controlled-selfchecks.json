@@ -1,0 +1,112 @@
+[
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-before-controlled",
+      "plain",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"plain\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":5819,\"frames_per_feed\":64,\"elapsed_ns\":42}\n{\"case\":\"plain\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":5819,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"plain\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":5819,\"frames_per_feed\":64,\"elapsed_ns\":42}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-before-controlled",
+      "erase-2",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"erase-2\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"erase-2\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"erase-2\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":0}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-before-controlled",
+      "erase-2-seen",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"erase-2-seen\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":41}\n{\"case\":\"erase-2-seen\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":42}\n{\"case\":\"erase-2-seen\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":0}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-before-controlled",
+      "erase-22",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"erase-22\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":3512,\"frames_per_feed\":64,\"elapsed_ns\":42}\n{\"case\":\"erase-22\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":3512,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"erase-22\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":3512,\"frames_per_feed\":64,\"elapsed_ns\":0}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-before-controlled",
+      "erase-lines",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"erase-lines\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":31447,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"erase-lines\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":31447,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"erase-lines\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":31447,\"frames_per_feed\":64,\"elapsed_ns\":0}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-after-controlled",
+      "plain",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"plain\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":5819,\"frames_per_feed\":64,\"elapsed_ns\":42}\n{\"case\":\"plain\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":5819,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"plain\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":5819,\"frames_per_feed\":64,\"elapsed_ns\":0}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-after-controlled",
+      "erase-2",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"erase-2\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":42}\n{\"case\":\"erase-2\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"erase-2\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":41}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-after-controlled",
+      "erase-2-seen",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"erase-2-seen\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":42}\n{\"case\":\"erase-2-seen\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"erase-2-seen\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":3448,\"frames_per_feed\":64,\"elapsed_ns\":0}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-after-controlled",
+      "erase-22",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"erase-22\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":3512,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"erase-22\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":3512,\"frames_per_feed\":64,\"elapsed_ns\":42}\n{\"case\":\"erase-22\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":3512,\"frames_per_feed\":64,\"elapsed_ns\":0}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/private/tmp/rustty-reintegrate.leadij/blank-after-controlled",
+      "erase-lines",
+      "0",
+      "80"
+    ],
+    "status": 0,
+    "output": "{\"case\":\"erase-lines\",\"cols\":120,\"rows\":80,\"round\":0,\"iterations\":0,\"input_bytes\":31447,\"frames_per_feed\":64,\"elapsed_ns\":0}\n{\"case\":\"erase-lines\",\"cols\":120,\"rows\":80,\"round\":1,\"iterations\":0,\"input_bytes\":31447,\"frames_per_feed\":64,\"elapsed_ns\":42}\n{\"case\":\"erase-lines\",\"cols\":120,\"rows\":80,\"round\":2,\"iterations\":0,\"input_bytes\":31447,\"frames_per_feed\":64,\"elapsed_ns\":0}\n",
+    "stderr": ""
+  }
+]

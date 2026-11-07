@@ -1,0 +1,131 @@
+{
+  "capabilities": [
+    "drag-and-drop",
+    "terminal.pages",
+    "graphics.glyphs",
+    "terminal.page-layout",
+    "terminal.selection",
+    "terminal.search",
+    "terminal.tracked",
+    "graphics.kitty",
+    "graphics.png",
+    "terminal.write",
+    "terminal.resize",
+    "terminal.reset",
+    "terminal.observe",
+    "terminal.cells",
+    "terminal.styles",
+    "terminal.screens",
+    "terminal.cursor",
+    "terminal.modes",
+    "terminal.colors",
+    "effects.pty",
+    "effects.title",
+    "effects.pwd",
+    "effects.bell",
+    "effects.host",
+    "clipboard",
+    "unicode.width",
+    "input.key",
+    "input.mouse",
+    "input.focus-paste",
+    "parser.raw-events",
+    "snapshot.cross-decode",
+    "snapshot.streaming",
+    "snapshot.fixtures",
+    "protocol.dcs"
+  ],
+  "dnd_results": [
+    {
+      "accept_in_progress": false,
+      "accepted": null,
+      "accepted_mimes": "",
+      "chunking": {
+        "active": false,
+        "metadata": {
+          "cell_x": 0,
+          "cell_y": 0,
+          "client_id": 0,
+          "more": false,
+          "operation": 0,
+          "pixel_x": 0,
+          "pixel_y": 0,
+          "type": null
+        }
+      },
+      "client_accepted": null,
+      "client_id": 9,
+      "dropped": true,
+      "hovered": false,
+      "items": [
+        {
+          "data": "79",
+          "mime": "78"
+        }
+      ],
+      "offered": [
+        "78"
+      ],
+      "registered_mimes": "6f6c64"
+    },
+    null,
+    null
+  ],
+  "err": null,
+  "events": [
+    {
+      "clipboard": null,
+      "data": "726567697374726174696f6e",
+      "dnd_state": {
+        "accept_in_progress": false,
+        "accepted": null,
+        "accepted_mimes": "",
+        "chunking": {
+          "active": false,
+          "metadata": {
+            "cell_x": 0,
+            "cell_y": 0,
+            "client_id": 0,
+            "more": false,
+            "operation": 0,
+            "pixel_x": 0,
+            "pixel_y": 0,
+            "type": null
+          }
+        },
+        "client_accepted": null,
+        "client_id": 9,
+        "dropped": false,
+        "hovered": false,
+        "items": null,
+        "offered": null,
+        "registered_mimes": "6f6c64"
+      },
+      "kind": "dnd",
+      "notification": null,
+      "progress": null
+    },
+    {
+      "clipboard": null,
+      "data": "1b5d37323b743d4d3a783d303a793d303a583d303a593d303a6f3d313a693d393a6d3d303b78201b5c1b5d37323b743d711b5c1b5d37323b743d523a783d313a6d3d303b455045524d3a64726f7020646174612063616e206f6e6c792062652072657175657374656420616674657220612064726f701b5c",
+      "dnd_state": null,
+      "kind": "write",
+      "notification": null,
+      "progress": null
+    }
+  ],
+  "glyph_results": [],
+  "graphics_ticks": [],
+  "grid_results": [],
+  "id": "protocol/dnd/snapshot/rust/0",
+  "mode_results": [],
+  "observations": [],
+  "ok": true,
+  "page_layout": null,
+  "page_results": [],
+  "parsed_colors": [],
+  "parser": null,
+  "snapshot_progress": [],
+  "snapshots": [],
+  "widths": []
+}

@@ -1,0 +1,22 @@
+{
+  "kind": "prepare",
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "offscreen": false,
+  "cases": [
+    "cached_redraw",
+    "scroll_styled",
+    "mixed_unicode",
+    "alternate_repaint"
+  ],
+  "binaries": {
+    "before": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/shaper-frame-before",
+      "sha256": "8972447d9295e8227ddb6697494095140507b2177bda83a7403d3ea260c055cb"
+    },
+    "after": {
+      "path": "/private/tmp/rustty-reintegrate.leadij/shaper-frame-after",
+      "sha256": "40a3febc422b46615d7f5a08dd767a4386448a815f999e38f4af9423fc7b985e"
+    }
+  },
+  "workload_sha256": "d4060079454c92013d2980cb2ef16f43170ef42e652d6b375000d44af9d2c5a6"
+}

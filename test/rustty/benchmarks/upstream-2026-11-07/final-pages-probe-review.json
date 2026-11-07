@@ -1,0 +1,1014 @@
+{
+  "result": "All3 removed,5 added and7 changed native pages probe request hashes are explained by final source and generator boundaries. Raw review_required audit remains unchanged.",
+  "scope": "read-only saved-fixture/provenance/source audit; no builds or oracle execution",
+  "source_audit_sha256": "ed554e3ea9e202b21ea1eb45a814e29e3bdcb5296eea2a30b69f2e7400fbc4c6",
+  "changed_response_attribution": {
+    "all_deltas_within_page_layout": true,
+    "packed_style": "RefCountedSet style item36\u219232bytes, item alignment4\u219216, style-set and metadata alignment8\u219216; style layout4000\u21923584bytes and metadata26124\u219225708bytes. Dependent offsets and maximum fitted rows follow final PageCapacity::fit_rows aligned-layout validation.",
+    "independent_map": "Default hyperlink_cells64 is newly serialized in constants and layout capacity. Existing default map remains128 buckets/102 usable cells, so independent capacity causes no default map-size change.",
+    "carry_scope": "The final fit_rows arithmetic is shared with the capacity-carry port, but these direct page_layout requests do not exercise runtime carry usage/history sampling.",
+    "page_rows": {
+      "2": [
+        15975,
+        15993
+      ],
+      "8": [
+        5325,
+        5330
+      ],
+      "80": [
+        591,
+        592
+      ],
+      "215": [
+        221,
+        222
+      ],
+      "1024": [
+        46,
+        46
+      ]
+    },
+    "duplicate_requests": "pages/styles/capacity repeats column80 and1024 layout queries under its own IDs; five pages/capacity probes plus these two account for all seven."
+  },
+  "changed_probes": [
+    {
+      "request_sha256": "354317e509d504e29d93fa3a31799f4e45e2368fe682f73d1053a67d749b9181",
+      "id": "pages/capacity",
+      "columns": 2,
+      "before_index": [
+        {
+          "id": "pages/capacity",
+          "index": 2
+        }
+      ],
+      "after_index": [
+        {
+          "id": "pages/capacity",
+          "index": 2
+        }
+      ],
+      "deltas": [
+        [
+          "/page_layout/constants/metadata_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/constants/standard_capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/constants/style_item_alignment",
+          4,
+          16
+        ],
+        [
+          "/page_layout/constants/style_item_size",
+          36,
+          32
+        ],
+        [
+          "/page_layout/constants/style_set_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/layout/capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/layout/capacity/rows",
+          15975,
+          15993
+        ],
+        [
+          "/page_layout/layout/cells_size",
+          255600,
+          255888
+        ],
+        [
+          "/page_layout/layout/cells_start",
+          127872,
+          128000
+        ],
+        [
+          "/page_layout/layout/rows_size",
+          127800,
+          127944
+        ],
+        [
+          "/page_layout/layout/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/layout/styles_start",
+          383472,
+          383888
+        ],
+        [
+          "/page_layout/metadata/grapheme_alloc_start",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/grapheme_map_start",
+          12256,
+          11840
+        ],
+        [
+          "/page_layout/metadata/hyperlink_map_start",
+          25224,
+          24808
+        ],
+        [
+          "/page_layout/metadata/hyperlink_set_start",
+          25072,
+          24656
+        ],
+        [
+          "/page_layout/metadata/string_alloc_start",
+          23016,
+          22600
+        ],
+        [
+          "/page_layout/metadata/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/total_size",
+          26124,
+          25708
+        ]
+      ]
+    },
+    {
+      "request_sha256": "43c5309b9e0d4ad676a3c5c95541398ff4e6f84b398a7d230e7a6c4ce5e8e7b6",
+      "id": "pages/capacity",
+      "columns": 80,
+      "before_index": [
+        {
+          "id": "pages/capacity",
+          "index": 4
+        }
+      ],
+      "after_index": [
+        {
+          "id": "pages/capacity",
+          "index": 4
+        }
+      ],
+      "deltas": [
+        [
+          "/page_layout/constants/metadata_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/constants/standard_capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/constants/style_item_alignment",
+          4,
+          16
+        ],
+        [
+          "/page_layout/constants/style_item_size",
+          36,
+          32
+        ],
+        [
+          "/page_layout/constants/style_set_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/layout/capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/layout/capacity/rows",
+          591,
+          592
+        ],
+        [
+          "/page_layout/layout/cells_size",
+          378240,
+          378880
+        ],
+        [
+          "/page_layout/layout/grapheme_alloc_start",
+          386976,
+          387200
+        ],
+        [
+          "/page_layout/layout/grapheme_map_start",
+          395232,
+          395456
+        ],
+        [
+          "/page_layout/layout/hyperlink_map_start",
+          408200,
+          408424
+        ],
+        [
+          "/page_layout/layout/hyperlink_set_start",
+          408048,
+          408272
+        ],
+        [
+          "/page_layout/layout/rows_size",
+          4728,
+          4736
+        ],
+        [
+          "/page_layout/layout/string_alloc_start",
+          405992,
+          406216
+        ],
+        [
+          "/page_layout/layout/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/layout/styles_start",
+          382976,
+          383616
+        ],
+        [
+          "/page_layout/metadata/grapheme_alloc_start",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/grapheme_map_start",
+          12256,
+          11840
+        ],
+        [
+          "/page_layout/metadata/hyperlink_map_start",
+          25224,
+          24808
+        ],
+        [
+          "/page_layout/metadata/hyperlink_set_start",
+          25072,
+          24656
+        ],
+        [
+          "/page_layout/metadata/string_alloc_start",
+          23016,
+          22600
+        ],
+        [
+          "/page_layout/metadata/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/total_size",
+          26124,
+          25708
+        ]
+      ]
+    },
+    {
+      "request_sha256": "86a2d4e6657ff8a49046b17118f50cc42a3c695ac6a9178ac204ac21e67508de",
+      "id": "pages/styles/capacity",
+      "columns": 80,
+      "before_index": [
+        {
+          "id": "pages/styles/capacity",
+          "index": 10
+        }
+      ],
+      "after_index": [
+        {
+          "id": "pages/styles/capacity",
+          "index": 10
+        }
+      ],
+      "deltas": [
+        [
+          "/page_layout/constants/metadata_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/constants/standard_capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/constants/style_item_alignment",
+          4,
+          16
+        ],
+        [
+          "/page_layout/constants/style_item_size",
+          36,
+          32
+        ],
+        [
+          "/page_layout/constants/style_set_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/layout/capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/layout/capacity/rows",
+          591,
+          592
+        ],
+        [
+          "/page_layout/layout/cells_size",
+          378240,
+          378880
+        ],
+        [
+          "/page_layout/layout/grapheme_alloc_start",
+          386976,
+          387200
+        ],
+        [
+          "/page_layout/layout/grapheme_map_start",
+          395232,
+          395456
+        ],
+        [
+          "/page_layout/layout/hyperlink_map_start",
+          408200,
+          408424
+        ],
+        [
+          "/page_layout/layout/hyperlink_set_start",
+          408048,
+          408272
+        ],
+        [
+          "/page_layout/layout/rows_size",
+          4728,
+          4736
+        ],
+        [
+          "/page_layout/layout/string_alloc_start",
+          405992,
+          406216
+        ],
+        [
+          "/page_layout/layout/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/layout/styles_start",
+          382976,
+          383616
+        ],
+        [
+          "/page_layout/metadata/grapheme_alloc_start",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/grapheme_map_start",
+          12256,
+          11840
+        ],
+        [
+          "/page_layout/metadata/hyperlink_map_start",
+          25224,
+          24808
+        ],
+        [
+          "/page_layout/metadata/hyperlink_set_start",
+          25072,
+          24656
+        ],
+        [
+          "/page_layout/metadata/string_alloc_start",
+          23016,
+          22600
+        ],
+        [
+          "/page_layout/metadata/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/total_size",
+          26124,
+          25708
+        ]
+      ]
+    },
+    {
+      "request_sha256": "ac6e117d87ec09fefd30038bdc688aeb19e6ec377f15a8e9d37f8018a0e5045a",
+      "id": "pages/styles/capacity",
+      "columns": 1024,
+      "before_index": [
+        {
+          "id": "pages/styles/capacity",
+          "index": 11
+        }
+      ],
+      "after_index": [
+        {
+          "id": "pages/styles/capacity",
+          "index": 11
+        }
+      ],
+      "deltas": [
+        [
+          "/page_layout/constants/metadata_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/constants/standard_capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/constants/style_item_alignment",
+          4,
+          16
+        ],
+        [
+          "/page_layout/constants/style_item_size",
+          36,
+          32
+        ],
+        [
+          "/page_layout/constants/style_set_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/layout/capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/layout/grapheme_alloc_start",
+          381216,
+          380800
+        ],
+        [
+          "/page_layout/layout/grapheme_map_start",
+          389472,
+          389056
+        ],
+        [
+          "/page_layout/layout/hyperlink_map_start",
+          402440,
+          402024
+        ],
+        [
+          "/page_layout/layout/hyperlink_set_start",
+          402288,
+          401872
+        ],
+        [
+          "/page_layout/layout/string_alloc_start",
+          400232,
+          399816
+        ],
+        [
+          "/page_layout/layout/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/grapheme_alloc_start",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/grapheme_map_start",
+          12256,
+          11840
+        ],
+        [
+          "/page_layout/metadata/hyperlink_map_start",
+          25224,
+          24808
+        ],
+        [
+          "/page_layout/metadata/hyperlink_set_start",
+          25072,
+          24656
+        ],
+        [
+          "/page_layout/metadata/string_alloc_start",
+          23016,
+          22600
+        ],
+        [
+          "/page_layout/metadata/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/total_size",
+          26124,
+          25708
+        ]
+      ]
+    },
+    {
+      "request_sha256": "b12e5ca476cf9008aeddbe0689985dcf776ec41455a15fff4b79c7a878fa4ca9",
+      "id": "pages/capacity",
+      "columns": 215,
+      "before_index": [
+        {
+          "id": "pages/capacity",
+          "index": 5
+        }
+      ],
+      "after_index": [
+        {
+          "id": "pages/capacity",
+          "index": 5
+        }
+      ],
+      "deltas": [
+        [
+          "/page_layout/constants/metadata_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/constants/standard_capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/constants/style_item_alignment",
+          4,
+          16
+        ],
+        [
+          "/page_layout/constants/style_item_size",
+          36,
+          32
+        ],
+        [
+          "/page_layout/constants/style_set_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/layout/capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/layout/capacity/rows",
+          221,
+          222
+        ],
+        [
+          "/page_layout/layout/cells_size",
+          380120,
+          381840
+        ],
+        [
+          "/page_layout/layout/grapheme_alloc_start",
+          385912,
+          387216
+        ],
+        [
+          "/page_layout/layout/grapheme_map_start",
+          394168,
+          395472
+        ],
+        [
+          "/page_layout/layout/hyperlink_map_start",
+          407136,
+          408440
+        ],
+        [
+          "/page_layout/layout/hyperlink_set_start",
+          406984,
+          408288
+        ],
+        [
+          "/page_layout/layout/rows_size",
+          1768,
+          1776
+        ],
+        [
+          "/page_layout/layout/string_alloc_start",
+          404928,
+          406232
+        ],
+        [
+          "/page_layout/layout/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/layout/styles_start",
+          381912,
+          383632
+        ],
+        [
+          "/page_layout/metadata/grapheme_alloc_start",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/grapheme_map_start",
+          12256,
+          11840
+        ],
+        [
+          "/page_layout/metadata/hyperlink_map_start",
+          25224,
+          24808
+        ],
+        [
+          "/page_layout/metadata/hyperlink_set_start",
+          25072,
+          24656
+        ],
+        [
+          "/page_layout/metadata/string_alloc_start",
+          23016,
+          22600
+        ],
+        [
+          "/page_layout/metadata/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/total_size",
+          26124,
+          25708
+        ]
+      ]
+    },
+    {
+      "request_sha256": "d25860a537548f670fca06e798d6d28daa3ad8b50245fabf2ddb1819f52a30e8",
+      "id": "pages/capacity",
+      "columns": 8,
+      "before_index": [
+        {
+          "id": "pages/capacity",
+          "index": 3
+        }
+      ],
+      "after_index": [
+        {
+          "id": "pages/capacity",
+          "index": 3
+        }
+      ],
+      "deltas": [
+        [
+          "/page_layout/constants/metadata_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/constants/standard_capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/constants/style_item_alignment",
+          4,
+          16
+        ],
+        [
+          "/page_layout/constants/style_item_size",
+          36,
+          32
+        ],
+        [
+          "/page_layout/constants/style_set_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/layout/capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/layout/capacity/rows",
+          5325,
+          5330
+        ],
+        [
+          "/page_layout/layout/cells_size",
+          340800,
+          341120
+        ],
+        [
+          "/page_layout/layout/cells_start",
+          42624,
+          42752
+        ],
+        [
+          "/page_layout/layout/grapheme_alloc_start",
+          387424,
+          387456
+        ],
+        [
+          "/page_layout/layout/grapheme_map_start",
+          395680,
+          395712
+        ],
+        [
+          "/page_layout/layout/hyperlink_map_start",
+          408648,
+          408680
+        ],
+        [
+          "/page_layout/layout/hyperlink_set_start",
+          408496,
+          408528
+        ],
+        [
+          "/page_layout/layout/rows_size",
+          42600,
+          42640
+        ],
+        [
+          "/page_layout/layout/string_alloc_start",
+          406440,
+          406472
+        ],
+        [
+          "/page_layout/layout/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/layout/styles_start",
+          383424,
+          383872
+        ],
+        [
+          "/page_layout/metadata/grapheme_alloc_start",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/grapheme_map_start",
+          12256,
+          11840
+        ],
+        [
+          "/page_layout/metadata/hyperlink_map_start",
+          25224,
+          24808
+        ],
+        [
+          "/page_layout/metadata/hyperlink_set_start",
+          25072,
+          24656
+        ],
+        [
+          "/page_layout/metadata/string_alloc_start",
+          23016,
+          22600
+        ],
+        [
+          "/page_layout/metadata/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/total_size",
+          26124,
+          25708
+        ]
+      ]
+    },
+    {
+      "request_sha256": "ea76642e85e5a3f35c12afbe780a2e937dd8639dfdc570ffcb11c71f6b10f590",
+      "id": "pages/capacity",
+      "columns": 1024,
+      "before_index": [
+        {
+          "id": "pages/capacity",
+          "index": 6
+        }
+      ],
+      "after_index": [
+        {
+          "id": "pages/capacity",
+          "index": 6
+        }
+      ],
+      "deltas": [
+        [
+          "/page_layout/constants/metadata_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/constants/standard_capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/constants/style_item_alignment",
+          4,
+          16
+        ],
+        [
+          "/page_layout/constants/style_item_size",
+          36,
+          32
+        ],
+        [
+          "/page_layout/constants/style_set_alignment",
+          8,
+          16
+        ],
+        [
+          "/page_layout/layout/capacity/hyperlink_cells",
+          null,
+          64
+        ],
+        [
+          "/page_layout/layout/grapheme_alloc_start",
+          381216,
+          380800
+        ],
+        [
+          "/page_layout/layout/grapheme_map_start",
+          389472,
+          389056
+        ],
+        [
+          "/page_layout/layout/hyperlink_map_start",
+          402440,
+          402024
+        ],
+        [
+          "/page_layout/layout/hyperlink_set_start",
+          402288,
+          401872
+        ],
+        [
+          "/page_layout/layout/string_alloc_start",
+          400232,
+          399816
+        ],
+        [
+          "/page_layout/layout/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/grapheme_alloc_start",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/grapheme_map_start",
+          12256,
+          11840
+        ],
+        [
+          "/page_layout/metadata/hyperlink_map_start",
+          25224,
+          24808
+        ],
+        [
+          "/page_layout/metadata/hyperlink_set_start",
+          25072,
+          24656
+        ],
+        [
+          "/page_layout/metadata/string_alloc_start",
+          23016,
+          22600
+        ],
+        [
+          "/page_layout/metadata/styles_layout/total_size",
+          4000,
+          3584
+        ],
+        [
+          "/page_layout/metadata/total_size",
+          26124,
+          25708
+        ]
+      ]
+    }
+  ],
+  "snapshot_source_replacements": [
+    {
+      "columns": 8,
+      "before_request_sha256": "97163d017ded83f2f1bb99926cdf548501dd36933125904d01acbf2ec7a7af47",
+      "after_request_sha256": "8d401fb3807b73095dd726c53f2140aa6494954237649417d04271ae98fb19ce",
+      "before_rows": 5356,
+      "after_rows": 5361,
+      "before_bytes": 16068,
+      "after_bytes": 16083,
+      "rule": "unchanged generator writes b\"x\\r\\n\" * (native_capacity_rows + 31), then captures snapshot",
+      "response": "native snapshot and derived restore fixtures are regenerated from the longer boundary workload, not hand-edited"
+    },
+    {
+      "columns": 80,
+      "before_request_sha256": "319b837da19521c1f7a4706f601d8824dc4322a30f5e4adc2f8f382990990ae8",
+      "after_request_sha256": "9bd2ebc3954ac7f98279399b662ad5dc1fe4ac6e1212ae66587efccf1ca27650",
+      "before_rows": 622,
+      "after_rows": 623,
+      "before_bytes": 1866,
+      "after_bytes": 1869,
+      "rule": "unchanged generator writes b\"x\\r\\n\" * (native_capacity_rows + 31), then captures snapshot",
+      "response": "native snapshot and derived restore fixtures are regenerated from the longer boundary workload, not hand-edited"
+    },
+    {
+      "columns": 215,
+      "before_request_sha256": "a741965ef14184060b8b72ecd83bb377d9c2de4d81c11396323ebabffcfe48f2",
+      "after_request_sha256": "178d68ecddc147eb5483f6022b68174d3c1368ac4c140d589dcb20349fb9bf3b",
+      "before_rows": 252,
+      "after_rows": 253,
+      "before_bytes": 756,
+      "after_bytes": 759,
+      "rule": "unchanged generator writes b\"x\\r\\n\" * (native_capacity_rows + 31), then captures snapshot",
+      "response": "native snapshot and derived restore fixtures are regenerated from the longer boundary workload, not hand-edited"
+    }
+  ],
+  "new_batch_probes": [
+    {
+      "request_sha256": "5dd71b454d6855a6ea014b52074f0182e80456f58c287be089ccec1beea8bba8",
+      "id": "mixed-batch/capacity",
+      "request": {
+        "id": "mixed-batch/capacity",
+        "kind": "page_layout",
+        "page_layout": {
+          "columns": 200
+        }
+      },
+      "capacity": {
+        "cols": 200,
+        "rows": 238,
+        "styles": 128,
+        "hyperlink_bytes": 192,
+        "hyperlink_cells": 64,
+        "grapheme_bytes": 8192,
+        "string_bytes": 2048
+      },
+      "hyperlink_map_capacity": 128,
+      "usable_link_cells": 102,
+      "allocation_bytes": 409600
+    },
+    {
+      "request_sha256": "cc533eab795dc87ad4015d6e67fba6b160956926626d70505ca87e4172a921b9",
+      "id": "linked-batch/capacity",
+      "request": {
+        "id": "linked-batch/capacity",
+        "kind": "page_layout",
+        "page_layout": {
+          "columns": 200
+        }
+      },
+      "capacity": {
+        "cols": 200,
+        "rows": 238,
+        "styles": 128,
+        "hyperlink_bytes": 192,
+        "hyperlink_cells": 64,
+        "grapheme_bytes": 8192,
+        "string_bytes": 2048
+      },
+      "hyperlink_map_capacity": 128,
+      "usable_link_cells": 102,
+      "allocation_bytes": 409600
+    }
+  ],
+  "generator_paths": [
+    "test/rustty/page_lifecycle_requests.py:87",
+    "test/rustty/page_lifecycle_requests.py:126",
+    "test/rustty/style_lifecycle_requests.py:43",
+    "test/rustty/grapheme_lifecycle_requests.py:186",
+    "test/rustty/hyperlink_lifecycle_requests.py:259"
+  ],
+  "production_paths": [
+    "crates/rustty-vt/src/page_layout.rs:21",
+    "crates/rustty-vt/src/page_layout.rs:106",
+    "crates/rustty-vt/src/page_layout.rs:190"
+  ]
+}

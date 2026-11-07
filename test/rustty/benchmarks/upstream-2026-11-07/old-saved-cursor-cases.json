@@ -1,0 +1,341 @@
+[
+  {
+    "request": {
+      "id": "terminal/resize/retained-viewport-pin-before-saved-cursor",
+      "cols": 12,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "090a1b5b3f3130343968"
+        },
+        {
+          "op": "resize",
+          "cols": 6,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f313034396c"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor"
+    ],
+    "generated_sources": [
+      "generated/2/187"
+    ]
+  },
+  {
+    "request": {
+      "id": "generated/2/187",
+      "cols": 12,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "1b5b33316d"
+        },
+        {
+          "op": "write",
+          "data": "08"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "resize",
+          "cols": 6,
+          "rows": 3
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "08"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b33316d"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b313b3148"
+        },
+        {
+          "op": "write",
+          "data": "1b5b33316d"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b33316d"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b33316d"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b72"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f3130343968"
+        },
+        {
+          "op": "write",
+          "data": "1b5b323b3372"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f3130343968"
+        },
+        {
+          "op": "resize",
+          "cols": 30,
+          "rows": 2
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b324a"
+        },
+        {
+          "op": "write",
+          "data": "1b5b4b"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f313034396c"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "09"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f313034396c"
+        },
+        {
+          "op": "write",
+          "data": "0a"
+        },
+        {
+          "op": "write",
+          "data": "1b5b33316d"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "09"
+        },
+        {
+          "op": "write",
+          "data": "0a"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3468"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f3130343968"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3240"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3468"
+        },
+        {
+          "op": "write",
+          "data": "c3a9e7958cf09f91a9f09f8fbde2808df09f92bb"
+        },
+        {
+          "op": "observe"
+        },
+        {
+          "op": "resize",
+          "cols": 6,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f313034396c"
+        }
+      ]
+    },
+    "covers": []
+  },
+  {
+    "request": {
+      "id": "grid/viewport-retention/empty/active/none/6/False",
+      "cols": 12,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": ""
+        },
+        {
+          "op": "write",
+          "data": ""
+        },
+        {
+          "op": "write",
+          "data": "1b5b323b3948"
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f3130343968"
+        },
+        {
+          "op": "resize",
+          "cols": 6,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f313034396c"
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "observe"
+          }
+        },
+        {
+          "op": "write",
+          "data": "58"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor",
+      "terminal.tracked"
+    ]
+  },
+  {
+    "request": {
+      "id": "grid/viewport-retention/empty/active/none/6/True",
+      "cols": 12,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": ""
+        },
+        {
+          "op": "write",
+          "data": ""
+        },
+        {
+          "op": "write",
+          "data": "1b5b323b3948"
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "track",
+            "id": 1,
+            "point": {
+              "tag": "active",
+              "x": 8,
+              "y": 1
+            }
+          }
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f3130343968"
+        },
+        {
+          "op": "resize",
+          "cols": 6,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f313034396c"
+        },
+        {
+          "op": "grid",
+          "grid": {
+            "action": "observe"
+          }
+        },
+        {
+          "op": "write",
+          "data": "58"
+        }
+      ]
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor",
+      "terminal.tracked"
+    ]
+  },
+  {
+    "request": {
+      "id": "snapshot/old-saved-cursor-shrink",
+      "cols": 12,
+      "rows": 4,
+      "operations": [
+        {
+          "op": "write",
+          "data": "090a1b5b3f3130343968"
+        },
+        {
+          "op": "resize",
+          "cols": 6,
+          "rows": 4
+        },
+        {
+          "op": "write",
+          "data": "1b5b3f313034396c"
+        }
+      ],
+      "kind": "snapshot",
+      "after": []
+    },
+    "covers": [
+      "terminal.resize",
+      "terminal.cursor"
+    ],
+    "generated_sources": [
+      "generated/2/187"
+    ]
+  }
+]

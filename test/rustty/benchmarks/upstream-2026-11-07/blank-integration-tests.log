@@ -1,0 +1,237 @@
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.49s
+     Running tests/batched_input.rs (target/debug/deps/batched_input-05f632310748f0c0)
+
+running 8 tests
+test ignored_scalars_preserve_public_cursor_edits_before_batched_printing ... ok
+test printable_runs_preserve_effect_order_and_cursor_queries ... ok
+test apc_batches_preserve_pixels_glyph_limits_and_unfinished_payloads ... ok
+test printable_runs_resume_from_snapshots_at_every_byte_boundary ... ok
+test long_utf8_groups_and_malformed_tails_match_byte_delivery ... ok
+test packed_runs_cross_scratch_and_destination_boundaries ... ok
+test printable_runs_match_scalar_printing ... ok
+test zwj_pairs_preserve_scalar_admission_and_wrapping ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests/grapheme_wrap.rs (target/debug/deps/grapheme_wrap-f7ec849be96d3e19)
+
+running 3 tests
+test widening_grapheme_below_scroll_region_keeps_its_suffix ... ok
+test widening_grapheme_on_single_row_preserves_cluster_and_history ... ok
+test printing_beyond_right_margin_uses_margin_after_each_kind_of_wrap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/line_edits.rs (target/debug/deps/line_edits-9c23bb7088bf7174)
+
+running 3 tests
+test omitted_line_edit_counts_still_move_one_line ... ok
+test inserting_or_deleting_zero_lines_keeps_all_terminal_state ... ok
+test erasing_a_wrapped_row_disconnects_the_following_row ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/page_lifecycle.rs (target/debug/deps/page_lifecycle-567cd80f10451dc6)
+
+running 3 tests
+test tail_growth_and_byte_recycling_keep_whole_native_pages ... ok
+test line_pruning_and_history_clear_preserve_the_active_boundary_page ... ok
+test snapshot_keeps_page_groups_and_charges_restored_pages_at_pool_size ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/reflow_semantics.rs (target/debug/deps/reflow_semantics-e5712be3a2cab36a)
+
+running 6 tests
+test narrowing_with_more_active_rows_counts_continuations_at_the_active_boundary ... ok
+test reflow_maps_graphics_in_trailing_blanks_without_retaining_the_blanks ... ok
+test reflow_remaps_duplicate_anchors_and_both_halves_of_a_wide_cell ... ok
+test reflow_initializes_retained_blank_gaps_and_viewport_padding ... ok
+test reflow_copies_source_prompt_metadata_to_each_destination_segment ... ok
+test reflow_preserves_styled_wide_runs_and_normalizes_tail_metadata ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/render_changes.rs (target/debug/deps/render_changes-bb75083b79562a9c)
+
+running 4 tests
+test cached_row_extraction_is_zero_when_unchanged_and_one_for_one_row_rewrite ... ok
+test only_mutated_rows_change_revision_and_read_only_clones_keep_content_revisions ... ok
+test reset_decode_and_screen_switch_invalidate_reused_row_ids ... ok
+test revisions_keep_cached_cells_correct_through_scrolling_reflow_and_screen_switches ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/render_view.rs (target/debug/deps/render_view-55a9cdfc5b87b5e5)
+
+running 6 tests
+test row_keys_only_change_for_changed_content_or_selection_coverage ... ok
+test a_wrapped_selection_rekeys_the_next_row_when_its_cells_did_not_change ... ok
+test cursor_text_is_lazy_handles_graphemes_spacers_blanks_and_viewport_visibility ... ok
+test viewport_selection_handles_direction_rectangles_history_and_detached_snapshots ... ok
+test view_keys_distinguish_incarnations_without_invalidating_rows_for_cursor_changes ... ok
+test selected_ranges_cover_wide_glyphs_and_cross_wrapped_spacer_heads ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/row_shifts.rs (target/debug/deps/row_shifts-2ac679d3aa3a422e)
+
+running 7 tests
+test moving_rows_removes_orphaned_wide_wrap_padding ... ok
+test scroll_up_without_history_preserves_pins_and_detaches_partial_regions ... ok
+test partial_width_line_shifts_preserve_row_wrap_metadata ... ok
+test full_width_line_shifts_detach_wrapped_rows ... ok
+test margin_splits_clear_wide_text_and_preserve_surviving_attributes ... ok
+test index_scrolling_moves_pins_and_clamps_erased_page_start ... ok
+test index_scrolling_preserves_complete_row_metadata ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/scroll_clear.rs (target/debug/deps/scroll_clear-ba4d439e8d441811)
+
+running 3 tests
+test explicitly_disabling_scrollback_clears_retained_scroll_clear_rows ... ok
+test clearing_at_a_prompt_preserves_output_above_trailing_blank_rows ... ok
+test scroll_clear_retains_rows_when_ordinary_scrollback_is_disabled ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/semantic.rs (target/debug/deps/semantic-2ba23da87f0a701f)
+
+running 14 tests
+test whole_row_erasure_clears_prompt_markers_only_when_unprotected ... ok
+test complete_display_erasure_scrolls_a_bottom_prompt_into_history ... ok
+test complete_display_erasure_ignores_a_discarded_prompt_row ... ok
+test complete_display_erasure_scrolls_input_without_a_prompt_marker ... ok
+test complete_display_erasure_tracks_rows_from_public_cursor_semantics ... ok
+test semantic_commands_reject_invalid_actions_and_capture_overflow ... ok
+test complete_display_erasure_keeps_prompt_history_across_soft_reset_only ... ok
+test output_markers_reset_semantics_independently_of_host_events ... ok
+test semantic_fresh_lines_respect_the_cursor_and_left_margin ... ok
+test prompt_options_keep_native_priority_and_snapshot_click_modes ... ok
+test complete_display_erasure_follows_input_copied_from_alternate_screen ... ok
+test input_terminated_by_eol_survives_wrap_snapshot_and_screen_copy ... ok
+test complete_display_erasure_restores_an_input_cursor_before_its_first_linefeed ... ok
+test complete_display_erasure_retains_imported_prompt_rows_with_output_cursor ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/snapshot.rs (target/debug/deps/snapshot-ff750452272474dc)
+
+running 33 tests
+test kitty_keyboard_ring_overflows_pops_and_resumes_after_restore ... ok
+test history_budget_cannot_bypass_forged_header_or_active_page_limits ... ok
+test invalid_utf8_metadata_and_links_survive_without_loss ... ok
+test ghostty_sparse_page_preserves_styles_links_graphemes_and_wide_cells ... ok
+test history_restore_preserves_mixed_physical_rows_while_live_input_arrives ... ok
+test maximum_four_byte_grapheme_preserves_snapshot_and_suffix_limit ... ok
+test repeated_nul_prints_empty_cells_with_the_current_pen ... ok
+test default_right_charset_is_preserved_by_cursor_and_screen_lifecycles ... ok
+test ghostty_fixture_streams_history_and_leaves_transport_unread ... ok
+test distinct_grapheme_payloads_survive_page_transfer_reflow_and_live_erase ... ok
+test restored_defaults_survive_configuration_changes_and_protocol_resets ... ok
+test skipped_snapshot_records_still_validate_lengths_checksums_and_known_order ... ok
+test snapshot_rejects_empty_cursor_link_strings_before_resource_admission ... ok
+test decode_continuation_budget_does_not_limit_later_capture ... ok
+test index_scroll_widens_mixed_pages_before_moving_rows ... ok
+test snapshot_clamps_cursor_to_logical_and_physical_widths ... ok
+test streaming_restore_uses_the_minimum_scrollback_budget ... ok
+test terminal_reset_keeps_the_primary_history_restore_destination ... ok
+test snapshot_grapheme_capacity_drops_whole_clusters_and_limits_suffix_length ... ok
+test unscroll_widens_restored_history_beneath_an_existing_cursor ... ok
+test mixed_physical_widths_survive_observation_and_grow_before_mutation ... ok
+test streaming_restore_obeys_page_budget_and_discards_history_after_resize ... ok
+test unknown_cursor_default_flags_preserve_host_cursor_preferences ... ok
+test exact_snapshot_decode_checks_eof_without_consuming_transport_bytes ... ok
+test streaming_history_checks_width_when_each_page_arrives ... ok
+test narrow_restored_pages_support_direct_cursor_and_row_edits ... ok
+test multirow_page_snapshots_keep_all_owned_resources ... ok
+test snapshot_skips_unknown_records_at_every_boundary ... ok
+test history_budget_can_change_only_after_active_screen_validation ... ok
+test snapshot_propagates_io_failures_at_record_boundaries ... ok
+test snapshot_preserves_screen_attributes_and_pending_parser ... ok
+test corrupt_truncated_and_excessive_snapshots_are_rejected ... ok
+test raised_decode_budget_keeps_the_normal_capture_limit ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.45s
+
+     Running tests/snapshot_continuation.rs (target/debug/deps/snapshot_continuation-9d790de94c4f9b43)
+
+running 1 test
+test snapshots_resume_c1_restarts_without_replaying_aborted_commands ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/snapshot_graphics.rs (target/debug/deps/snapshot_graphics-89fa6d67523265fb)
+
+running 19 tests
+test deleting_pending_frames_cannot_redirect_later_payloads ... ok
+test pending_graphics_views_validate_and_preserve_the_reserved_quota ... ok
+test cell_checkpoints_keep_graphics_in_the_separate_carrier ... ok
+test grayscale_snapshot_payloads_expand_to_rgba ... ok
+test staged_images_reserve_memory_and_display_before_the_animation_can_play ... ok
+test animation_controls_before_the_first_extra_frame_survive_snapshots ... ok
+test pending_graphics_metadata_is_bounded_and_invalid_placements_are_dropped ... ok
+test indexed_snapshot_admission_uses_combined_bytes_before_evicting_older_images ... ok
+test history_pixels_follow_the_page_that_first_needs_them ... ok
+test graphics_budgets_include_pending_frames_and_drop_oldest_images ... ok
+test payloads_and_history_placements_cannot_attach_to_replaced_images ... ok
+test indexed_snapshots_stage_sources_and_preserve_rgba_for_older_peers ... ok
+test indexed_snapshot_sources_obey_combined_limits_and_cannot_overwrite_live_images ... ok
+test snapshot_pixels_validate_crc_length_and_record_position_even_when_dropped ... ok
+test indexed_snapshots_resume_compressed_and_plain_protocol_chunks ... ok
+test upstream_kitty_snapshots_restore_images_placements_and_pixels ... ok
+test kitty_snapshots_roundtrip_and_resume_interrupted_transmissions ... ok
+test large_raw_payloads_stream_without_the_metadata_allocation_limit ... ok
+test indexed_snapshot_chunks_are_bounded_and_validate_metadata_offsets_and_crc ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/text_sizing.rs (target/debug/deps/text_sizing-3f5c91772068683d)
+
+running 15 tests
+test width_only_probes_and_normal_width_requests_are_honest ... ok
+test replacing_a_wrapped_span_retires_obsolete_padding ... ok
+test overwriting_span_tails_preserves_the_current_erase_background ... ok
+test overwriting_a_head_or_tail_removes_the_entire_span ... ok
+test insert_delete_and_erase_keep_only_complete_spans ... ok
+test snapshot_during_an_osc_upload_keeps_the_text_pending_until_its_terminator ... ok
+test erasing_a_legacy_orphan_wide_head_stays_inside_its_physical_row ... ok
+test wrapping_no_wrap_and_reflow_keep_spans_atomic_and_omit_padding ... ok
+test mixed_legacy_graphemes_and_span_metadata_keep_independent_snapshot_sources ... ok
+test combining_input_preserves_explicit_width_and_detached_text ... ok
+test snapshot_metadata_is_optional_bounded_and_validated ... ok
+test skipped_history_still_validates_span_sources ... ok
+test text_capture_is_atomic_bounded_and_safe_utf8 ... ok
+test large_span_pages_use_bounded_complete_snapshot_chunks ... ok
+test history_row_moves_compression_and_snapshots_preserve_sources ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.99s
+
+     Running tests/text_span_views.rs (target/debug/deps/text_span_views-b2af0a866384b0d8)
+
+running 5 tests
+test explicit_leading_whitespace_is_retained_by_line_selection ... ok
+test multiple_wrap_gap_cells_do_not_enter_copy_search_or_word_selection ... ok
+test link_hints_use_one_target_per_atomic_span_and_tail_clicks_find_it ... ok
+test vt_export_restores_pending_wrap_on_an_explicit_tail ... ok
+test explicit_spans_copy_search_and_export_the_whole_payload_from_every_column ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.56s
+
+     Running tests/unscroll.rs (target/debug/deps/unscroll-9ed8d74678a63f42)
+
+running 9 tests
+test partial_width_restoration_repairs_split_wide_cells ... ok
+test discarded_bottom_rows_release_their_selection_and_image_placements ... ok
+test partial_width_restoration_keeps_only_anchors_in_the_restored_columns ... ok
+test invalid_counts_do_not_consume_history_and_large_counts_stop_at_one_screen ... ok
+test horizontal_margins_restore_only_selected_cells_and_preserve_the_exterior ... ok
+test unscroll_obeys_vertical_margins_and_discards_only_the_region_bottom ... ok
+test exhausted_history_and_alternate_screen_fill_with_the_current_background ... ok
+test restored_rows_keep_rich_cells_images_selection_viewport_and_snapshot_state ... ok
+test unscroll_restores_history_with_stable_ids_and_pending_wrap_at_every_split ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

@@ -1,0 +1,22 @@
+   Compiling rustty-parser v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-parser)
+   Compiling rustty-vt v0.1.0 (/Users/byron/dev/github.com/ghostty-org/ghostty/crates/rustty-vt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.31s
+     Running unittests ../../test/rustty/parity-runner.rs (target/debug/examples/parity_runner-d491e672003b2b12)
+
+running 13 tests
+test tests::differences_are_strict_and_exclusions_only_apply_at_the_root ... ok
+test tests::coverage_cannot_pass_without_capabilities_complete_status_and_passing_cases ... ok
+test tests::bounded_transport_rejects_truncation_oversize_and_invalid_json ... ok
+test tests::cli_rejects_invalid_deadlines_and_normalizes_integer_seeds ... ok
+test tests::snapshots_check_live_state_and_expected_errors ... ok
+test tests::minimization_retains_the_mismatch_category_and_attempt_limit ... ok
+test tests::delivery_failures_preserve_external_artifacts_and_do_not_grant_coverage ... ok
+test tests::archives_reject_stale_inputs_probes_membership_counts_and_truncation ... ok
+test tests::delivery_keeps_bytes_barriers_and_bounded_transport ... ok
+test cases::generated_cases_match_python ... ok
+test tests::deadlines_cover_full_input_pipes_and_cleanup_children ... ok
+test cases::preserved_corpora_keep_their_original_selector_contracts ... ok
+test tests::bounded_transport_rejects_oracle_death_and_oversized_requests ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s
+

@@ -1,0 +1,49 @@
+{
+  "comparisons": 21,
+  "failures": [],
+  "binaries": {
+    "/private/tmp/rustty-reintegrate.leadij/blank-after-parity": "82eac6caee41d56b4b282b69124d07a493cf907caa4c105a912c713519df3525",
+    "zig-out/bin/vt-oracle": "207c9e9b176ce9af981606c928be483dfe867c0a8e02a2a7702c2969b59166f3"
+  },
+  "command": [
+    "python3",
+    "/private/tmp/rustty-reintegrate.leadij/blank-row-prep/capture_native_review.py"
+  ],
+  "note": "Existing parity_reference compare policy ignores the intentionally different capability inventories. Raw observations saved for all successful variants. No new repository harness.",
+  "cli_runs": [
+    {
+      "command": [
+        "python3",
+        "test/rustty/parity_reference.py",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/blank-after-parity",
+        "--zig-bin",
+        "zig-out/bin/vt-oracle",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/blank-row-prep/native-review-fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/blank-row-prep/native-review-after"
+      ],
+      "comparisons": 18,
+      "failures": 0
+    },
+    {
+      "command": [
+        "python3",
+        "test/rustty/parity_reference.py",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/blank-after-parity",
+        "--zig-bin",
+        "zig-out/bin/vt-oracle",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/blank-row-prep/native-review-kitty.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/blank-row-prep/native-review-kitty-after"
+      ],
+      "comparisons": 3,
+      "failures": 0
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "source_commit": "03be726e243bdc235bd641420f511fc2b7792f8e",
+  "original_fixture_commit": "a61c9bf0207d5e0c5e805de1dc7196bb5ffa3390",
+  "directory": "/private/tmp/rustty-reintegrate.leadij/fixtures-first-final",
+  "files": {
+    "manifest.json": {
+      "bytes": 4907,
+      "sha256": "32c4c29efbee0d68e742178d97fae4b5ba5fa43296702a522bd6486c3ef4162d"
+    },
+    "dnd-snapshot-rust-v1.json": {
+      "bytes": 10403,
+      "sha256": "ddcac28711d35531812a13be9244b8798aa7f096f455c7a969d42e67e26b01f5"
+    },
+    "input.jsonl.gz": {
+      "bytes": 785700,
+      "sha256": "5a066c12c8ac9c011568fc0a7d5e2e7cea71be26ea4abb8a1f7796db1f69f11a"
+    },
+    "parser.jsonl.gz": {
+      "bytes": 614099,
+      "sha256": "a55f0ecdf46d59c98021a89078d9dcbb4fa402d01aba1abe08533e398d842b91"
+    },
+    "grid.jsonl.gz": {
+      "bytes": 112905,
+      "sha256": "eb4f5cb426b197e31847e5af6dceaaa00109a342d8ee08594317aaf917a90a45"
+    },
+    "page-layout.jsonl.gz": {
+      "bytes": 5926,
+      "sha256": "dd0e417ffbcc3a3df960b1bae7c44d740468c11676b73b19a065d758aed041d2"
+    },
+    "pages.jsonl.gz": {
+      "bytes": 180121,
+      "sha256": "9cd6feea60a2142cd13c14691b1a3a74dc8c159f1a670baea99479a9412f681d"
+    },
+    "thorough.jsonl.gz": {
+      "bytes": 13384,
+      "sha256": "4aeb3e7d1dff5494bdb523f2877c93dd7fb28ec4ffc6688a9a806bd42c0b304e"
+    },
+    "unicode.jsonl.gz": {
+      "bytes": 2360843,
+      "sha256": "d3db0c5633d981b048de36120aa3886a83b25e68b018ec2c7cedd80c956af762"
+    },
+    "snapshots.jsonl.gz": {
+      "bytes": 4096,
+      "sha256": "bdd4ce7903153e764eb758518fbe88ceab7e52dc7926a2371f5267cdcb4c9cae"
+    },
+    "snapshot-wire.jsonl.gz": {
+      "bytes": 151034,
+      "sha256": "338ce515d64b586aa566fe762fbcc2eaed38ab1812b4929e737a495e7aa06880"
+    },
+    "protocols.jsonl.gz": {
+      "bytes": 511407,
+      "sha256": "329972e24fd33a03721118867bc47bbb3a3fa8a81fd10408827b3732042746a9"
+    },
+    "corpus.jsonl.gz": {
+      "bytes": 303924,
+      "sha256": "72052fc62a46fe4d0b4a630b30660a2006709085dfee7b7d2cf240637189dcbe"
+    },
+    "osc.jsonl.gz": {
+      "bytes": 3481,
+      "sha256": "76cc6fa3e5549bd91ec382f995f809b573fd43af7f65bd0c3b45f8f5e9b9f45f"
+    }
+  },
+  "note": "Read through immutable Git objects; original final refresh at f2b7e134, fixture commit and runtime QA replay preserved archive bytes. No checkout or oracle execution."
+}

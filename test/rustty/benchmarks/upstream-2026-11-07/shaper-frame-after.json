@@ -1,0 +1,8 @@
+{
+  "binary_sha256": "40a3febc422b46615d7f5a08dd767a4386448a815f999e38f4af9423fc7b985e",
+  "prepare_source_sha256": "b7da30f17fe76f183e8a38e73993be685f995437a077817bdc7ef38106309b6d",
+  "profile": {
+    "lto": "thin",
+    "codegen_units": 1
+  }
+}

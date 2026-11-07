@@ -1,0 +1,122 @@
+{
+  "linked-emoji-control": [
+    {
+      "round": 1,
+      "before": 25.909328125,
+      "after": 27.25682275,
+      "change_percent": 5.200808830313908
+    },
+    {
+      "round": 2,
+      "before": 26.146666375,
+      "after": 26.920703125,
+      "change_percent": 2.9603649616307903
+    },
+    {
+      "round": 3,
+      "before": 26.69167175,
+      "after": 27.053442375,
+      "change_percent": 1.3553689270137115
+    }
+  ],
+  "mixed-wide": [
+    {
+      "round": 1,
+      "before": 38.989016899999996,
+      "after": 39.7357874,
+      "change_percent": 1.9153355467139255
+    },
+    {
+      "round": 2,
+      "before": 37.961720799999995,
+      "after": 39.1596666,
+      "change_percent": 3.1556678010234096
+    },
+    {
+      "round": 3,
+      "before": 37.7687126,
+      "after": 39.28167070000001,
+      "change_percent": 4.005850334437944
+    }
+  ],
+  "combining-control": [
+    {
+      "round": 1,
+      "before": 28.54537275,
+      "after": 29.509310399999997,
+      "change_percent": 3.3768613163406513
+    },
+    {
+      "round": 2,
+      "before": 27.68804595,
+      "after": 28.5724646,
+      "change_percent": 3.1942255932293495
+    },
+    {
+      "round": 3,
+      "before": 27.717316649999997,
+      "after": 28.56548975,
+      "change_percent": 3.06008374010478
+    }
+  ],
+  "emoji-control": [
+    {
+      "round": 1,
+      "before": 11.47621675,
+      "after": 11.758443849999999,
+      "change_percent": 2.4592346602376525
+    },
+    {
+      "round": 2,
+      "before": 11.3196063,
+      "after": 11.42943345,
+      "change_percent": 0.9702382493638417
+    },
+    {
+      "round": 3,
+      "before": 11.062272949999999,
+      "after": 11.3861417,
+      "change_percent": 2.927687207356433
+    }
+  ],
+  "wide-spaces": [
+    {
+      "round": 1,
+      "before": 30.978305666666667,
+      "after": 32.1759166,
+      "change_percent": 3.8659665451683756
+    },
+    {
+      "round": 2,
+      "before": 30.759236266666665,
+      "after": 31.3508362,
+      "change_percent": 1.9233245201684124
+    },
+    {
+      "round": 3,
+      "before": 30.289436,
+      "after": 31.335888933333333,
+      "change_percent": 3.4548445647298864
+    }
+  ],
+  "plain-styled-protected": [
+    {
+      "round": 1,
+      "before": 18.85010635,
+      "after": 19.0412418,
+      "change_percent": 1.0139754463507344
+    },
+    {
+      "round": 2,
+      "before": 18.74572615,
+      "after": 18.75805325,
+      "change_percent": 0.06575952247120931
+    },
+    {
+      "round": 3,
+      "before": 18.520795775,
+      "after": 18.725256275,
+      "change_percent": 1.1039509451099772
+    }
+  ]
+}

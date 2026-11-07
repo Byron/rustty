@@ -1,0 +1,2179 @@
+{
+  "analysis": "Complete raw reply equality across recorded runs; root capabilities is the sole standard runner exclusion for native/Rust field-delta listing. No fixture or classifier changed.",
+  "case_count": 21,
+  "counts": {
+    "older_decxcpr_unsupported": 12,
+    "older_osc66_extension": 9
+  },
+  "all_baseline_complete_replies_equal": true,
+  "binaries": {
+    "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/parity-runner": "0a2dbe6ec2d5a01aad642a689d49727ea9a699279a2fe0b54d64c67db5e14de7",
+    "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-oracle": "9107e2e57f503b7e081091651be1342d892e6a6a48052c6efe4770af52aa8b89",
+    "/private/tmp/rustty-reintegrate.leadij/linked-before-parity": "1b7e7b8e36865eb22932effc079899975d27d2b04aeced8b550ab3110ac9fdb6",
+    "/private/tmp/rustty-reintegrate.leadij/horizontal-rust-oracle": "7d7603ef17c03bc9f45b0886f1fcaf7074692b8de411f79950398e9fe7f7f0e2"
+  },
+  "baseline_provenance": {
+    "linked-before-parity": {
+      "revision": "1aa7813cdb93cf59cc9ac869654d705a9e1291db",
+      "source": "mixed-completed.json records mixed-after-parity; linked-before-parity is byte-identical",
+      "note": "Pre-link, not pre-task."
+    },
+    "horizontal-rust-oracle": {
+      "revision": "b57ffe1f13ab5d0c0d031a2f530f940f44c66683",
+      "source": "Root session freeze for horizontal600-comparison matrix; function identity also verified at originalc06197283 and this revision",
+      "note": "After first horizontal behavior port, before remaining behavior/performance ports; not a pre-task binary."
+    }
+  },
+  "source_identity": "final-parser-stream-source-identity.json",
+  "commands": [
+    {
+      "argv": [
+        "target/release/examples/parity-runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/linked-before-parity",
+        "--zig-bin",
+        "zig-out/bin/vt-oracle",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline-fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline.log",
+      "exit_code": 1,
+      "summary": {
+        "aborted": false,
+        "checked": 21,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 21,
+        "full_parity": false,
+        "mode": "smoke"
+      }
+    },
+    {
+      "argv": [
+        "target/release/examples/parity-runner",
+        "--no-build",
+        "--rust-bin",
+        "/private/tmp/rustty-reintegrate.leadij/horizontal-rust-oracle",
+        "--zig-bin",
+        "zig-out/bin/vt-oracle",
+        "--fixtures",
+        "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-baseline-fixtures.json",
+        "--artifacts",
+        "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline",
+        "--max-failures",
+        "100"
+      ],
+      "log": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline.log",
+      "exit_code": 1,
+      "summary": {
+        "aborted": false,
+        "checked": 9,
+        "coverage_gaps": [],
+        "covered": [],
+        "error": null,
+        "failures": 9,
+        "full_parity": false,
+        "mode": "smoke"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "corpus/stream-cmin/id_003488,src_002196,time_454419,execs_1028386,op_havoc,rep_3,+cov",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/012398",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000001",
+      "hashes": {
+        "request.json": "c52777662f3cc9e77b33d58c5155cdaff770c71e69b7169c07b04a59d53b4346",
+        "zig.json": "0e3fda6f50a6c483d0c78816bfb481cf61c592e0eb3b63817f73b104d1d77c5a",
+        "rust.json": "e64f4a2403fc3b399f7797276a59d2e7cd19a27b174c2f5da228da73320301ce",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "baseline_hashes": {
+        "request.json": "c52777662f3cc9e77b33d58c5155cdaff770c71e69b7169c07b04a59d53b4346",
+        "zig.json": "0e3fda6f50a6c483d0c78816bfb481cf61c592e0eb3b63817f73b104d1d77c5a",
+        "rust.json": "e64f4a2403fc3b399f7797276a59d2e7cd19a27b174c2f5da228da73320301ce",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "1b5b3f343b363b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": []
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 0,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f343b363b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_003488,src_002196,time_454419,execs_1028386,op_havoc,rep_3,+cov/chunks",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/012400",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000003",
+      "hashes": {
+        "request.json": "0a5f107e3b62e462ce6975a1a58b5b1ac013acc2eb687c018c1871fe8547c99e",
+        "zig.json": "ff954677220f19639ddf785ad033b8e9df4e64d63bfb3ff98ea9dc4e7e1adf60",
+        "rust.json": "9b93067c417c7b62b1d242ab3088e7887e5ee485a34650322010f9ad538eb974",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "baseline_hashes": {
+        "request.json": "0a5f107e3b62e462ce6975a1a58b5b1ac013acc2eb687c018c1871fe8547c99e",
+        "zig.json": "ff954677220f19639ddf785ad033b8e9df4e64d63bfb3ff98ea9dc4e7e1adf60",
+        "rust.json": "9b93067c417c7b62b1d242ab3088e7887e5ee485a34650322010f9ad538eb974",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "1b5b3f343b363b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": []
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 0,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f343b363b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_003488,src_002196,time_454419,execs_1028386,op_havoc,rep_3,+cov/scalar",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/012399",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000002",
+      "hashes": {
+        "request.json": "06d2355615cde6ef01b4e7d62f694034fc88b4dc92b6ba47ea732eb20ac1059d",
+        "zig.json": "971e4c7e21c51083b4cda6ff82a51e61ae62580c8a931158787eabe0617403cf",
+        "rust.json": "084b3e051c85ee9225620535ec25543b11c662c0d814a90c56b802aa57ec09da",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "baseline_hashes": {
+        "request.json": "06d2355615cde6ef01b4e7d62f694034fc88b4dc92b6ba47ea732eb20ac1059d",
+        "zig.json": "971e4c7e21c51083b4cda6ff82a51e61ae62580c8a931158787eabe0617403cf",
+        "rust.json": "084b3e051c85ee9225620535ec25543b11c662c0d814a90c56b802aa57ec09da",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "1b5b3f343b363b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": []
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 0,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f343b363b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005157,src_004238,time_1488199,execs_2707557,op_havoc,rep_2",
+      "category": "older_osc66_extension",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/015602",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000004",
+      "hashes": {
+        "request.json": "9b6a18782b107c88f268377f8253b86d41b098277d3472a7251b3df943872f2d",
+        "zig.json": "1316de6f2e1849c94adfd390575a5dc3267cace07c2ba807fa667189e5a62c15",
+        "rust.json": "1956007786dba140c7e670b2c8d2ce0b5e5878c65d46bb81f01d8f56840441fa",
+        "difference.txt": "54877383ec02f855831d703f7792518fd134c548bd2cfe9567e357d12685e03f"
+      },
+      "baseline_hashes": {
+        "request.json": "9b6a18782b107c88f268377f8253b86d41b098277d3472a7251b3df943872f2d",
+        "zig.json": "1316de6f2e1849c94adfd390575a5dc3267cace07c2ba807fa667189e5a62c15",
+        "rust.json": "1956007786dba140c7e670b2c8d2ce0b5e5878c65d46bb81f01d8f56840441fa",
+        "difference.txt": "54877383ec02f855831d703f7792518fd134c548bd2cfe9567e357d12685e03f"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "frozen_horizontal_rust_complete_reply_equals_final": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.observations[0].primary.cursor.x",
+          "native": 31,
+          "rust": 34
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[8].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[9].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[10].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[24].text[0]",
+          "native": 54,
+          "rust": 59
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[25].text[0]",
+          "native": 54,
+          "rust": 59
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[26].text[0]",
+          "native": 109,
+          "rust": 116
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[27].text[0]",
+          "native": 114,
+          "rust": 54
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[28].text[0]",
+          "native": 101,
+          "rust": 54
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[29].text[0]",
+          "native": 116,
+          "rust": 109
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[30].text[0]",
+          "native": 124,
+          "rust": 114
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[31].text",
+          "native": [],
+          "rust": [
+            101
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[32].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[33].text",
+          "native": [],
+          "rust": [
+            124
+          ]
+        }
+      ],
+      "evidence": {
+        "horizontal_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline/failures/000001",
+        "source_identity": "final-parser-stream-source-identity.json",
+        "rust_origin": "e0f2ab23cfab7aae2dc0bc6a1873e4375dc85b44",
+        "native_origin": "916b99df7",
+        "reason": "OSC66 default-width text printing is an older Rust extension. Native stream deliberately leaves kitty_text_sizing unimplemented; Rust prints accepted payload text, including semicolon fragments in these corpus sequences."
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005157,src_004238,time_1488199,execs_2707557,op_havoc,rep_2/chunks",
+      "category": "older_osc66_extension",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/015604",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000006",
+      "hashes": {
+        "request.json": "209b4094504541a0aeffe7361ca23dbc1804adba4c3936b4a6b0b9c58ff66261",
+        "zig.json": "8666119f14c2cc4858768c2705308aa9277a67488df250475b4ab4a19dc9f6b1",
+        "rust.json": "ea25ac8e5414dabea4bcbd1b07cf771d2963655e26b7540bbdc0db7356b07548",
+        "difference.txt": "54877383ec02f855831d703f7792518fd134c548bd2cfe9567e357d12685e03f"
+      },
+      "baseline_hashes": {
+        "request.json": "209b4094504541a0aeffe7361ca23dbc1804adba4c3936b4a6b0b9c58ff66261",
+        "zig.json": "8666119f14c2cc4858768c2705308aa9277a67488df250475b4ab4a19dc9f6b1",
+        "rust.json": "ea25ac8e5414dabea4bcbd1b07cf771d2963655e26b7540bbdc0db7356b07548",
+        "difference.txt": "54877383ec02f855831d703f7792518fd134c548bd2cfe9567e357d12685e03f"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "frozen_horizontal_rust_complete_reply_equals_final": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.observations[0].primary.cursor.x",
+          "native": 31,
+          "rust": 34
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[8].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[9].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[10].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[24].text[0]",
+          "native": 54,
+          "rust": 59
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[25].text[0]",
+          "native": 54,
+          "rust": 59
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[26].text[0]",
+          "native": 109,
+          "rust": 116
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[27].text[0]",
+          "native": 114,
+          "rust": 54
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[28].text[0]",
+          "native": 101,
+          "rust": 54
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[29].text[0]",
+          "native": 116,
+          "rust": 109
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[30].text[0]",
+          "native": 124,
+          "rust": 114
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[31].text",
+          "native": [],
+          "rust": [
+            101
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[32].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[33].text",
+          "native": [],
+          "rust": [
+            124
+          ]
+        }
+      ],
+      "evidence": {
+        "horizontal_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline/failures/000003",
+        "source_identity": "final-parser-stream-source-identity.json",
+        "rust_origin": "e0f2ab23cfab7aae2dc0bc6a1873e4375dc85b44",
+        "native_origin": "916b99df7",
+        "reason": "OSC66 default-width text printing is an older Rust extension. Native stream deliberately leaves kitty_text_sizing unimplemented; Rust prints accepted payload text, including semicolon fragments in these corpus sequences."
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005157,src_004238,time_1488199,execs_2707557,op_havoc,rep_2/scalar",
+      "category": "older_osc66_extension",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/015603",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000005",
+      "hashes": {
+        "request.json": "8a9f516dcf3bcb1ede4a805fdd939f7cd76dfb4d8081b08ef110361a5f0e0e71",
+        "zig.json": "f709669750f9e8e6b2a2ddf2d23cb6a7c1805ba88c4c8b9359e22a9e9ac5224c",
+        "rust.json": "447196e385440dd3472f0b486659ce58e1971ee1c17481b7b6f96348cdf19535",
+        "difference.txt": "54877383ec02f855831d703f7792518fd134c548bd2cfe9567e357d12685e03f"
+      },
+      "baseline_hashes": {
+        "request.json": "8a9f516dcf3bcb1ede4a805fdd939f7cd76dfb4d8081b08ef110361a5f0e0e71",
+        "zig.json": "f709669750f9e8e6b2a2ddf2d23cb6a7c1805ba88c4c8b9359e22a9e9ac5224c",
+        "rust.json": "447196e385440dd3472f0b486659ce58e1971ee1c17481b7b6f96348cdf19535",
+        "difference.txt": "54877383ec02f855831d703f7792518fd134c548bd2cfe9567e357d12685e03f"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "frozen_horizontal_rust_complete_reply_equals_final": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.observations[0].primary.cursor.x",
+          "native": 31,
+          "rust": 34
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[8].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[9].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[10].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[24].text[0]",
+          "native": 54,
+          "rust": 59
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[25].text[0]",
+          "native": 54,
+          "rust": 59
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[26].text[0]",
+          "native": 109,
+          "rust": 116
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[27].text[0]",
+          "native": 114,
+          "rust": 54
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[28].text[0]",
+          "native": 101,
+          "rust": 54
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[29].text[0]",
+          "native": 116,
+          "rust": 109
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[30].text[0]",
+          "native": 124,
+          "rust": 114
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[31].text",
+          "native": [],
+          "rust": [
+            101
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[32].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[33].text",
+          "native": [],
+          "rust": [
+            124
+          ]
+        }
+      ],
+      "evidence": {
+        "horizontal_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline/failures/000002",
+        "source_identity": "final-parser-stream-source-identity.json",
+        "rust_origin": "e0f2ab23cfab7aae2dc0bc6a1873e4375dc85b44",
+        "native_origin": "916b99df7",
+        "reason": "OSC66 default-width text printing is an older Rust extension. Native stream deliberately leaves kitty_text_sizing unimplemented; Rust prints accepted payload text, including semicolon fragments in these corpus sequences."
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005399,src_005245,time_1858167,execs_2919882,op_havoc,rep_13",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/016079",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000007",
+      "hashes": {
+        "request.json": "c1edc257ea2a3c651d552b629edbd9ae827b9d0a9c2bb8bf372f7189cd107097",
+        "zig.json": "f051e25a6b22f3bb4ff29457d8fe33cbf9e6f75520afda57c617e555de69e31b",
+        "rust.json": "3faab014fd6900422a7201dcc4c75e8c138f9ef53e67981bedb46aea93443f5d",
+        "difference.txt": "9a60ca409a1da9b1951b2f0960483bdabc122b6aae26a2aa49716ad61d74bef5"
+      },
+      "baseline_hashes": {
+        "request.json": "c1edc257ea2a3c651d552b629edbd9ae827b9d0a9c2bb8bf372f7189cd107097",
+        "zig.json": "f051e25a6b22f3bb4ff29457d8fe33cbf9e6f75520afda57c617e555de69e31b",
+        "rust.json": "3faab014fd6900422a7201dcc4c75e8c138f9ef53e67981bedb46aea93443f5d",
+        "difference.txt": "9a60ca409a1da9b1951b2f0960483bdabc122b6aae26a2aa49716ad61d74bef5"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31cb43",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed49",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed48",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "1b5b3f333b313b31521b5b3f343b383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": [
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31cb43",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed49",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed48",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            }
+          ]
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 6,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f333b313b31521b5b3f343b383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005399,src_005245,time_1858167,execs_2919882,op_havoc,rep_13/chunks",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/016081",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000009",
+      "hashes": {
+        "request.json": "ba69b008463879399be21b4df140b09920be1e662c6f33fd08eb9fe46abafede",
+        "zig.json": "ad1a021cbce88c1a80b886513c27e099abcfe0cfd854d82019cef26546025ee3",
+        "rust.json": "4d5e251a9dde0020d707a49c96a7dbc8aaf73a7a3b352fe4393dfabab52749a2",
+        "difference.txt": "9a60ca409a1da9b1951b2f0960483bdabc122b6aae26a2aa49716ad61d74bef5"
+      },
+      "baseline_hashes": {
+        "request.json": "ba69b008463879399be21b4df140b09920be1e662c6f33fd08eb9fe46abafede",
+        "zig.json": "ad1a021cbce88c1a80b886513c27e099abcfe0cfd854d82019cef26546025ee3",
+        "rust.json": "4d5e251a9dde0020d707a49c96a7dbc8aaf73a7a3b352fe4393dfabab52749a2",
+        "difference.txt": "9a60ca409a1da9b1951b2f0960483bdabc122b6aae26a2aa49716ad61d74bef5"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31cb43",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed49",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed48",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "1b5b3f333b313b31521b5b3f343b383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": [
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31cb43",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed49",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed48",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            }
+          ]
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 6,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f333b313b31521b5b3f343b383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005399,src_005245,time_1858167,execs_2919882,op_havoc,rep_13/scalar",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/016080",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000008",
+      "hashes": {
+        "request.json": "ba5f3aca8f52a21106e49ccda748b759dc3ddd7a394b0f4caf78588c8e599539",
+        "zig.json": "b8671c35b62b2163c6369cc96e3b44a5631898d71b9c5ec1f107e90c2363357e",
+        "rust.json": "33732e4820fb4054aac3f3dcf63523e5a4d21cf7dca0c9b33251a5690829b36c",
+        "difference.txt": "9a60ca409a1da9b1951b2f0960483bdabc122b6aae26a2aa49716ad61d74bef5"
+      },
+      "baseline_hashes": {
+        "request.json": "ba5f3aca8f52a21106e49ccda748b759dc3ddd7a394b0f4caf78588c8e599539",
+        "zig.json": "b8671c35b62b2163c6369cc96e3b44a5631898d71b9c5ec1f107e90c2363357e",
+        "rust.json": "33732e4820fb4054aac3f3dcf63523e5a4d21cf7dca0c9b33251a5690829b36c",
+        "difference.txt": "9a60ca409a1da9b1951b2f0960483bdabc122b6aae26a2aa49716ad61d74bef5"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31cb43",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed49",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed48",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "1b5b3f333b313b31521b5b3f343b383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": [
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31cb43",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed49",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31ed48",
+                "title": ""
+              },
+              "progress": null
+            },
+            {
+              "clipboard": null,
+              "data": "",
+              "dnd_state": null,
+              "kind": "notification",
+              "notification": {
+                "body": "31",
+                "title": ""
+              },
+              "progress": null
+            }
+          ]
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 6,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f333b313b31521b5b3f343b383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005527,src_005416,time_2430240,execs_3078899,op_havoc,rep_10",
+      "category": "older_osc66_extension",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/016352",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000010",
+      "hashes": {
+        "request.json": "25e9a62fed99155672705b06fd13b13da1c1b5fd1f2eeeecc0992c984a47587a",
+        "zig.json": "5df9ac25a4c301a2677933fb31f7536af9833c8d748aaf97d9f7d5c8a3aa8ae4",
+        "rust.json": "df577dfc8423f510df918a04881b03ef417f7ec05ca19a2a85f2fe050cfab1fb",
+        "difference.txt": "60b48a98e9f937810b1716d83e21d2cca3c53f57dcc0dd6aaf370ccf0e3755e0"
+      },
+      "baseline_hashes": {
+        "request.json": "25e9a62fed99155672705b06fd13b13da1c1b5fd1f2eeeecc0992c984a47587a",
+        "zig.json": "5df9ac25a4c301a2677933fb31f7536af9833c8d748aaf97d9f7d5c8a3aa8ae4",
+        "rust.json": "df577dfc8423f510df918a04881b03ef417f7ec05ca19a2a85f2fe050cfab1fb",
+        "difference.txt": "60b48a98e9f937810b1716d83e21d2cca3c53f57dcc0dd6aaf370ccf0e3755e0"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "frozen_horizontal_rust_complete_reply_equals_final": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.observations[0].primary.cursor.x",
+          "native": 79,
+          "rust": 16
+        },
+        {
+          "path": "response.observations[0].primary.cursor.y",
+          "native": 0,
+          "rust": 1
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[79].text",
+          "native": [],
+          "rust": [
+            54
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].wrapped",
+          "native": false,
+          "rust": true
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[0].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[1].text",
+          "native": [],
+          "rust": [
+            55
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[2].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[3].text",
+          "native": [],
+          "rust": [
+            56
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[4].text",
+          "native": [],
+          "rust": [
+            52
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[5].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[6].text",
+          "native": [],
+          "rust": [
+            61
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[7].text",
+          "native": [],
+          "rust": [
+            57
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[8].text",
+          "native": [],
+          "rust": [
+            111
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[9].text",
+          "native": [],
+          "rust": [
+            56
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[10].text",
+          "native": [],
+          "rust": [
+            48
+          ]
+        }
+      ],
+      "evidence": {
+        "horizontal_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline/failures/000004",
+        "source_identity": "final-parser-stream-source-identity.json",
+        "rust_origin": "e0f2ab23cfab7aae2dc0bc6a1873e4375dc85b44",
+        "native_origin": "916b99df7",
+        "reason": "OSC66 default-width text printing is an older Rust extension. Native stream deliberately leaves kitty_text_sizing unimplemented; Rust prints accepted payload text, including semicolon fragments in these corpus sequences."
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005527,src_005416,time_2430240,execs_3078899,op_havoc,rep_10/chunks",
+      "category": "older_osc66_extension",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/016354",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000012",
+      "hashes": {
+        "request.json": "a59b7010d09004d120f45715bf33c050a2db169d22250987e9860f39bbe31da8",
+        "zig.json": "a26e2ede4e19f7146242d7f3758a2d6ac9aecd3a9a6693c4c556e258a29fbe97",
+        "rust.json": "ee5f0798987564ef30e10425160c7f38e9412eba9ea26d635938d57231c8d6e2",
+        "difference.txt": "60b48a98e9f937810b1716d83e21d2cca3c53f57dcc0dd6aaf370ccf0e3755e0"
+      },
+      "baseline_hashes": {
+        "request.json": "a59b7010d09004d120f45715bf33c050a2db169d22250987e9860f39bbe31da8",
+        "zig.json": "a26e2ede4e19f7146242d7f3758a2d6ac9aecd3a9a6693c4c556e258a29fbe97",
+        "rust.json": "ee5f0798987564ef30e10425160c7f38e9412eba9ea26d635938d57231c8d6e2",
+        "difference.txt": "60b48a98e9f937810b1716d83e21d2cca3c53f57dcc0dd6aaf370ccf0e3755e0"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "frozen_horizontal_rust_complete_reply_equals_final": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.observations[0].primary.cursor.x",
+          "native": 79,
+          "rust": 16
+        },
+        {
+          "path": "response.observations[0].primary.cursor.y",
+          "native": 0,
+          "rust": 1
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[79].text",
+          "native": [],
+          "rust": [
+            54
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].wrapped",
+          "native": false,
+          "rust": true
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[0].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[1].text",
+          "native": [],
+          "rust": [
+            55
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[2].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[3].text",
+          "native": [],
+          "rust": [
+            56
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[4].text",
+          "native": [],
+          "rust": [
+            52
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[5].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[6].text",
+          "native": [],
+          "rust": [
+            61
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[7].text",
+          "native": [],
+          "rust": [
+            57
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[8].text",
+          "native": [],
+          "rust": [
+            111
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[9].text",
+          "native": [],
+          "rust": [
+            56
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[10].text",
+          "native": [],
+          "rust": [
+            48
+          ]
+        }
+      ],
+      "evidence": {
+        "horizontal_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline/failures/000006",
+        "source_identity": "final-parser-stream-source-identity.json",
+        "rust_origin": "e0f2ab23cfab7aae2dc0bc6a1873e4375dc85b44",
+        "native_origin": "916b99df7",
+        "reason": "OSC66 default-width text printing is an older Rust extension. Native stream deliberately leaves kitty_text_sizing unimplemented; Rust prints accepted payload text, including semicolon fragments in these corpus sequences."
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005527,src_005416,time_2430240,execs_3078899,op_havoc,rep_10/scalar",
+      "category": "older_osc66_extension",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/016353",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000011",
+      "hashes": {
+        "request.json": "e416e46baa65309f21facfb3852eba720c6a9af965bbd8c98b91500e226718ce",
+        "zig.json": "592dce114e0138cb6b568bca2b9780eccc160b7984c7ec2c34114e72c2af2d3f",
+        "rust.json": "8039fe064149c8b5a7f5ecdac3e0e0e45e8820a9ce80a9f045576c5657cdf134",
+        "difference.txt": "60b48a98e9f937810b1716d83e21d2cca3c53f57dcc0dd6aaf370ccf0e3755e0"
+      },
+      "baseline_hashes": {
+        "request.json": "e416e46baa65309f21facfb3852eba720c6a9af965bbd8c98b91500e226718ce",
+        "zig.json": "592dce114e0138cb6b568bca2b9780eccc160b7984c7ec2c34114e72c2af2d3f",
+        "rust.json": "8039fe064149c8b5a7f5ecdac3e0e0e45e8820a9ce80a9f045576c5657cdf134",
+        "difference.txt": "60b48a98e9f937810b1716d83e21d2cca3c53f57dcc0dd6aaf370ccf0e3755e0"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "frozen_horizontal_rust_complete_reply_equals_final": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.observations[0].primary.cursor.x",
+          "native": 79,
+          "rust": 16
+        },
+        {
+          "path": "response.observations[0].primary.cursor.y",
+          "native": 0,
+          "rust": 1
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[79].text",
+          "native": [],
+          "rust": [
+            54
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].wrapped",
+          "native": false,
+          "rust": true
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[0].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[1].text",
+          "native": [],
+          "rust": [
+            55
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[2].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[3].text",
+          "native": [],
+          "rust": [
+            56
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[4].text",
+          "native": [],
+          "rust": [
+            52
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[5].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[6].text",
+          "native": [],
+          "rust": [
+            61
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[7].text",
+          "native": [],
+          "rust": [
+            57
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[8].text",
+          "native": [],
+          "rust": [
+            111
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[9].text",
+          "native": [],
+          "rust": [
+            56
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[1].cells[10].text",
+          "native": [],
+          "rust": [
+            48
+          ]
+        }
+      ],
+      "evidence": {
+        "horizontal_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline/failures/000005",
+        "source_identity": "final-parser-stream-source-identity.json",
+        "rust_origin": "e0f2ab23cfab7aae2dc0bc6a1873e4375dc85b44",
+        "native_origin": "916b99df7",
+        "reason": "OSC66 default-width text printing is an older Rust extension. Native stream deliberately leaves kitty_text_sizing unimplemented; Rust prints accepted payload text, including semicolon fragments in these corpus sequences."
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005796,src_004238,time_2638538,execs_3291382,op_havoc,rep_7",
+      "category": "older_osc66_extension",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/016820",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000013",
+      "hashes": {
+        "request.json": "551ac7f790fba6fa74b9ad152589f440b646893987039251ac10bf34b9a50c3c",
+        "zig.json": "3676aa4d3aea309061b14e8d7bfa68374ce365fd8893998e3f9d158b1c2c34d8",
+        "rust.json": "f6c737ebd40b460f655d970d3ca660ab29be12083214715814e69b00aeef1bba",
+        "difference.txt": "8a52b10af080f922a6aed6e800ec4c5ba0c600c1bdfd74a5ba5a25506a993aac"
+      },
+      "baseline_hashes": {
+        "request.json": "551ac7f790fba6fa74b9ad152589f440b646893987039251ac10bf34b9a50c3c",
+        "zig.json": "3676aa4d3aea309061b14e8d7bfa68374ce365fd8893998e3f9d158b1c2c34d8",
+        "rust.json": "f6c737ebd40b460f655d970d3ca660ab29be12083214715814e69b00aeef1bba",
+        "difference.txt": "8a52b10af080f922a6aed6e800ec4c5ba0c600c1bdfd74a5ba5a25506a993aac"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "frozen_horizontal_rust_complete_reply_equals_final": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.observations[0].primary.rows[0].cells[8].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[9].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[10].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[16].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[17].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[18].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[24].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[25].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[26].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        }
+      ],
+      "evidence": {
+        "horizontal_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline/failures/000007",
+        "source_identity": "final-parser-stream-source-identity.json",
+        "rust_origin": "e0f2ab23cfab7aae2dc0bc6a1873e4375dc85b44",
+        "native_origin": "916b99df7",
+        "reason": "OSC66 default-width text printing is an older Rust extension. Native stream deliberately leaves kitty_text_sizing unimplemented; Rust prints accepted payload text, including semicolon fragments in these corpus sequences."
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005796,src_004238,time_2638538,execs_3291382,op_havoc,rep_7/chunks",
+      "category": "older_osc66_extension",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/016822",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000015",
+      "hashes": {
+        "request.json": "b4bc3ed73e0678b32999d9982c26494f217c01e94bb6371f4eb1c9f35091e094",
+        "zig.json": "dbef9a5e2d8ef1d87d0c6963a7d6c0f8f58c1c8e9c5bde9441ac0771982ba049",
+        "rust.json": "7fc738823795ed019f8ed7299d9438467f9d0be4e918e99f49c75cfdb2d82bde",
+        "difference.txt": "8a52b10af080f922a6aed6e800ec4c5ba0c600c1bdfd74a5ba5a25506a993aac"
+      },
+      "baseline_hashes": {
+        "request.json": "b4bc3ed73e0678b32999d9982c26494f217c01e94bb6371f4eb1c9f35091e094",
+        "zig.json": "dbef9a5e2d8ef1d87d0c6963a7d6c0f8f58c1c8e9c5bde9441ac0771982ba049",
+        "rust.json": "7fc738823795ed019f8ed7299d9438467f9d0be4e918e99f49c75cfdb2d82bde",
+        "difference.txt": "8a52b10af080f922a6aed6e800ec4c5ba0c600c1bdfd74a5ba5a25506a993aac"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "frozen_horizontal_rust_complete_reply_equals_final": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.observations[0].primary.rows[0].cells[8].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[9].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[10].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[16].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[17].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[18].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[24].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[25].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[26].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        }
+      ],
+      "evidence": {
+        "horizontal_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline/failures/000009",
+        "source_identity": "final-parser-stream-source-identity.json",
+        "rust_origin": "e0f2ab23cfab7aae2dc0bc6a1873e4375dc85b44",
+        "native_origin": "916b99df7",
+        "reason": "OSC66 default-width text printing is an older Rust extension. Native stream deliberately leaves kitty_text_sizing unimplemented; Rust prints accepted payload text, including semicolon fragments in these corpus sequences."
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005796,src_004238,time_2638538,execs_3291382,op_havoc,rep_7/scalar",
+      "category": "older_osc66_extension",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/016821",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000014",
+      "hashes": {
+        "request.json": "e6819d0a9a875d8872a668eaa20e5b9e697959522e6a13d22413d11c12c4d119",
+        "zig.json": "179425870766b56e7a3e0cc6d2fa7644873a8f2d8743eee154d7a8ab20446b72",
+        "rust.json": "a045759b1a96ae343d87c14220243ea72ae64d81bf4777de16cba6a876a55b6b",
+        "difference.txt": "8a52b10af080f922a6aed6e800ec4c5ba0c600c1bdfd74a5ba5a25506a993aac"
+      },
+      "baseline_hashes": {
+        "request.json": "e6819d0a9a875d8872a668eaa20e5b9e697959522e6a13d22413d11c12c4d119",
+        "zig.json": "179425870766b56e7a3e0cc6d2fa7644873a8f2d8743eee154d7a8ab20446b72",
+        "rust.json": "a045759b1a96ae343d87c14220243ea72ae64d81bf4777de16cba6a876a55b6b",
+        "difference.txt": "8a52b10af080f922a6aed6e800ec4c5ba0c600c1bdfd74a5ba5a25506a993aac"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "frozen_horizontal_rust_complete_reply_equals_final": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.observations[0].primary.rows[0].cells[8].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[9].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[10].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[16].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[17].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[18].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[24].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[25].text",
+          "native": [],
+          "rust": [
+            59
+          ]
+        },
+        {
+          "path": "response.observations[0].primary.rows[0].cells[26].text",
+          "native": [],
+          "rust": [
+            116
+          ]
+        }
+      ],
+      "evidence": {
+        "horizontal_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-cell-horizontal-baseline/failures/000008",
+        "source_identity": "final-parser-stream-source-identity.json",
+        "rust_origin": "e0f2ab23cfab7aae2dc0bc6a1873e4375dc85b44",
+        "native_origin": "916b99df7",
+        "reason": "OSC66 default-width text printing is an older Rust extension. Native stream deliberately leaves kitty_text_sizing unimplemented; Rust prints accepted payload text, including semicolon fragments in these corpus sequences."
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005981,src_003488,time_3987276,execs_3771295,op_havoc,rep_4",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/017309",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000016",
+      "hashes": {
+        "request.json": "42f1733dddb65e321515fd80d506c4c8c610935bb701ec73815ad17be1b2c820",
+        "zig.json": "43fb58d1d80ce7c92a1ce0e270287169736d83b70010066c977e5d59f3791676",
+        "rust.json": "0a5d9f73ace22e204dbccc1b95b8a46ae05ae40f03b9247060b026f701e060aa",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "baseline_hashes": {
+        "request.json": "42f1733dddb65e321515fd80d506c4c8c610935bb701ec73815ad17be1b2c820",
+        "zig.json": "43fb58d1d80ce7c92a1ce0e270287169736d83b70010066c977e5d59f3791676",
+        "rust.json": "0a5d9f73ace22e204dbccc1b95b8a46ae05ae40f03b9247060b026f701e060aa",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f353b31333b31521b5b3f373b31383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": []
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 0,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f353b31333b31521b5b3f373b31383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005981,src_003488,time_3987276,execs_3771295,op_havoc,rep_4/chunks",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/017311",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000018",
+      "hashes": {
+        "request.json": "b400c91d1ab18a3ee5bf4a80227b22426b3adc438fbb1fe5b373f653154e3750",
+        "zig.json": "7090b412c8fe8d8a836424fb443ff926902b117cc45d64ef6a36b7c132326c9a",
+        "rust.json": "4b1bb85bb0601b79aac4b1b209f95fde5554f238040336fe93dc26cb9a17a008",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "baseline_hashes": {
+        "request.json": "b400c91d1ab18a3ee5bf4a80227b22426b3adc438fbb1fe5b373f653154e3750",
+        "zig.json": "7090b412c8fe8d8a836424fb443ff926902b117cc45d64ef6a36b7c132326c9a",
+        "rust.json": "4b1bb85bb0601b79aac4b1b209f95fde5554f238040336fe93dc26cb9a17a008",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f353b31333b31521b5b3f373b31383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": []
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 0,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f353b31333b31521b5b3f373b31383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_005981,src_003488,time_3987276,execs_3771295,op_havoc,rep_4/scalar",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/017310",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000017",
+      "hashes": {
+        "request.json": "cbcc250b0494bde4a38129bb892e92f34aa02ffdfe970f1b25f0418d56e7215f",
+        "zig.json": "930f587fb8888c45cce5814331b35fcc51ef05ad93cdf8206cb7949dd380eeee",
+        "rust.json": "768c05b6c9a535fea44e46d93742dd145ff03ede5092fb98b543b8501b374c9d",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "baseline_hashes": {
+        "request.json": "cbcc250b0494bde4a38129bb892e92f34aa02ffdfe970f1b25f0418d56e7215f",
+        "zig.json": "930f587fb8888c45cce5814331b35fcc51ef05ad93cdf8206cb7949dd380eeee",
+        "rust.json": "768c05b6c9a535fea44e46d93742dd145ff03ede5092fb98b543b8501b374c9d",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f353b31333b31521b5b3f373b31383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": []
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 0,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f353b31333b31521b5b3f373b31383b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_006196,src_003488,time_5695112,execs_4356812,op_havoc,rep_4",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/017885",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000019",
+      "hashes": {
+        "request.json": "633f70e50539a44e2bd696b2aa4b3680518c5968f03213cbb9ec2be9fdc37c81",
+        "zig.json": "f7559648e0f487ccb7713efbd60c56b072e0f14a1e319ae0d1ae456a6a8e3338",
+        "rust.json": "7a8f052910528db817d0271cce9e6e4eb9721818d929b7321253450942f891ae",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "baseline_hashes": {
+        "request.json": "633f70e50539a44e2bd696b2aa4b3680518c5968f03213cbb9ec2be9fdc37c81",
+        "zig.json": "f7559648e0f487ccb7713efbd60c56b072e0f14a1e319ae0d1ae456a6a8e3338",
+        "rust.json": "7a8f052910528db817d0271cce9e6e4eb9721818d929b7321253450942f891ae",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f343b31303b31521b5b3f363b31383b31521b5b3f363b32323b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": []
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 0,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f343b31303b31521b5b3f363b31383b31521b5b3f363b32323b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_006196,src_003488,time_5695112,execs_4356812,op_havoc,rep_4/chunks",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/017887",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000021",
+      "hashes": {
+        "request.json": "a02988948bf1c897c473587070fc2d5624d52469084701a3405e118aefaff353",
+        "zig.json": "0ef2a2836bd3b1d412c9a103f959e3d174311fff4691507f4aded8ac2233b610",
+        "rust.json": "d51140eb7d71eff17a501edaadce0d52355b4a5ed15fbdea6b827c2539d76152",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "baseline_hashes": {
+        "request.json": "a02988948bf1c897c473587070fc2d5624d52469084701a3405e118aefaff353",
+        "zig.json": "0ef2a2836bd3b1d412c9a103f959e3d174311fff4691507f4aded8ac2233b610",
+        "rust.json": "d51140eb7d71eff17a501edaadce0d52355b4a5ed15fbdea6b827c2539d76152",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f343b31303b31521b5b3f363b31383b31521b5b3f363b32323b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": []
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 0,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f343b31303b31521b5b3f363b31383b31521b5b3f363b32323b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "corpus/stream-cmin/id_006196,src_003488,time_5695112,execs_4356812,op_havoc,rep_4/scalar",
+      "category": "older_decxcpr_unsupported",
+      "artifact": "/private/tmp/rustty-reintegrate.leadij/final-parity/groups-3/failures/017886",
+      "baseline_artifact": "/private/tmp/rustty-reintegrate.leadij/final-stream-gap-baseline/failures/000020",
+      "hashes": {
+        "request.json": "0dcc7be7511b9a78b9acb9e476bb42ba393bee4f2c040f0b163601d75ec9e87c",
+        "zig.json": "3e9ab51f8519f3827b00f957d5726045b92cefa8dfde75080362abe938d8576e",
+        "rust.json": "29b862f91c8bcedd208ebef8799cd7d5e9422f1c06e5cbdd76c1d28748ffaaf6",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "baseline_hashes": {
+        "request.json": "0dcc7be7511b9a78b9acb9e476bb42ba393bee4f2c040f0b163601d75ec9e87c",
+        "zig.json": "3e9ab51f8519f3827b00f957d5726045b92cefa8dfde75080362abe938d8576e",
+        "rust.json": "29b862f91c8bcedd208ebef8799cd7d5e9422f1c06e5cbdd76c1d28748ffaaf6",
+        "difference.txt": "b807164d00eee08fd62b9b2179476351428bb7e51dae5413eb8bc7312bfbacbd"
+      },
+      "proof": {
+        "frozen_pre_link_rust_complete_reply_equals_final": true,
+        "repeated_native_complete_reply_equals_final": true,
+        "all_fields_equal_after_only_extra_DECXCPR_writes_removed": true
+      },
+      "differences_after_standard_root_capabilities_exclusion": [
+        {
+          "path": "response.events",
+          "native": [
+            {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f343b31303b31521b5b3f363b31383b31521b5b3f363b32323b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          ],
+          "rust": []
+        }
+      ],
+      "evidence": {
+        "native_origin": "fbda61b873da5208475c183af160d131ac7a77a3",
+        "reason": "Native supports CSI ? 6 n extended cursor report; existing Rust csi handles ordinary (false,6) only. Neither handler changed in incoming range.",
+        "extra_DECXCPR_events": [
+          {
+            "native_index": 0,
+            "event": {
+              "clipboard": null,
+              "data": "1b5b3f343b363b31521b5b3f343b31303b31521b5b3f363b31383b31521b5b3f363b32323b3152",
+              "dnd_state": null,
+              "kind": "write",
+              "notification": null,
+              "progress": null
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

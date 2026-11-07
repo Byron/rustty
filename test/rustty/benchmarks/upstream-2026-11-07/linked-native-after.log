@@ -1,0 +1,14 @@
+Checked 100 comparisons (pages/hyperlinks/batched/map-free/7/wide)
+FAIL pages/hyperlinks/batched/page-crossing/10000/narrow: zig.restore-zig.observations[0].primary.history: Zig length 240, Rust length 2
+  /private/tmp/rustty-reintegrate.leadij/linked-native-after/failures/3e79e76f7acd320e
+FAIL pages/hyperlinks/batched/page-crossing/10000/narrow/scalar: zig.restore-zig.observations[0].primary.history: Zig length 240, Rust length 2
+  /private/tmp/rustty-reintegrate.leadij/linked-native-after/failures/59b1d6ac29b6edee
+FAIL pages/hyperlinks/batched/page-crossing/10000/narrow/chunks: zig.restore-zig.observations[0].primary.history: Zig length 240, Rust length 2
+  /private/tmp/rustty-reintegrate.leadij/linked-native-after/failures/2601ed4dfd364368
+FAIL pages/hyperlinks/batched/page-crossing/10000/mixed: zig.restore-zig.observations[0].primary.history: Zig length 241, Rust length 3
+  /private/tmp/rustty-reintegrate.leadij/linked-native-after/failures/8d6a58546dae5516
+FAIL pages/hyperlinks/batched/page-crossing/10000/mixed/scalar: zig.restore-zig.observations[0].primary.history: Zig length 241, Rust length 3
+  /private/tmp/rustty-reintegrate.leadij/linked-native-after/failures/d87b81458132fcd9
+FAIL pages/hyperlinks/batched/page-crossing/10000/mixed/chunks: zig.restore-zig.observations[0].primary.history: Zig length 241, Rust length 3
+  /private/tmp/rustty-reintegrate.leadij/linked-native-after/failures/223d664777fb8bf3
+120 comparisons, 6 failures, 0 coverage gaps; full parity not established

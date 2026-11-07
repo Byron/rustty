@@ -1,0 +1,14 @@
+{
+  "aborted": false,
+  "checked": 33,
+  "coverage_gaps": [],
+  "covered": [
+    "terminal.cells",
+    "terminal.cursor",
+    "terminal.pages"
+  ],
+  "error": null,
+  "failures": 0,
+  "full_parity": false,
+  "mode": "smoke"
+}

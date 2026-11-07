@@ -1,0 +1,5 @@
+# Existing optional pointer-shape snapshot record
+
+The 249 style-page raw snapshot differences classified in style-page-failure-classification.json are Rust optional POINTER_SHAPES record0x8001, not wrap metadata. All common/native records are byte-identical in the recorded cases. Current snapshot.rs emits0x8001 unconditionally after each screen's active pages; the payload contains version1, screen key and the per-screen pointer-shape stack. The decoder seeds the stack from the legacy terminal mouse-shape field when this optional record is absent.
+
+This is present verbatim in starting c06197283 (checked with git show), introduced by original b438193 / ovwryqw, now f8dc27f36. It is not a regression from canonical style hash/layout. Native snapshots do not encode Rust's per-screen stack. Exact snapshot-byte comparisons report a difference by construction; cross-decoding/live-state comparisons remain the appropriate semantic check. Keep raw differences visible in final results and preserve historical compatibility payloads. Do not suppress arbitrary snapshot records to report zero failures, and do not describe0x8001 as row wrap metadata.

@@ -1,0 +1,237 @@
+[
+  {
+    "name": "erase-2-120x80",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-120x80",
+        "iterations": 1,
+        "elapsed_ns": 650136000,
+        "units_per_iteration": 1048541,
+        "cell_bytes": 8,
+        "checksum": 5254477465540570173,
+        "history_rows": 249,
+        "page_bytes": 409600,
+        "page_count": 1,
+        "owned_bytes": 391040
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-120x80",
+        "iterations": 1,
+        "elapsed_ns": 627907541,
+        "units_per_iteration": 1048541,
+        "cell_bytes": 8,
+        "checksum": 5254477465540570173,
+        "history_rows": 249,
+        "page_bytes": 409600,
+        "page_count": 1,
+        "owned_bytes": 391040
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-2-120x80",
+        "iterations": 1,
+        "elapsed_ns": 5515417,
+        "units_per_iteration": 1048541,
+        "cell_bytes": 8,
+        "checksum": 5254477465540570173,
+        "history_rows": 249,
+        "page_bytes": 409600,
+        "page_count": 1,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-2-120x12",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-120x12",
+        "iterations": 1,
+        "elapsed_ns": 115513333,
+        "units_per_iteration": 1048575,
+        "cell_bytes": 8,
+        "checksum": 3755577868682083495,
+        "history_rows": 408,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-120x12",
+        "iterations": 1,
+        "elapsed_ns": 114297958,
+        "units_per_iteration": 1048575,
+        "cell_bytes": 8,
+        "checksum": 3755577868682083495,
+        "history_rows": 408,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-2-120x12",
+        "iterations": 1,
+        "elapsed_ns": 5302625,
+        "units_per_iteration": 1048575,
+        "cell_bytes": 8,
+        "checksum": 3755577868682083495,
+        "history_rows": 408,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-2-300x100",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-300x100",
+        "iterations": 1,
+        "elapsed_ns": 1872444834,
+        "units_per_iteration": 1048564,
+        "cell_bytes": 8,
+        "checksum": 936995356256480217,
+        "history_rows": 194,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-2-300x100",
+        "iterations": 1,
+        "elapsed_ns": 1854755708,
+        "units_per_iteration": 1048564,
+        "cell_bytes": 8,
+        "checksum": 936995356256480217,
+        "history_rows": 194,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 773584
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-2-300x100",
+        "iterations": 1,
+        "elapsed_ns": 8815708,
+        "units_per_iteration": 1048564,
+        "cell_bytes": 8,
+        "checksum": 936995356256480217,
+        "history_rows": 194,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-22-120x80",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-22-120x80",
+        "iterations": 1,
+        "elapsed_ns": 131859625,
+        "units_per_iteration": 1048531,
+        "cell_bytes": 8,
+        "checksum": 8692881763686392879,
+        "history_rows": 318,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-22-120x80",
+        "iterations": 1,
+        "elapsed_ns": 132980125,
+        "units_per_iteration": 1048531,
+        "cell_bytes": 8,
+        "checksum": 8692881763686392879,
+        "history_rows": 318,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-22-120x80",
+        "iterations": 1,
+        "elapsed_ns": 14846375,
+        "units_per_iteration": 1048531,
+        "cell_bytes": 8,
+        "checksum": 8692881763686392879,
+        "history_rows": 318,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  },
+  {
+    "name": "erase-rate-120x80",
+    "results": {
+      "before": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-rate-120x80",
+        "iterations": 1,
+        "elapsed_ns": 273789959,
+        "units_per_iteration": 1048576,
+        "cell_bytes": 8,
+        "checksum": 17243635126788336514,
+        "history_rows": 694,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "after": {
+        "engine": "rustty",
+        "operation": "stream_file",
+        "name": "erase-rate-120x80",
+        "iterations": 1,
+        "elapsed_ns": 274334541,
+        "units_per_iteration": 1048576,
+        "cell_bytes": 8,
+        "checksum": 17243635126788336514,
+        "history_rows": 694,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": 782080
+      },
+      "native": {
+        "engine": "ghostty",
+        "operation": "stream_file",
+        "name": "erase-rate-120x80",
+        "iterations": 1,
+        "elapsed_ns": 6123417,
+        "units_per_iteration": 1048576,
+        "cell_bytes": 8,
+        "checksum": 17243635126788336514,
+        "history_rows": 694,
+        "page_bytes": 819200,
+        "page_count": 2,
+        "owned_bytes": null
+      }
+    }
+  }
+]

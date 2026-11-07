@@ -1,0 +1,48 @@
+{
+  "head": "f2b7e1344a57dda204355a541d6a811e89891b64",
+  "measurement_head": "cc309adab78b012fc15200306eab5883268eb31d",
+  "corpora": 22,
+  "engine_checks": 44,
+  "all_output_and_memory_fields_equal_to_measurement_stage": true,
+  "dense_reflow": {
+    "engines": [
+      "rustty",
+      "ghostty"
+    ],
+    "records_per_engine": 8192,
+    "resizes": [
+      64,
+      128
+    ],
+    "result": "both pass",
+    "benchmark_binary": {
+      "executed_path": "target/release/deps/primitives-88b1d6ada0ec94ee",
+      "frozen_path": "/private/tmp/rustty-reintegrate.leadij/final-cumulative-primitives",
+      "sha256": "ee43ec49234d82f10fc2003de5b891f61b1306ccb927236fbbe0d8358ad783f0"
+    },
+    "rust_input_equivalence": "Only pty-bench.rs and tmuxx-terminal/src/lib.rs changed across the two QA amendments; neither is in rustty-vt primitives inputs."
+  },
+  "final_tools": {
+    "source": "/private/tmp/rustty-reintegrate.leadij/final-comparison-tools.json",
+    "stream": {
+      "path": "/Users/byron/dev/github.com/ghostty-org/ghostty/target/release/examples/stream-file",
+      "sha256": "819376fbd18a180a9babba4e1fe5f0f355f5a2e29ab2aeb5c4f7e3bdf8c39237"
+    },
+    "native_primitives": {
+      "path": "/Users/byron/dev/github.com/ghostty-org/ghostty/zig-out/bin/vt-primitives",
+      "sha256": "dfeb7a211480ededc6957f23a38335285505721c31ab3a9deb3427cbd4b34d67"
+    }
+  },
+  "commands": "/private/tmp/rustty-reintegrate.leadij/final-cumulative-shared-check-commands.json",
+  "script": {
+    "path": "/private/tmp/rustty-reintegrate.leadij/check-final-cumulative-stream-corpora.py",
+    "sha256": "fd75bf832cf3744b2e8aeda0c410b76e7a7790aa445e3c6fd5ac7283707223c8"
+  },
+  "files": {
+    "final-cumulative-stream-corpora-selfchecks.json": "74a86729399747434f43aa6b206a51a83400a71f1f3b068da9bc4b38d1363ddc",
+    "final-cumulative-stream-corpora-selfcheck-run.json": "f640f34ff547fad667619860141d1a0524d3765a89381f1cde77a2b0a1d50629",
+    "final-cumulative-stream-corpora-selfchecks.log": "4700e878a9b7c97e89e8ce38a970d30f8bed31f5fb8bdb8628c3f89b3a02f323",
+    "final-cumulative-dense-reflow.log": "d6d9b2c30549eb80a88608f78d0d9c694e6bc737160aa7ff5bc3415162b4d5bb"
+  },
+  "note": "Validation only against rebuilt final native tools; measurement-stage files and binary provenance are preserved. No Cargo invocation or repository source/lockfile writes."
+}
