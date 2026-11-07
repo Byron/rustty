@@ -97,7 +97,7 @@ impl Images {
                 .entries
                 .values()
                 .filter(|image| image.number == number)
-                .max_by_key(|image| image.generation)
+                .max_by_key(|image| image.identity)
                 .map(|image| image.id),
         }
     }
@@ -268,15 +268,18 @@ mod tests {
         assert_eq!(images.resolve_number(11), Some(1));
         let mut duplicate = images[&1].clone();
         duplicate.id = 2;
+        duplicate.identity += 1;
         duplicate.generation += 1;
         images.insert(2, duplicate);
         assert_eq!(images.resolve_number(11), Some(2));
         images.get_mut(&1).unwrap().generation += 2;
+        assert_eq!(images.resolve_number(11), Some(2));
+        images.get_mut(&1).unwrap().identity += 2;
         assert_eq!(images.resolve_number(11), Some(1));
-        images.get_mut(&2).unwrap().generation = images[&1].generation;
+        images.get_mut(&2).unwrap().identity = images[&1].identity;
         let tied = images
             .values()
-            .max_by_key(|image| image.generation)
+            .max_by_key(|image| image.identity)
             .unwrap()
             .id;
         assert_eq!(images.resolve_number(11), Some(tied));

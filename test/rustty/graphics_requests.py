@@ -128,6 +128,15 @@ def requests():
             data += raw(f"a=f,i=1,z={gap or -1}".encode(), bytes([index * 30, 2, 3, 255]))
         return data + control(f"r=1,z={gaps[0] or -1}".encode())
 
+    numbered = (raw(b"I=7,a=T,C=1") + raw(b"a=f,i=1,z=20", b"\x20\x02\x03\xff")
+                + control(b"r=1,z=20"))
+    newest = raw(b"I=7,a=T,C=1", b"\x70\x02\x03\xff")
+    lookup = b"\x1b_Ga=p,I=7,p=9,C=1\x1b\\"
+    yield animation("number/transmission-frame-switch", [numbered, newest, control(b"c=2"),
+                    lookup, raw(b"a=f,I=7,z=30", b"\x90\x02\x03\xff")])
+    yield animation("number/transmission-tick", [numbered + control(b"s=3"), 0,
+                    newest, 20, lookup])
+
     for alternate in (False, True):
         for state in (1, 2, 3):
             for gaps in ((50,), (0,), (50, 50), (0, 40), (40, 0), (0, 0), (40, 0, 50), (0, 40, 0), (40, 0, 0)):

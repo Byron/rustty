@@ -53,6 +53,7 @@ pub struct Image {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub indexed: Option<IndexedPixels>,
     pub generation: u64,
+    /// Transmission order; animation changes only the content generation.
     identity: u64,
     pub frames: Vec<AnimationFrame>,
     pub current_frame: usize,
@@ -2526,7 +2527,7 @@ mod tests {
     }
 
     #[test]
-    fn numbered_lookup_follows_animation_changes_and_eviction() {
+    fn numbered_lookup_preserves_transmission_order_through_animation_and_snapshots() {
         let mut terminal = Terminal::new(8, 4, 0);
         for _ in 0..2 {
             terminal.feed(b"\x1b_GI=7,f=32,s=1,v=1;AQID/w==\x1b\\");
@@ -2534,10 +2535,13 @@ mod tests {
         assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(2));
         terminal.feed(b"\x1b_Ga=f,i=1,f=32,s=1,v=1;BAUG/w==\x1b\\");
         terminal.feed(b"\x1b_Ga=a,i=1,c=2\x1b\\");
-        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(1));
+        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(2));
+        let encoded = crate::snapshot::encode_to_vec(&terminal).unwrap();
+        let mut restored = crate::snapshot::decode(encoded.as_slice(), Default::default()).unwrap();
+        assert_eq!(restored.screen_mut().graphics.resolve_id(0, 7), Some(2));
         terminal.feed(b"\x1b_Ga=d,d=F,i=1,r=2\x1b\\");
-        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(1));
-        terminal.set_graphics_limit(4);
+        assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(2));
+        terminal.feed(b"\x1b_Ga=d,d=I,i=2\x1b\\");
         assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), Some(1));
         terminal.feed(b"\x1b_Ga=d,d=N,I=7\x1b\\");
         assert_eq!(terminal.screen_mut().graphics.resolve_id(0, 7), None);
