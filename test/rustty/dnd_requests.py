@@ -1,4 +1,6 @@
 """OSC 72 conversations and native host drag actions, with no OS side effects."""
+import json
+from pathlib import Path
 
 
 def requests():
@@ -117,17 +119,22 @@ def requests():
 
 
 def snapshot_requests(peers):
-    """Restore both encodings; committed state is omitted, parser bytes survive."""
+    """Restore current and historical encodings; parser bytes survive."""
+    # Keep prior Rust bytes when refreshing generated fixtures with new encoders.
+    legacy = Path(__file__).with_name("fixtures") / "dnd-snapshot-rust-v1.json"
+    for fixture in json.loads(legacy.read_text())["cases"]:
+        yield fixture["request"], fixture["covers"]
     prefixes = [b"\x1b]72;t=a:i=7;text/plain\x1b\\",
                 b"\x1b]72;t=a:i=7:m=1;text/\x1b\\",
                 b"\x1b]72;t=a:i=7;text/"]
     for peer in peers:
+        name = "rust-current" if peer.name == "rust" else peer.name
         for index, prefix in enumerate(prefixes):
             source = peer.request({"id": "dnd/snapshot-source", "kind": "input", "operations": [
                 {"op": "write", "data": prefix.hex()}, {"op": "snapshot"}]})
             if not source["ok"] or len(source["snapshots"]) != 1:
                 raise RuntimeError("DND snapshot capture failed")
-            yield ({"id": f"protocol/dnd/snapshot/{peer.name}/{index}", "kind": "input", "operations": [
+            yield ({"id": f"protocol/dnd/snapshot/{name}/{index}", "kind": "input", "operations": [
                 {"op": "write", "data": b"\x1b]72;t=a:i=9;old\x1b\\".hex()},
                 {"op": "dnd", "dnd": {"action": "drop", "items": [{"mime": "78", "data": "79"}]}},
                 {"op": "restore", "data": source["snapshots"][0]},
