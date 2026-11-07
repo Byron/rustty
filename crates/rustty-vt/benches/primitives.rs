@@ -1032,6 +1032,7 @@ fn content_history_reflow(c: &mut Criterion) {
     }
     for (label, pattern, link_repeats, tracked, narrow) in [
         ("mixed-linked", "mixed", 1, false, 64),
+        ("mixed-dense-links", "mixed", 32, false, 64),
         ("mixed-tracked", "mixed", 0, true, 64),
         ("chinese-odd-width", "chinese", 0, false, 63),
         ("mixed-odd-width", "mixed", 0, false, 63),
@@ -1045,21 +1046,6 @@ fn content_history_reflow(c: &mut Criterion) {
                 link_repeats,
                 tracked,
                 narrow,
-            },
-        ));
-    }
-    // Both engines currently exhaust a per-page link map during this dense
-    // input. Keep the failing correctness probe explicit; never time lost links.
-    if std::env::var_os("RUSTTY_REFLOW_DENSE_LINKS").is_some() {
-        cases.push((
-            "mixed-dense-links".to_owned(),
-            ContentHistory {
-                pattern: "mixed",
-                records: 8_192,
-                styled: true,
-                link_repeats: 32,
-                tracked: false,
-                narrow: 64,
             },
         ));
     }

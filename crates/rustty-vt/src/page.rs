@@ -26,6 +26,7 @@ pub(crate) enum PageResource {
     Styles,
     Graphemes,
     Links,
+    LinkCells,
     Strings,
 }
 
@@ -34,7 +35,8 @@ impl PageResource {
         match error {
             HyperlinkFull::Strings => Some(Self::Strings),
             HyperlinkFull::Set(SetFull::NeedsRehash) => None,
-            HyperlinkFull::Set(SetFull::OutOfMemory) | HyperlinkFull::Map => Some(Self::Links),
+            HyperlinkFull::Set(SetFull::OutOfMemory) => Some(Self::Links),
+            HyperlinkFull::Map => Some(Self::LinkCells),
         }
     }
 }
@@ -107,6 +109,7 @@ type SlotMap<T> = HashMap<u32, T, BuildHasherDefault<SlotHasher>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Page {
+    #[serde(with = "crate::page_capacity_serde")]
     pub capacity: PageCapacity,
     pub columns: u16,
     pub rows: u16,
@@ -878,6 +881,12 @@ impl Page {
                     u64::from(u16::MAX),
                     0,
                 ),
+                PageResource::LinkCells => (
+                    u64::from(capacity.hyperlink_cells),
+                    64,
+                    u64::from(u16::MAX),
+                    self.link_map.len() as u64,
+                ),
                 PageResource::Strings => (
                     u64::from(capacity.string_bytes),
                     2048,
@@ -892,6 +901,7 @@ impl Page {
                 PageResource::Styles => cap.styles = value as u16,
                 PageResource::Graphemes => cap.grapheme_bytes = value as u32,
                 PageResource::Links => cap.hyperlink_bytes = value as u16,
+                PageResource::LinkCells => cap.hyperlink_cells = value as u16,
                 PageResource::Strings => cap.string_bytes = value as u32,
             };
             let increased = if old == 0 {
@@ -903,7 +913,14 @@ impl Page {
             capacity.layout().map_err(|_| SetFull::OutOfMemory)?;
             if used != 0 && self.rows != 0 {
                 let density = used * u64::from(capacity.rows) / u64::from(self.rows);
-                let projected = (density + density / 4).min(old * 32).min(maximum);
+                // A map can reasonably need one linked cell per physical row.
+                // Use that floor for the same bounded native density projection.
+                let base = if matches!(resource, PageResource::LinkCells) {
+                    old.max(u64::from(capacity.rows))
+                } else {
+                    old
+                };
+                let projected = (density + density / 4).min(base * 32).min(maximum);
                 if projected > increased {
                     let mut projected_capacity = capacity;
                     assign(&mut projected_capacity, projected);

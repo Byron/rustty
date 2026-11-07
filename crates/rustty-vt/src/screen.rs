@@ -1520,7 +1520,7 @@ impl Screen {
                 }
             }
             if self
-                .grow_resource_page(index, Some(PageResource::Links))
+                .grow_resource_page(index, Some(PageResource::LinkCells))
                 .is_err()
             {
                 break;
@@ -3275,8 +3275,9 @@ impl Screen {
             cols: columns,
             rows: (end - start) as u16,
             styles: set_capacity(styles.len()).min(u16::MAX as usize) as u16,
-            hyperlink_bytes: (set_capacity(links.len()).max(linked_cells.div_ceil(16))
-                * crate::page_layout::HYPERLINK_ITEM_SIZE) as u16,
+            hyperlink_bytes: (set_capacity(links.len()) * crate::page_layout::HYPERLINK_ITEM_SIZE)
+                .min(u16::MAX as usize) as u16,
+            hyperlink_cells: linked_cells.min(u16::MAX as usize) as u16,
             grapheme_bytes: grapheme_bytes as u32,
             string_bytes: string_bytes as u32,
         };
@@ -3331,3 +3332,7 @@ impl Screen {
 }
 
 type GridPointKey = (u64, usize);
+
+#[cfg(test)]
+#[path = "screen/hyperlink_capacity_tests.rs"]
+mod hyperlink_capacity_tests;

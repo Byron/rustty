@@ -612,9 +612,14 @@ impl HyperlinkAdmission {
         self.set.release(id);
     }
 
+    /// Remaining linked-cell entries, including the native map load factor.
+    pub fn available_cells(&self) -> usize {
+        self.capacity - self.cells
+    }
+
     pub fn retain_cell(&mut self, id: u16) -> Result<(), HyperlinkFull> {
         if id != 0 {
-            if self.cells == self.capacity {
+            if self.available_cells() == 0 {
                 return Err(HyperlinkFull::Map);
             }
             self.set.retain(id);
@@ -672,7 +677,7 @@ impl HyperlinkAdmission {
     ) -> Result<u16, HyperlinkFull> {
         #[cfg(feature = "allocation-probe")]
         probe::event(|c| c.hyperlink_admissions += 1);
-        if self.cells == self.capacity {
+        if self.available_cells() == 0 {
             return Err(HyperlinkFull::Map);
         }
         let hash = hyperlink_hash(link);
@@ -699,7 +704,7 @@ impl HyperlinkAdmission {
     ) -> Result<u16, HyperlinkFull> {
         #[cfg(feature = "allocation-probe")]
         probe::event(|c| c.hyperlink_admissions += 1);
-        if self.cells == self.capacity {
+        if self.available_cells() == 0 {
             return Err(HyperlinkFull::Map);
         }
         let id = self.allocate(link, false, Some(preferred), None)?;

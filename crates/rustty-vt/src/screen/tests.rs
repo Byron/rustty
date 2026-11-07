@@ -528,7 +528,7 @@ fn reflow_preserves_styled_history_across_many_destination_pages() {
         },
     );
     terminal.feed(b"\x1b[?2027h");
-    for record in 0..256 {
+    for record in 0..1024 {
         terminal.feed(
             format!(
                 "\x1b[38;2;{};0;0m\x1b]8;id=record;https://example.org\x07a\u{301}界\x1b]8;;\x07{}\x1b[0m\r\n",
@@ -555,7 +555,7 @@ fn reflow_preserves_styled_history_across_many_destination_pages() {
             .collect::<Vec<_>>()
     };
     let expected = contents(terminal.screen());
-    assert_eq!(expected.len(), 256 * 162);
+    assert_eq!(expected.len(), 1024 * 162);
     for width in [63, 32, 128, 97, 128] {
         terminal.resize(width, 4);
         assert!(terminal.screen().pages.pages.len() > 1, "width {width}");

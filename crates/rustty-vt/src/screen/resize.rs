@@ -157,6 +157,7 @@ impl Screen {
                 page.capacity.styles == capacity.styles
                     && page.capacity.grapheme_bytes == capacity.grapheme_bytes
                     && page.capacity.hyperlink_bytes == capacity.hyperlink_bytes
+                    && page.capacity.hyperlink_cells == capacity.hyperlink_cells
                     && page.capacity.string_bytes == capacity.string_bytes
             });
             let page = if reusable {

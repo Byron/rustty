@@ -18,6 +18,7 @@ pub mod modes;
 pub mod notification;
 mod packed;
 mod page;
+mod page_capacity_serde;
 mod page_layout;
 mod page_list;
 mod page_resources;
@@ -48,7 +49,8 @@ pub use page_layout::PageCapacity;
 pub use page_list::PageAllocationInfo;
 pub use rustty_parser::{Boundaries, BoundaryStop, StringEnd, StringIntroducer, StringKind};
 pub use screen::{
-    Cell, CellSpan, Color, Cursor, CursorShape, GridPoint, HyperlinkData, HyperlinkId, Row, RowView, Screen,
-    ScrollbackLimits, Selection, SemanticContent, Style, TrackedPoint, Underline, ViewMetadata,
+    Cell, CellSpan, Color, Cursor, CursorShape, GridPoint, HyperlinkData, HyperlinkId, Row,
+    RowView, Screen, ScrollbackLimits, Selection, SemanticContent, Style, TrackedPoint, Underline,
+    ViewMetadata,
 };
 pub use terminal::{Effect, EffectHandler, Margins, Terminal, default_palette};

@@ -18,6 +18,7 @@ def requests():
         yield case(f"initial/{columns}", columns=columns)
 
     empty = {"cols": 1, "rows": 1, "styles": 0, "hyperlink_bytes": 0,
+             "hyperlink_cells": 0,
              "grapheme_bytes": 0, "string_bytes": 0}
     for cols, rows in ((1, 1), (1, 7), (1, 8), (1, 15), (1, 16), (1, 17),
                        (80, 24), (80, 591), (215, 215), (215, 221),
@@ -34,6 +35,8 @@ def requests():
         "hyperlink_bytes": (0, 1, 47, 48, 49, 95, 96, 97, 143, 144, 145,
                             191, 192, 193, 383, 384, 385, 767, 768, 769,
                             12287, 12288, 12289, 24575, 24576, 24577, 65535),
+        "hyperlink_cells": (0, 1, 7, 8, 9, 47, 48, 49, 51, 52, 63, 64, 65,
+                            102, 103, 4000, 21840, 21841, 32767, 32768, 65535),
         "grapheme_bytes": (0, 1, 15, 16, 17, 31, 32, 33, 511, 512, 513,
                            1023, 1024, 1025, 2047, 2048, 2049, 8191, 8192, 8193,
                            65535, 65536, 65537, (1 << 29) - 1, 1 << 29,
@@ -55,19 +58,28 @@ def requests():
         "graphemes": dict(empty, cols=80, rows=24, grapheme_bytes=8193),
         "strings": dict(empty, cols=80, rows=24, string_bytes=4097),
         "links": dict(empty, cols=80, rows=24, hyperlink_bytes=769),
+        "link-map": dict(empty, cols=80, rows=24, hyperlink_cells=4000),
+        "dense-links": dict(empty, cols=80, rows=24, hyperlink_bytes=192, hyperlink_cells=4000),
     }
     for name, capacity in capacities.items():
         for columns in (1, 3, 16, 79, 80, 81, 215, 512, 1024):
             yield case(f"adjust/{name}/{columns}", action="adjust",
                        capacity=capacity, columns=columns)
 
+    for set_bytes, cells in ((96, 4000), (24576, 8), (192, 0), (0, 64), (65535, 65535)):
+        yield case(f"independent-links/{set_bytes}/{cells}", action="layout",
+                   capacity=dict(empty, cols=10, rows=10, hyperlink_bytes=set_bytes,
+                                 hyperlink_cells=cells))
+
     # Combine resource padding with row/cell alignment rather than only
     # testing each field in isolation. Bounds keep every layout below 4 GiB.
     rng = random.Random(0x50414745)
+    map_rng = random.Random(0x4c494e4b)
     for index in range(64):
         capacity = {"cols": rng.randrange(1, 4097), "rows": rng.randrange(1, 4097),
                     "styles": rng.randrange(65536), "hyperlink_bytes": rng.randrange(65536),
                     "grapheme_bytes": rng.randrange(1 << 20), "string_bytes": rng.randrange(1 << 20)}
+        capacity["hyperlink_cells"] = map_rng.randrange(65536)
         yield case(f"mixed/{index}", action="layout", capacity=capacity,
                    exact=bool(index % 2))
 

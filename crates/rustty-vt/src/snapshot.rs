@@ -10,6 +10,7 @@
 use crate::graphics::snapshot as kitty;
 use crate::modes::Modes;
 use crate::packed::{Cell, RowHeader};
+use crate::page_capacity_serde::{hyperlink_capacity_hint, hyperlink_cells_from_hint};
 use crate::page_layout::PageCapacity;
 use crate::page_list::{Page, PageList};
 use crate::page_resources::{
@@ -367,8 +368,13 @@ fn encoding_capacity(
             capacity.styles = grow(u32::from(capacity.styles), u32::from(u16::MAX))? as u16;
             changed = true;
         }
+        let limit = layout.hyperlink_map_layout.capacity as usize * 80 / 100;
+        if linked_cells > limit {
+            capacity.hyperlink_cells =
+                grow(u32::from(capacity.hyperlink_cells), u32::from(u16::MAX))? as u16;
+            changed = true;
+        }
         if let Some(links) = links {
-            let limit = layout.hyperlink_map_layout.capacity as usize * 80 / 100;
             let mut admission = HyperlinkAdmission::new(
                 layout.hyperlink_set_layout,
                 layout.string_alloc_layout,
@@ -377,7 +383,7 @@ fn encoding_capacity(
             let result = links
                 .iter()
                 .try_for_each(|link| admission.decode(link, true).map(|_| ()));
-            if linked_cells > limit || matches!(result, Err(HyperlinkFull::Set(_))) {
+            if matches!(result, Err(HyperlinkFull::Set(_))) {
                 capacity.hyperlink_bytes =
                     grow(u32::from(capacity.hyperlink_bytes), u32::from(u16::MAX))? as u16;
                 changed = true;
@@ -526,7 +532,7 @@ fn encode_page(rows: &[Row<'_>], page: &Page) -> io::Result<Vec<u8>> {
     u16_bytes(&mut out, styles.len())?;
     u16_bytes(&mut out, links.len())?;
     u16_bytes(&mut out, usize::from(capacity.styles))?;
-    u16_bytes(&mut out, usize::from(capacity.hyperlink_bytes))?;
+    u16_bytes(&mut out, usize::from(hyperlink_capacity_hint(capacity)))?;
     u32_bytes(&mut out, capacity.grapheme_bytes as usize)?;
     u32_bytes(&mut out, capacity.string_bytes as usize)?;
     for (id, value) in styles {
@@ -1478,11 +1484,14 @@ impl<R: Read> Decoder<R> {
         let rows = usize::from(r.u16()?);
         let style_count = r.u16()?;
         let link_count = r.u16()?;
+        let style_capacity = r.u16()?;
+        let hyperlink_bytes = r.u16()?;
         let capacity = PageCapacity {
             cols: cols as u16,
             rows: rows as u16,
-            styles: r.u16()?,
-            hyperlink_bytes: r.u16()?,
+            styles: style_capacity,
+            hyperlink_bytes,
+            hyperlink_cells: hyperlink_cells_from_hint(hyperlink_bytes, cols as u16, rows as u16),
             grapheme_bytes: r.u32()?,
             string_bytes: r.u32()?,
         };
@@ -1897,3 +1906,7 @@ impl Default for ScreenMetadata {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "snapshot_hyperlink_tests.rs"]
+mod hyperlink_tests;

@@ -38,7 +38,10 @@ pub struct PageCapacity {
     pub cols: u16,
     pub rows: u16,
     pub styles: u16,
+    /// Bytes requested for distinct hyperlink values.
     pub hyperlink_bytes: u16,
+    /// Linked cells requested independently of the distinct-value set.
+    pub hyperlink_cells: u16,
     pub grapheme_bytes: u32,
     pub string_bytes: u32,
 }
@@ -50,6 +53,7 @@ impl Default for PageCapacity {
             rows: 0,
             styles: 16,
             hyperlink_bytes: 4 * HYPERLINK_ITEM_SIZE as u16,
+            hyperlink_cells: 64,
             grapheme_bytes: 64 * 16,
             string_bytes: 64 * 32,
         }
@@ -64,6 +68,7 @@ impl PageCapacity {
         rows: 215,
         styles: 128,
         hyperlink_bytes: 192,
+        hyperlink_cells: 64,
         grapheme_bytes: 8192,
         string_bytes: 2048,
     };
@@ -172,7 +177,7 @@ impl PageCapacity {
         let hyperlink_set_layout = set_layout(hyperlink_count, HYPERLINK_ITEM_SIZE, 8)?;
         let hyperlink_set_start =
             align(add(string_alloc_start, string_alloc_layout.total_size)?, 8)?;
-        let hyperlink_map_layout = map_layout(mul(hyperlink_count, 16)?, 2, 2, 80)?;
+        let hyperlink_map_layout = map_layout(usize::from(self.hyperlink_cells), 2, 2, 80)?;
         let hyperlink_map_start = align(
             add(hyperlink_set_start, hyperlink_set_layout.total_size)?,
             4,
@@ -363,6 +368,7 @@ mod tests {
             rows: 1,
             styles: 0,
             hyperlink_bytes: 0,
+            hyperlink_cells: 0,
             grapheme_bytes: 0,
             string_bytes: 0,
         };
@@ -522,6 +528,7 @@ mod tests {
                 rows: 4,
                 styles: 0,
                 hyperlink_bytes: 0,
+                hyperlink_cells: 0,
                 grapheme_bytes: 0,
                 string_bytes: 0,
             },
@@ -552,3 +559,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "page_layout_hyperlink_tests.rs"]
+mod hyperlink_tests;

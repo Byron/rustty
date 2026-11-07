@@ -65,21 +65,25 @@ def native_hash(identifier, uri):
 def requests(reference):
     templates = {}
 
-    def case(name, entries, references, table=192, strings=2048, columns=80, raw=None):
-        if columns not in templates:
-            encoded = reference.request({"id": f"link/source/{columns}", "cols": columns, "rows": 1,
+    def case(name, entries, references, table=192, strings=2048, columns=80, rows=1, raw=None):
+        key = (columns, rows)
+        if key not in templates:
+            source = str(columns) if rows == 1 else f"{columns}x{rows}"
+            encoded = reference.request({"id": f"link/source/{source}", "cols": columns, "rows": rows,
                                          "operations": [{"op": "snapshot"}]})
             if not encoded["ok"] or len(encoded["snapshots"]) != 1:
                 raise RuntimeError("native hyperlink resource source failed")
-            templates[columns] = snapshots.records(bytes.fromhex(encoded["snapshots"][0]))
-        page = bytearray(struct.pack("<HHHHHHII", columns, 1, 0, len(entries), 0, table, 0, strings))
+            templates[key] = snapshots.records(bytes.fromhex(encoded["snapshots"][0]))
+        page = bytearray(struct.pack("<HHHHHHII", columns, rows, 0, len(entries), 0, table, 0, strings))
         page += b"".join(encode_link(entry) for entry in entries) if raw is None else raw
-        page += struct.pack("<BH", 3 << 4, columns)
-        for index in range(columns):
-            wire = references[index] if index < len(references) else 0
-            page += struct.pack("<Q", (ord("A") << 2) | (wire << 48))
+        for row in range(rows):
+            page += struct.pack("<BH", 3 << 4, columns)
+            for col in range(columns):
+                index = row * columns + col
+                wire = references[index] if index < len(references) else 0
+                page += struct.pack("<Q", (ord("A") << 2) | (wire << 48))
         page += struct.pack("<I", 0)
-        parts = [(tag, page if tag == 3 else data) for tag, data in templates[columns]]
+        parts = [(tag, page if tag == 3 else data) for tag, data in templates[key]]
         return ({"id": "snapshot/resources/hyperlinks/" + name,
                  "operations": [{"op": "restore", "data": snapshots.frame(parts).hex()}, {"op": "observe"}]},
                 ["snapshot.cross-decode", "terminal.cells"])
@@ -103,6 +107,13 @@ def requests(reference):
         yield case(f"cell-map/{table}", [link(1)], [1] * 512, table=table, columns=512)
         yield case(f"cell-map-sparse/{table}", [link(1)], [0, 1, 999, 1] * 128,
                    table=table, columns=512)
+
+    # The old single hint could request at most 21840 map entries, whose
+    # rounded table holds 26214 cells. Saturated hints now cover the whole
+    # page, so 30000 links distinguish that decoder from the old layout.
+    for table in (65519, 65520, 65535):
+        yield case(f"cell-map-saturated/{table}", [link(1)], [1] * 30000,
+                   table=table, columns=200, rows=150)
 
     for name, entries, references in (
         ("duplicate-value", [link(1), link(2), link(3)], [1, 2, 3]),
