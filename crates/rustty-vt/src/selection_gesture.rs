@@ -198,19 +198,21 @@ impl SelectionGesture {
                 })
             }
             Behavior::Line => {
-                let line = screen.select_line(drag.point, SelectLine::default())?;
-                let mut start =
+                let select_line = |point| {
                     screen
-                        .select_line(anchor, SelectLine::default())
+                        .select_line(point, SelectLine::default())
                         .or_else(|| {
                             screen.select_line(
-                                anchor,
+                                point,
                                 SelectLine {
                                     whitespace: None,
                                     ..SelectLine::default()
                                 },
                             )
-                        })?;
+                        })
+                };
+                let line = select_line(drag.point)?;
+                let mut start = select_line(anchor)?;
                 if before(screen, drag.point, anchor)? {
                     start.start = line.start;
                 } else {
@@ -554,6 +556,36 @@ mod tests {
         assert!(gesture.dragged());
         assert!(!gesture.has_anchor());
         assert_eq!(gesture.drag(&terminal, drag(blank, 20.0, 0.0)), None);
+    }
+
+    #[test]
+    fn triple_click_drag_keeps_blank_lines_in_both_directions() {
+        for anchor_row in [0, 2] {
+            let mut terminal = Terminal::new(20, 5, 100);
+            terminal.feed(b"alpha beta\r\n\r\nthird");
+            let anchor = terminal.screen().point(anchor_row, 1).unwrap();
+            let blank = terminal.screen().point(1, 2).unwrap();
+            let mut gesture = SelectionGesture::default();
+            for _ in 0..3 {
+                gesture.press(&mut terminal, press(anchor));
+            }
+            let selection = gesture.drag(&terminal, drag(blank, 20.0, 50.0)).unwrap();
+            let (start, end) = if anchor_row == 0 {
+                ((0, 0), (1, 19))
+            } else {
+                ((1, 0), (2, 4))
+            };
+            assert_eq!(
+                selection.start,
+                terminal.screen().point(start.0, start.1).unwrap()
+            );
+            assert_eq!(
+                selection.end,
+                terminal.screen().point(end.0, end.1).unwrap()
+            );
+            assert!(!selection.rectangular);
+            gesture.deinit(&mut terminal);
+        }
     }
 
     #[test]

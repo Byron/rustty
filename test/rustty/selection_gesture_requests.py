@@ -17,6 +17,9 @@ def requests():
 
     text = b'alpha beta\r\n\r\nword.two_more\r\nwide\xe6\x96\x87x\r\nlast'
     observe = {'op': 'grid', 'grid': {'action': 'observe'}}
+    yield case('line/blank-drag', [b'first\r\n\r\nthird',
+               grid('press', 1, 0, time=0, behaviors=['line'] * 3),
+               grid('drag', 0, 1), grid('release', 0, 1)])
     for rectangle, click, drag, target in itertools.product(
             (False, True), (0, 5, 6, 9), (0, 5, 6, 9),
             ((1, 1), (0, 1), (2, 1), (1, 0), (1, 2), (0, 0), (4, 4), (0, 4))):
