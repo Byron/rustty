@@ -207,18 +207,22 @@ fn eof_and_protocol_failure_make_pending_mutations_indeterminate() {
 
 #[test]
 fn exit_is_forwarded_and_does_not_retry_requests() {
-    let mut client = Client::default();
-    client.submit(8, &[command()], b"eight").unwrap();
-    assert_eq!(
-        client.feed(b"%exit lost session\n").unwrap(),
-        [
-            ClientEvent::Protocol(Event::Notification(Notification::Exit {
-                reason: Some(b"lost session".to_vec())
-            })),
-            ClientEvent::Indeterminate { request_id: 8 },
-        ]
-    );
-    assert!(client.state.disconnected);
+    for (input, reason) in [
+        (b"%exit\n".as_slice(), None),
+        (b"%exit \n", None),
+        (b"%exit lost session\n", Some(b"lost session".to_vec())),
+    ] {
+        let mut client = Client::default();
+        client.submit(8, &[command()], b"eight").unwrap();
+        assert_eq!(
+            client.feed(input).unwrap(),
+            [
+                ClientEvent::Protocol(Event::Notification(Notification::Exit { reason })),
+                ClientEvent::Indeterminate { request_id: 8 },
+            ]
+        );
+        assert!(client.state.disconnected);
+    }
 }
 
 #[test]
@@ -289,6 +293,37 @@ fn closing_one_link_does_not_delete_shared_window_or_panes() {
         .unwrap();
     assert!(!client.state.windows.contains_key(&10));
     assert!(!client.state.panes.contains_key(&4));
+}
+
+#[test]
+fn active_window_changes_only_update_the_named_session() {
+    let mut discovery = Discovery::default();
+    for session in [b"$1".as_slice(), b"$2"] {
+        discovery
+            .add_line(DiscoveryKind::Sessions, session)
+            .unwrap();
+    }
+    for window in [
+        b"$1|@10|0|1|layout|visible|*".as_slice(),
+        b"$1|@11|1|0|layout|visible|-",
+        b"$2|@10|3|1|layout|visible|*",
+        b"$2|@11|7|0|layout|visible|-",
+    ] {
+        discovery.add_line(DiscoveryKind::Windows, window).unwrap();
+    }
+    let mut client = Client::default();
+    client
+        .state
+        .reconcile(0, discovery.finish().unwrap())
+        .unwrap();
+    client
+        .feed(b"%session-changed $1 primary\n%session-window-changed $2 @11\n")
+        .unwrap();
+    assert_eq!(client.state.attached_session, Some(1));
+    assert_eq!(client.state.sessions[&1].active_window, Some(10));
+    assert_eq!(client.state.sessions[&1].active_index, Some(0));
+    assert_eq!(client.state.sessions[&2].active_window, Some(11));
+    assert_eq!(client.state.sessions[&2].active_index, Some(7));
 }
 
 #[test]

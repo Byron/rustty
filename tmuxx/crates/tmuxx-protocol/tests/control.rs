@@ -112,6 +112,62 @@ fn extended_output_ignores_future_header_fields() {
 }
 
 #[test]
+fn empty_output_and_exit_allow_an_omitted_or_empty_body() {
+    let transcript = b"%output %3\n%output %3 \n%exit\n%exit \n";
+    let output = Event::Notification(Notification::Output {
+        pane_id: 3,
+        data: vec![],
+        age_ms: None,
+    });
+    let exit = Event::Notification(Notification::Exit { reason: None });
+    let expected = [output.clone(), output, exit.clone(), exit];
+    for chunk in 1..=transcript.len() {
+        assert_eq!(decode_chunks(transcript, chunk), expected, "chunk {chunk}");
+    }
+}
+
+#[test]
+fn notification_ids_accept_u64_max_and_reject_overflow() {
+    let transcript = b"%output %18446744073709551615 data\n%window-close @18446744073709551615\n%session-window-changed $18446744073709551615 @18446744073709551615\n";
+    let expected = [
+        Event::Notification(Notification::Output {
+            pane_id: u64::MAX,
+            data: b"data".to_vec(),
+            age_ms: None,
+        }),
+        Event::Notification(Notification::WindowClose {
+            window_id: u64::MAX,
+            linked: true,
+        }),
+        Event::Notification(Notification::SessionWindowChanged {
+            session_id: u64::MAX,
+            window_id: u64::MAX,
+        }),
+    ];
+    for chunk in 1..=transcript.len() {
+        assert_eq!(decode_chunks(transcript, chunk), expected, "chunk {chunk}");
+    }
+    for input in [
+        b"%output %18446744073709551616 data\n".as_slice(),
+        b"%window-close @18446744073709551616\n",
+        b"%session-changed $18446744073709551616 name\n",
+        b"%session-window-changed $18446744073709551616 @0\n",
+        b"%session-window-changed $0 @18446744073709551616\n",
+    ] {
+        for chunk in 1..=input.len() {
+            let mut decoder = Decoder::default();
+            let result = input.chunks(chunk).try_for_each(|bytes| {
+                decoder.feed_into(bytes, |_| panic!("overflow emitted an event"))
+            });
+            assert!(
+                matches!(result, Err(DecodeError::InvalidNotification(_))),
+                "input {input:?}, chunk {chunk}: {result:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn known_notifications_preserve_names_and_unknown_records() {
     let transcript = b"%session-changed $4 two words\n%session-renamed $4 a  b\n%session-renamed old name\n%layout-change @2 legacy visible *\n%window-add @2\n%unlinked-window-add @3\n%window-close @2\n%unlinked-window-close @3\n%window-renamed @3 raw\xff name\n%unlinked-window-renamed @4 other\n%window-pane-changed @3 %8\n%session-window-changed $4 @3\n%pane-mode-changed %8\n%pause %8\n%continue %8\n%client-detached /dev/pts/1\n%client-session-changed /dev/pts/2 $4 my session\n%paste-buffer-changed 0\n%paste-buffer-deleted 0\n%config-error trouble\n%message hi\n%subscription-changed sub $4 @3 0 %8 future : a:b\n%future-event \xff  \n";
     use Notification::*;
