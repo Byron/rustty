@@ -358,6 +358,7 @@ pub fn search_shortcut(action: &config::Action) -> bool {
             | TogglePin
             | GotoPin(_)
             | Themes
+            | SetWindowTheme(_)
             | StreamDeck(_)
             | NextTab
             | PreviousTab
@@ -1865,6 +1866,14 @@ mod tests {
         )));
         assert!(search_shortcut(&config::Action::ToggleOutliner));
         assert!(search_shortcut(&config::Action::TogglePin));
+        for theme in [
+            None,
+            Some(config::WindowTheme::System),
+            Some(config::WindowTheme::Light),
+            Some(config::WindowTheme::Dark),
+        ] {
+            assert!(search_shortcut(&config::Action::SetWindowTheme(theme)));
+        }
         assert!(search_shortcut(&config::Action::GotoPin(1)));
     }
 

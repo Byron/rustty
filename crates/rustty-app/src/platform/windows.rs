@@ -1,5 +1,6 @@
 //! Windows 11 desktop integration. All HWND/COM ownership stays on the event thread.
 use ::windows::{
+    Foundation::TypedEventHandler,
     UI::ViewManagement::{UIColorType, UISettings},
     Win32::{
         Foundation::*,
@@ -50,6 +51,7 @@ pub const TOAST_ACTIVATOR_CLSID: &str = "{9CB270BB-CC8F-4C71-ACF2-4D632A9A7E26}"
 pub enum PlatformEvent {
     Action(Action),
     DumpSessions,
+    AppearanceChanged,
     Tmuxx(crate::tmuxx_menu::Command),
     GlobalHotkey(KeyBinding),
     NotificationClicked(u64),
@@ -83,7 +85,32 @@ pub struct Platform {
     windows: RefCell<HashMap<WindowId, (isize, bool)>>,
     selection: RefCell<Vec<clipboard::Content>>,
     badge: RefCell<usize>,
+    _appearance: AppearanceObserver,
     _runtime: Runtime,
+}
+
+// Winit suppresses ThemeChanged for explicit window themes; observe the OS independently.
+struct AppearanceObserver {
+    settings: UISettings,
+    token: i64,
+}
+impl AppearanceObserver {
+    fn new(callback: EventSink) -> Result<Self, String> {
+        let settings = UISettings::new().map_err(err)?;
+        let token = settings
+            .ColorValuesChanged(&TypedEventHandler::new(move |_, _| {
+                // WinRT may call from another thread; only enqueue work for the event loop.
+                callback(PlatformEvent::AppearanceChanged);
+                Ok(())
+            }))
+            .map_err(err)?;
+        Ok(Self { settings, token })
+    }
+}
+impl Drop for AppearanceObserver {
+    fn drop(&mut self) {
+        let _ = self.settings.RemoveColorValuesChanged(self.token);
+    }
 }
 
 // This field is declared last so COM-dependent fields are dropped first.
@@ -165,7 +192,8 @@ impl Platform {
         let mut platform = Self {
             menu: menu::NativeMenu::new(callback.clone())?,
             keys: keys::GlobalKeys::new(callback.clone())?,
-            notifications: notifications::Notifications::new(callback)?,
+            notifications: notifications::Notifications::new(callback.clone())?,
+            _appearance: AppearanceObserver::new(callback)?,
             quick: RefCell::default(),
             windows: RefCell::default(),
             selection: RefCell::default(),
@@ -272,6 +300,14 @@ impl Platform {
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
             )
             .map_err(err)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_window_theme(&self, window: &Window, theme: Theme) -> Result<(), String> {
+        window.set_theme(Some(theme));
+        if let Some((native, false)) = self.windows.borrow().get(&window.id()) {
+            self.menu.set_theme(HWND(*native as *mut _), theme)?;
         }
         Ok(())
     }

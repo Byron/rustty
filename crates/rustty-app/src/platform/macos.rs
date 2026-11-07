@@ -28,15 +28,16 @@ use objc2::{
     sel,
 };
 use objc2_app_kit::{
-    NSAccessibility, NSAnimatablePropertyContainer, NSAnimationContext, NSApplication,
-    NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent, NSEventModifierFlags,
-    NSEventType, NSFloatingWindowLevel, NSImage, NSMenu, NSModalResponseCancel, NSModalResponseOK,
-    NSOpenPanel, NSPasteboard, NSPasteboardAccessBehavior, NSPasteboardItem,
-    NSPasteboardTypeString, NSPopUpMenuWindowLevel, NSRunningApplication, NSScreen,
-    NSUserInterfaceItemIdentification, NSView, NSWindow, NSWindowAnimationBehavior, NSWindowButton,
-    NSWindowCollectionBehavior, NSWindowStyleMask, NSWindowTabbingMode, NSWindowTitleVisibility,
-    NSWorkspace, NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
-    NSWorkspaceScreensDidWakeNotification, NSWorkspaceWillSleepNotification,
+    NSAccessibility, NSAnimatablePropertyContainer, NSAnimationContext, NSAppearance,
+    NSApplication, NSApplicationActivationOptions, NSColor, NSColorSpace, NSEvent,
+    NSEventModifierFlags, NSEventType, NSFloatingWindowLevel, NSImage, NSMenu,
+    NSModalResponseCancel, NSModalResponseOK, NSOpenPanel, NSPasteboard,
+    NSPasteboardAccessBehavior, NSPasteboardItem, NSPasteboardTypeString, NSPopUpMenuWindowLevel,
+    NSRunningApplication, NSScreen, NSUserInterfaceItemIdentification, NSView, NSWindow,
+    NSWindowAnimationBehavior, NSWindowButton, NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSWindowTabbingMode, NSWindowTitleVisibility, NSWorkspace, NSWorkspaceDidWakeNotification,
+    NSWorkspaceScreensDidSleepNotification, NSWorkspaceScreensDidWakeNotification,
+    NSWorkspaceWillSleepNotification,
 };
 use objc2_core_foundation::CFString;
 use objc2_core_graphics::{
@@ -46,7 +47,7 @@ use objc2_foundation::{
     NSArray, NSBundle, NSCopying, NSData, NSDistributedNotificationCenter, NSError, NSNotification,
     NSNotificationSuspensionBehavior, NSNumber, NSObject, NSObjectProtocol, NSPoint, NSPointInRect,
     NSRect, NSSize, NSString, NSURL, NSURLComponents, NSURLContentTypeKey, NSURLIsDirectoryKey,
-    NSURLIsExecutableKey, NSURLIsRegularFileKey, NSUnionRect,
+    NSURLIsExecutableKey, NSURLIsRegularFileKey, NSUnionRect, NSUserDefaults,
 };
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNMutableNotificationContent, UNNotification,
@@ -80,6 +81,7 @@ pub enum PlatformEvent {
         alive: Vec<u64>,
     },
     ScreensAwake(bool),
+    AppearanceChanged,
     GlobalHotkey {
         id: u32,
         key_code: u16,
@@ -114,6 +116,7 @@ pub struct Platform {
     tui_notifications: Arc<tui_notifications::State>,
     _notification_delegate: Retained<NotificationDelegate>,
     power_observers: Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
+    appearance_observer: Retained<ProtocolObject<dyn NSObjectProtocol>>,
     wake_assertion: Cell<u32>,
     previous_quick_app: RefCell<Option<Retained<NSRunningApplication>>>,
     quick_animations: RefCell<HashMap<WindowId, Rc<RefCell<QuickAnimation>>>>,
@@ -271,19 +274,29 @@ impl Platform {
         ))
     }
 
-    /// Read application appearance after Winit has initialized NSApplication.
+    /// Read the OS preference independently of our application/window overrides.
     pub fn system_theme() -> Option<Theme> {
-        let app = NSApplication::sharedApplication(MainThreadMarker::new()?);
-        let light = NSString::from_str("NSAppearanceNameAqua");
-        let dark = NSString::from_str("NSAppearanceNameDarkAqua");
-        let appearance = app
-            .effectiveAppearance()
-            .bestMatchFromAppearancesWithNames(&NSArray::from_slice(&[&*light, &*dark]))?;
-        Some(if *appearance == *dark {
+        let style = NSUserDefaults::standardUserDefaults()
+            .stringForKey(&NSString::from_str("AppleInterfaceStyle"));
+        Some(if style.is_some_and(|style| style.to_string() == "Dark") {
             Theme::Dark
         } else {
             Theme::Light
         })
+    }
+
+    pub fn set_application_theme(&self, theme: Theme) {
+        let name = NSString::from_str(match theme {
+            Theme::Light => "NSAppearanceNameAqua",
+            Theme::Dark => "NSAppearanceNameDarkAqua",
+        });
+        NSApplication::sharedApplication(self.mtm)
+            .setAppearance(NSAppearance::appearanceNamed(&name).as_deref());
+    }
+
+    pub fn set_window_theme(&self, window: &Window, theme: Theme) -> Result<(), String> {
+        window.set_theme(Some(theme));
+        Ok(())
     }
 
     pub fn new(callback: EventSink, config: &Config) -> Result<Self, String> {
@@ -370,6 +383,23 @@ impl Platform {
         if let Some(awake) = Self::screens_awake() {
             callback(PlatformEvent::ScreensAwake(awake));
         }
+        // Winit suppresses appearance events for windows with an explicit theme.
+        let sink = callback.clone();
+        let block = RcBlock::new(move |_: NonNull<NSNotification>| {
+            sink(PlatformEvent::AppearanceChanged);
+        });
+        // SAFETY: the block only queues an event; the retained token is removed on Drop.
+        let appearance_observer = unsafe {
+            NSDistributedNotificationCenter::defaultCenter()
+                .addObserverForName_object_queue_usingBlock(
+                    Some(&NSString::from_str(
+                        "AppleInterfaceThemeChangedNotification",
+                    )),
+                    None,
+                    None,
+                    &block,
+                )
+        };
         let mut platform = Self {
             mtm,
             menu,
@@ -384,6 +414,7 @@ impl Platform {
             tui_notifications,
             _notification_delegate: delegate,
             power_observers,
+            appearance_observer,
             wake_assertion: Cell::new(0),
             previous_quick_app: RefCell::new(None),
             quick_animations: RefCell::new(HashMap::new()),
@@ -1012,6 +1043,11 @@ impl Drop for Platform {
         for observer in self.power_observers.drain(..) {
             // SAFETY: tokens came from this center and are still retained until removal completes.
             unsafe { center.removeObserver((*observer).as_ref()) };
+        }
+        // SAFETY: the token belongs to this center and remains retained during removal.
+        unsafe {
+            NSDistributedNotificationCenter::defaultCenter()
+                .removeObserver((*self.appearance_observer).as_ref());
         }
         let identifiers: Vec<_> = self
             .notification_state

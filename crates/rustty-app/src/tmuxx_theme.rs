@@ -17,7 +17,9 @@ impl App {
             .map(ToString::to_string)
             .collect::<HashSet<_>>();
         for name in names {
-            let loaded = self.config_loader.load_with_theme(&self.config_args, &name);
+            let loaded = self
+                .appearance
+                .load(&self.config_loader, &self.config_args, Some(&name));
             let errors = loaded
                 .diagnostics
                 .iter()
@@ -108,9 +110,10 @@ impl App {
             let config = window
                 .and_then(|window| configs.get(&window))
                 .unwrap_or_else(|| self.config());
-            let scheme = window.map_or(color_scheme(self.config_loader.dark_mode), |window| {
-                self.window_color_scheme(window)
-            });
+            let scheme = window.map_or(
+                color_scheme(self.appearance.theme(self.config()) == Theme::Dark),
+                |window| self.window_color_scheme(window),
+            );
             // The reload report must use the newly resolved theme, before host-state sync.
             let result = pane
                 .session
@@ -124,12 +127,7 @@ impl App {
     }
 
     pub(super) fn window_color_scheme(&self, window: Id) -> vt::query::ColorScheme {
-        color_scheme(if self.tmuxx_theme(window).is_some() {
-            window_ui_theme(self.window_config(window), self.config_loader.dark_mode)
-                == egui::Theme::Dark
-        } else {
-            self.config_loader.dark_mode
-        })
+        color_scheme(self.appearance.theme(self.window_config(window)) == Theme::Dark)
     }
 
     pub(super) fn sync_tmuxx_themes(&mut self) {
@@ -172,22 +170,14 @@ impl App {
                 Ok(fonts) => host.fonts = fonts,
                 Err(error) => self.errors.push(error.to_string()),
             }
+            if let Some(platform) = &self.platform
+                && let Err(error) =
+                    platform.set_window_theme(&host.window, self.appearance.theme(&config))
+            {
+                self.errors.push(error);
+            }
             host.repaint();
             self.windows.insert(native, host);
-        }
-    }
-}
-
-pub(super) fn window_ui_theme(config: &Config, system_dark: bool) -> egui::Theme {
-    match ui_theme(config) {
-        egui::ThemePreference::Dark => egui::Theme::Dark,
-        egui::ThemePreference::Light => egui::Theme::Light,
-        egui::ThemePreference::System => {
-            if system_dark {
-                egui::Theme::Dark
-            } else {
-                egui::Theme::Light
-            }
         }
     }
 }

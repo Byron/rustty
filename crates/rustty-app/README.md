@@ -351,9 +351,10 @@ Configuration diagnostics appear in the app. The native menu provides reload and
 open-configuration actions. Settings opens the selected configuration file,
 including Ghostty's file while using fallback, so opening it does not create an
 empty Rustty override. Settings always uses the default text editor, including
-for existing files with an unregistered extension. Light/dark theme pairs follow macOS appearance, and
-reload keeps the original command-line overrides. Terminal appearance and visibility
-queries reflect the OS scheme and whether the pane is currently shown.
+for existing files with an unregistered extension. Light/dark theme pairs follow the
+resolved window appearance, and reload keeps the original command-line overrides.
+Terminal appearance and visibility queries reflect that scheme and whether the
+pane is currently shown.
 `title-report = true` enables CSI 21 t replies with the terminal title; it is
 disabled by default and follows configuration reloads.
 New terminals default to `grapheme-width-method = unicode`, matching Ghostty's
@@ -365,6 +366,14 @@ escape sequences. It works when terminal keyboard input is disabled. The child
 process keeps running; its own input settings or subsequent output can still
 require recovery within that application. Press Enter if the shell needs to
 redraw its prompt.
+
+The command palette's **Switch to Configured/System/Light/Dark Appearance** actions
+set the appearance for this session across current and new windows, native chrome,
+menus and light/dark terminal theme pairs. Bind them with
+`set_window_theme:config|system|light|dark`. The override survives configuration
+reloads without writing files. `config` clears it and restores the latest
+`window-theme` setting; `system` follows the OS even when configuration forces a
+light or dark appearance.
 
 Choose **Themes…** in the command palette to search user themes followed by
 bundled themes. Arrow keys or moving the pointer over a theme preview its
@@ -748,6 +757,8 @@ frames. `animation-*.png` captures show each transition at one quarter, midpoint
 and three quarters, including distinct panel labels during nested zooms.
 Theme checks capture `theme-picker.png` and verify preview, cancellation,
 acceptance, reload and unchanged configuration files using isolated themes.
+They also dispatch session appearance actions and verify terminal palettes, color
+reports, native chrome, new-window inheritance, reload survival and config reset.
 
 Use `RUSTTY_SMOKE_OFFSCREEN=1` while working on the same desktop, or on a locked
 or headless Mac. It renders the same host primitives into Metal textures while

@@ -171,6 +171,14 @@ impl NativeMenu {
         }
         Ok(())
     }
+    pub fn set_theme(&self, hwnd: HWND, theme: winit::window::Theme) -> Result<(), String> {
+        let theme = match theme {
+            winit::window::Theme::Light => muda::MenuTheme::Light,
+            winit::window::Theme::Dark => muda::MenuTheme::Dark,
+        };
+        // SAFETY: this menu is attached to the live window tracked by Platform.
+        unsafe { self.menu.set_theme_for_hwnd(hwnd.0 as isize, theme) }.map_err(err)
+    }
     pub fn detach(&self, hwnd: HWND) {
         paint::detach(hwnd);
         let _ = unsafe { self.menu.remove_for_hwnd(hwnd.0 as isize) };

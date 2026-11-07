@@ -4,6 +4,27 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn window_theme_actions_accept_session_overrides_and_config_reset() {
+    for (value, theme) in [
+        ("config", None),
+        ("system", Some(WindowTheme::System)),
+        ("light", Some(WindowTheme::Light)),
+        ("dark", Some(WindowTheme::Dark)),
+    ] {
+        let binding = KeyBinding::parse(&format!("ctrl+l=set_window_theme:{value}")).unwrap();
+        assert_eq!(binding.actions, [Action::SetWindowTheme(theme)]);
+    }
+    for invalid in [
+        "set_window_theme",
+        "set_window_theme:",
+        "set_window_theme:auto",
+        "set_window_theme:dark:light",
+    ] {
+        assert!(Action::parse(invalid).is_err(), "{invalid}");
+    }
+}
+
+#[test]
 fn direct_commands_skip_repeated_spaces_and_keep_literal_tabs() {
     let home = TestHome::new();
     home.own(

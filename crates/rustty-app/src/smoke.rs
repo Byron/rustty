@@ -587,6 +587,9 @@ impl Smoke {
                     "theme-cancel",
                     "theme-accept",
                     "theme-reload",
+                    "window-appearance-actions",
+                    "window-appearance-new-window",
+                    "window-appearance-reload-reset",
                     "tmuxx-theme-scope",
                     "tmuxx-theme-picker",
                     "tmuxx-server-management",
@@ -2411,6 +2414,9 @@ fn check_themes(
     let original_tmuxx_themes = std::mem::take(&mut app.tmuxx_themes);
     let original_errors = std::mem::take(&mut app.errors);
     let original_palette = std::mem::take(&mut host.palette);
+    let original_override = app.appearance.override_;
+    let original_active = app.active;
+    let mut appearance_window = None;
     let original_focus = host.focused;
     let original_text_focus = host.focus_text_input;
     host.focused = true;
@@ -2520,6 +2526,7 @@ fn check_themes(
         other.tabs = app.workspace.windows[index].tabs.split_off(1);
         other.active_tab = 0;
         app.workspace.windows[index].active_tab = 0;
+        let other_id = other.id;
         app.workspace.windows.push(other);
         let mut attachment =
             tmuxx_host::Attachment::new(tmuxx_host::Source::Ssh("windows".into()), None, false);
@@ -2637,6 +2644,84 @@ fn check_themes(
         fs::write(&files[0].0, files[0].1)?;
         app.reload_config(Some(host));
         colors(app, [0x11, 0x22, 0x33], [0xaa, 0xbb, 0xcc])?;
+
+        let paired = "theme = light:Bundled,dark:Saved\nwindow-theme = dark\nstream-deck = false\nfont-size = 13\n";
+        fs::write(&files[0].0, paired)?;
+        let appearance = |app: &App, host: &Host, expected: Theme| -> Result<()> {
+            let dark = expected == Theme::Dark;
+            let background = if dark {
+                [0x11, 0x22, 0x33]
+            } else {
+                [0x77, 0x88, 0x99]
+            };
+            for pane in app.panes.values() {
+                let terminal = pane.session.terminal()?;
+                if terminal.background != background
+                    || terminal.query_defaults.color_scheme != Some(color_scheme(dark))
+                {
+                    return Err(
+                        "window appearance missed a pane's palette or color-scheme reply".into(),
+                    );
+                }
+            }
+            for window in std::iter::once(host).chain(app.windows.values()) {
+                if window.window.theme() != Some(expected)
+                    || app.window_color_scheme(window.id) != color_scheme(dark)
+                {
+                    return Err(
+                        "window appearance missed native chrome or window color reports".into(),
+                    );
+                }
+            }
+            let ui = if dark {
+                egui::ThemePreference::Dark
+            } else {
+                egui::ThemePreference::Light
+            };
+            if app.context.options(|options| options.theme_preference) != ui {
+                return Err("window appearance missed the shared egui theme".into());
+            }
+            Ok(())
+        };
+        app.action(
+            event_loop,
+            host,
+            Action::SetWindowTheme(Some(config::WindowTheme::Dark)),
+            false,
+        );
+        appearance(app, host, Theme::Dark)?;
+        app.open_window(event_loop, other_id)?;
+        appearance_window = app
+            .windows
+            .iter()
+            .find_map(|(native, window)| (window.id == other_id).then_some(*native));
+        if appearance_window.is_none() {
+            return Err("appearance check did not create its second native window".into());
+        }
+        appearance(app, host, Theme::Dark)?;
+        app.action(
+            event_loop,
+            host,
+            Action::SetWindowTheme(Some(config::WindowTheme::Light)),
+            false,
+        );
+        appearance(app, host, Theme::Light)?;
+        app.action(event_loop, host, Action::ReloadConfig, false);
+        appearance(app, host, Theme::Light)?;
+        app.action(event_loop, host, Action::SetWindowTheme(None), false);
+        appearance(app, host, Theme::Dark)?;
+        app.action(
+            event_loop,
+            host,
+            Action::SetWindowTheme(Some(config::WindowTheme::System)),
+            false,
+        );
+        appearance(app, host, app.appearance.system)?;
+        if fs::read_to_string(&files[0].0)? != paired {
+            return Err("window appearance actions changed the saved configuration".into());
+        }
+        fs::write(&files[0].0, files[0].1)?;
+        app.action(event_loop, host, Action::SetWindowTheme(None), false);
         for (path, source) in &files {
             if fs::read_to_string(path)? != *source {
                 return Err("theme selection changed a configuration or theme file".into());
@@ -2645,6 +2730,24 @@ fn check_themes(
         Ok(())
     })();
     app.cancel_theme_preview(Some(host));
+    if let Some(native) = appearance_window
+        && let Some(window) = app.windows.remove(&native)
+    {
+        if let Some(platform) = &app.platform {
+            platform.forget_window(&window.window);
+        }
+        let remaining = app
+            .windows
+            .values()
+            .map(|host| host.viewport)
+            .chain(app.outliner.iter().map(|host| host.viewport))
+            .chain(std::iter::once(host.viewport))
+            .collect();
+        app.painter
+            .remove_window(window.viewport, window.id, &remaining);
+    }
+    app.appearance.override_ = original_override;
+    app.active = original_active;
     app.config_loader = original_loader;
     app.config_args = original_args;
     app.workspace = original_workspace;
@@ -2671,7 +2774,7 @@ fn check_themes(
         .push(egui::Event::WindowFocused(original_focus));
     result?;
     eprintln!(
-        "Native smoke: global and connection themes previewed, cancelled, accepted with scoped hints, and reloaded with window isolation and saved-setting preservation"
+        "Native smoke: global/connection themes and session window appearance actions passed with palette/report/native propagation, new-window inheritance, reload/reset and saved-setting preservation"
     );
     Ok(())
 }

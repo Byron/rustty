@@ -29,6 +29,8 @@ mod tmuxx_host;
 mod tmuxx_theme;
 #[path = "notification_controller.rs"]
 mod tui_notifications;
+#[path = "window_appearance.rs"]
+mod window_appearance;
 use command_palette::{CommandPalette, PaletteEvent};
 use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
@@ -1466,6 +1468,7 @@ struct App {
     config_loader: config::ConfigLoader,
     config_args: Vec<String>,
     theme_preview: Option<ThemePreview>,
+    appearance: window_appearance::Appearance,
     tmuxx_themes: BTreeMap<String, Config>,
     workspace: Workspace,
     state_path: PathBuf,
@@ -1542,7 +1545,9 @@ pub fn run() -> Result<()> {
     let resources = resource_dir();
     let mut config_loader = config::ConfigLoader::from_env()?;
     config_loader.resources_dir = resources.clone().or(config_loader.resources_dir);
-    let mut loaded = load_config(&mut config_loader, &args, Platform::system_theme());
+    let appearance =
+        window_appearance::Appearance::new(Platform::system_theme().unwrap_or(Theme::Dark));
+    let mut loaded = appearance.load(&config_loader, &args, None);
     if show_config {
         println!(
             "Configuration: {:?}\nOwn settings: {}\nEdit settings: {}\nRenderer: {:?}",
@@ -1638,7 +1643,7 @@ pub fn run() -> Result<()> {
     };
     let proxy = event_loop.create_proxy();
     let context = egui::Context::default();
-    context.set_theme(ui_theme(&loaded.config));
+    context.set_theme(appearance.ui_theme(&loaded.config));
     configure_ui_fonts(&context);
     let repaint = proxy.clone();
     context.set_request_repaint_callback(move |info| {
@@ -1705,6 +1710,7 @@ pub fn run() -> Result<()> {
         config_loader,
         config_args: args,
         theme_preview: None,
+        appearance,
         tmuxx_themes: BTreeMap::new(),
         workspace,
         state_path,
@@ -2084,11 +2090,9 @@ impl App {
                     .map(move |pane| (pane, scheme))
             })
             .collect::<HashMap<_, _>>();
+        let default_scheme = color_scheme(self.appearance.theme(self.config()) == Theme::Dark);
         for (&id, pane) in &mut self.panes {
-            let scheme = schemes
-                .get(&id)
-                .copied()
-                .unwrap_or_else(|| color_scheme(self.config_loader.dark_mode));
+            let scheme = schemes.get(&id).copied().unwrap_or(default_scheme);
             let state = (visible.contains(&id), focused_panes.contains(&id), scheme);
             if pane.host_state.1 && !state.1 {
                 pane.reset_selection_gesture();
@@ -2239,9 +2243,10 @@ impl App {
                     .is_some_and(|tab| tab.focused == id)
         });
         let pane_window = self.pane_window(id);
-        let scheme = pane_window.map_or(color_scheme(self.config_loader.dark_mode), |window| {
-            self.window_color_scheme(window)
-        });
+        let scheme = pane_window.map_or(
+            color_scheme(self.appearance.theme(self.config()) == Theme::Dark),
+            |window| self.window_color_scheme(window),
+        );
         let host_state = (visible, focused, scheme);
         let startup = PaneStartup {
             directory: directory.clone(),
@@ -2553,6 +2558,7 @@ impl App {
         }
         if let Some(platform) = &self.platform {
             platform.configure_window(&window, quick, &config)?;
+            platform.set_window_theme(&window, self.appearance.theme(&config))?;
         }
         let viewport = ViewportId::from_hash_of(id);
         pollster::block_on(self.painter.set_window(viewport, window.clone()))?;
@@ -3272,7 +3278,11 @@ impl App {
                 self.proxy.clone(),
                 self.background_smoke,
             ) {
-                Ok(host) => self.outliner = Some(host),
+                Ok(host) => {
+                    host.window
+                        .set_theme(Some(self.appearance.theme(self.config())));
+                    self.outliner = Some(host);
+                }
                 Err(error) => {
                     self.errors.push(error.to_string());
                     return;
@@ -3562,7 +3572,7 @@ impl App {
             }
             WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Occluded(false) => host.repaint(),
             WindowEvent::ThemeChanged(theme) => {
-                self.update_system_theme(event_loop.system_theme().or(Some(*theme)), None);
+                self.update_system_theme(Platform::system_theme().or(Some(*theme)), None);
                 host.repaint();
             }
             WindowEvent::KeyboardInput {
@@ -4832,6 +4842,7 @@ impl App {
                     self.select_outline_target(target);
                 }
             }
+            Action::SetWindowTheme(theme) => self.set_window_theme(theme, Some(host)),
             Action::Themes => {
                 self.cancel_theme_preview(Some(host));
                 match self.config_loader.themes(self.loaded.family) {
@@ -5033,8 +5044,8 @@ impl App {
                 });
             }
             Action::ReloadConfig => {
-                if let Some(theme) = event_loop.system_theme() {
-                    self.config_loader.dark_mode = theme == Theme::Dark;
+                if let Some(theme) = Platform::system_theme() {
+                    self.appearance.system = theme;
                 }
                 self.reload_config(Some(host));
             }
@@ -5108,18 +5119,28 @@ impl App {
         self.changed();
         true
     }
+    fn set_window_theme(&mut self, theme: Option<config::WindowTheme>, host: Option<&mut Host>) {
+        self.appearance.override_ = theme;
+        if let Some(system) = Platform::system_theme() {
+            self.appearance.system = system;
+        }
+        self.reload_config(host);
+    }
+
     fn update_system_theme(&mut self, theme: Option<Theme>, host: Option<&mut Host>) {
         if let Some(theme) = theme
-            && self.config_loader.dark_mode != (theme == Theme::Dark)
+            && self.appearance.system != theme
         {
-            self.config_loader.dark_mode = theme == Theme::Dark;
+            self.appearance.system = theme;
             self.reload_config(host);
         }
     }
     fn reload_config(&mut self, mut host: Option<&mut Host>) {
         self.cancel_theme_preview(host.as_deref_mut());
         let previous_renderer = self.loaded.config.renderer;
-        self.loaded = load_config(&mut self.config_loader, &self.config_args, None);
+        self.loaded = self
+            .appearance
+            .load(&self.config_loader, &self.config_args, None);
         if self.background_smoke || self.smoke.is_some() {
             smoke::Smoke::configure(&mut self.loaded);
         }
@@ -5136,7 +5157,8 @@ impl App {
                 .push("Restart Rustty to apply the renderer setting.".into());
         }
         self.failed_panes.clear();
-        self.context.set_theme(ui_theme(&self.loaded.config));
+        self.context
+            .set_theme(self.appearance.ui_theme(&self.loaded.config));
         if let Some(platform) = &mut self.platform
             && let Err(error) = platform.update_config(&self.loaded.config)
         {
@@ -5166,6 +5188,18 @@ impl App {
         }
     }
     fn configure_windows(&mut self, host: Option<&mut Host>) {
+        self.context
+            .set_theme(self.appearance.ui_theme(self.config()));
+        #[cfg(target_os = "macos")]
+        if let Some(platform) = &self.platform {
+            platform.set_application_theme(self.appearance.theme(self.config()));
+        }
+        if let Some(outliner) = &self.outliner {
+            outliner
+                .window
+                .set_theme(Some(self.appearance.theme(self.config())));
+            outliner.repaint();
+        }
         let configs = self.window_configs();
         let themes = self
             .workspace
@@ -5189,6 +5223,15 @@ impl App {
                     self.errors.push(error);
                 }
             }
+            if let Some(platform) = &self.platform
+                && let Err(error) = platform.set_window_theme(
+                    &window.window,
+                    self.appearance
+                        .theme(configs.get(&window.id).unwrap_or(&self.loaded.config)),
+                )
+            {
+                self.errors.push(error);
+            }
             window.repaint();
         }
     }
@@ -5205,7 +5248,8 @@ impl App {
             .map(|window| (window.id, font_config(self.window_config(window.id), 1.0)))
             .collect::<Vec<_>>();
         self.loaded.config = config;
-        self.context.set_theme(ui_theme(self.config()));
+        self.context
+            .set_theme(self.appearance.ui_theme(self.config()));
         self.apply_pane_configs(Session::apply_appearance, scope);
         let fonts_changed = fonts
             .iter()
@@ -5239,9 +5283,11 @@ impl App {
         else {
             return;
         };
-        let loaded = self
-            .config_loader
-            .load_with_theme(&self.config_args, &theme.path.to_string_lossy());
+        let loaded = self.appearance.load(
+            &self.config_loader,
+            &self.config_args,
+            Some(&theme.path.to_string_lossy()),
+        );
         let errors = loaded
             .diagnostics
             .iter()
@@ -5556,7 +5602,7 @@ impl App {
         // With no native windows there is no ThemeChanged event to observe.
         // Refresh before creating a session that could immediately query it.
         if self.windows.is_empty() {
-            self.update_system_theme(event_loop.system_theme(), None);
+            self.update_system_theme(Platform::system_theme(), None);
         }
         let removed = self
             .windows
@@ -5778,6 +5824,10 @@ impl App {
     }
 
     fn platform_action(&mut self, event_loop: &ActiveEventLoop, action: Action, all: bool) -> bool {
+        if let Action::SetWindowTheme(theme) = action {
+            self.set_window_theme(theme, None);
+            return true;
+        }
         if self.import_selector {
             match action {
                 Action::CloseWindow | Action::CloseSurface => {
@@ -6367,7 +6417,7 @@ impl App {
         let now = Instant::now();
         // Popups also use the shared context; restore its theme after this window's pass.
         let previous_theme = context.options(|options| options.theme_preference);
-        context.set_theme(ui_theme(&config));
+        context.set_theme(self.appearance.ui_theme(&config));
         let platform_accent = self
             .platform
             .as_ref()
@@ -8892,7 +8942,11 @@ impl ApplicationHandler<Event> for App {
                 }),
                 &platform_config,
             ) {
-                Ok(platform) => self.platform = Some(platform),
+                Ok(platform) => {
+                    #[cfg(target_os = "macos")]
+                    platform.set_application_theme(self.appearance.theme(self.config()));
+                    self.platform = Some(platform);
+                }
                 Err(error) => self.errors.push(error),
             }
         }
@@ -9001,6 +9055,9 @@ impl ApplicationHandler<Event> for App {
                 match event {
                     #[cfg(target_os = "macos")]
                     PlatformEvent::ScreensAwake(awake) => self.deck_screens_awake(awake),
+                    PlatformEvent::AppearanceChanged => {
+                        self.update_system_theme(Platform::system_theme(), None)
+                    }
                     PlatformEvent::NotificationClicked(pane) => {
                         self.reveal_pane(pane);
                     }
@@ -9357,10 +9414,7 @@ impl ApplicationHandler<Event> for App {
                 host.repaint();
             }
             WindowEvent::ThemeChanged(theme) => {
-                self.update_system_theme(
-                    event_loop.system_theme().or(Some(theme)),
-                    Some(&mut host),
-                );
+                self.update_system_theme(Platform::system_theme().or(Some(theme)), Some(&mut host));
                 host.repaint();
             }
             WindowEvent::Focused(focused) => {
@@ -10255,17 +10309,6 @@ fn software_repaint_deadline(
     last_frame.map_or(requested, |last| requested.max(last + interval))
 }
 
-fn load_config(
-    loader: &mut config::ConfigLoader,
-    args: &[String],
-    theme: Option<Theme>,
-) -> LoadedConfig {
-    if let Some(theme) = theme {
-        loader.dark_mode = theme == Theme::Dark;
-    }
-    loader.load_with_args(args)
-}
-
 fn color_scheme(dark_mode: bool) -> vt::query::ColorScheme {
     if dark_mode {
         vt::query::ColorScheme::Dark
@@ -10730,24 +10773,6 @@ fn paint_progress(
         }
     });
     percentage.is_none()
-}
-
-fn ui_theme(config: &Config) -> egui::ThemePreference {
-    match config.window_theme {
-        config::WindowTheme::System => egui::ThemePreference::System,
-        config::WindowTheme::Light => egui::ThemePreference::Light,
-        config::WindowTheme::Dark => egui::ThemePreference::Dark,
-        config::WindowTheme::Auto => {
-            let color = config.background;
-            if 299 * u32::from(color.r) + 587 * u32::from(color.g) + 114 * u32::from(color.b)
-                < 128000
-            {
-                egui::ThemePreference::Dark
-            } else {
-                egui::ThemePreference::Light
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -13643,7 +13668,7 @@ mod tests {
         std::fs::write(own.join("config.rustty"), source).unwrap();
         std::fs::write(own.join("themes/Day"), "background = ffffff\n").unwrap();
         std::fs::write(own.join("themes/Night"), "background = 101010\n").unwrap();
-        let mut loader = config::ConfigLoader {
+        let loader = config::ConfigLoader {
             home: directory.clone(),
             app_config_home: None,
             xdg_config_home: directory.join("config"),
@@ -13659,20 +13684,32 @@ mod tests {
             "two words",
         ]
         .map(str::to_owned);
-        let light = load_config(&mut loader, &args, Some(Theme::Light));
+        let mut appearance = window_appearance::Appearance::new(Theme::Light);
+        let light = appearance.load(&loader, &args, None);
         assert!(light.diagnostics.is_empty(), "{:?}", light.diagnostics);
         assert_eq!(light.config.background, config::Rgb::new(255, 255, 255));
         assert_eq!(
-            color_scheme(loader.dark_mode),
+            color_scheme(appearance.theme(&light.config) == Theme::Dark),
             vt::query::ColorScheme::Light
         );
-        let dark = load_config(&mut loader, &args, Some(Theme::Dark));
+        appearance.system = Theme::Dark;
+        let configured = appearance.load(&loader, &args, None);
+        assert_eq!(configured.config.background, light.config.background);
+        appearance.override_ = Some(config::WindowTheme::Dark);
+        let dark = appearance.load(&loader, &args, None);
         assert_eq!(dark.config.background, config::Rgb::new(16, 16, 16));
-        assert_eq!(color_scheme(loader.dark_mode), vt::query::ColorScheme::Dark);
-        let reloaded = load_config(&mut loader, &args, None);
+        assert_eq!(
+            color_scheme(appearance.theme(&dark.config) == Theme::Dark),
+            vt::query::ColorScheme::Dark
+        );
+        let reloaded = appearance.load(&loader, &args, None);
         assert_eq!(reloaded.config.background, dark.config.background);
         assert_eq!(reloaded.config.font_size, 19.0);
-        assert_eq!(ui_theme(&reloaded.config), egui::ThemePreference::Light);
+        assert_eq!(appearance.ui_theme(&reloaded.config), egui::Theme::Dark);
+        appearance.override_ = None;
+        let configured = appearance.load(&loader, &args, None);
+        assert_eq!(configured.config.background, light.config.background);
+        assert_eq!(appearance.ui_theme(&configured.config), egui::Theme::Light);
         assert_eq!(
             reloaded.config.initial_command,
             Some(config::Command::Direct(vec![

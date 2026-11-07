@@ -222,6 +222,7 @@ pub enum Action {
     TogglePin,
     GotoPin(usize),
     Themes,
+    SetWindowTheme(Option<super::WindowTheme>),
     StreamDeck(StreamDeckAction),
     Reset,
     NextTab,
@@ -270,6 +271,17 @@ impl Action {
             "text" => Self::Text(parse_escaped_bytes(required()?)?),
             "csi" => Self::Text([b"\x1b[".as_slice(), required()?.as_bytes()].concat()),
             "esc" => Self::Text([b"\x1b".as_slice(), required()?.as_bytes()].concat()),
+            "set_window_theme" => Self::SetWindowTheme(match required()? {
+                "config" => None,
+                "system" => Some(super::WindowTheme::System),
+                "light" => Some(super::WindowTheme::Light),
+                "dark" => Some(super::WindowTheme::Dark),
+                _ => {
+                    return Err(
+                        "invalid window appearance; expected config, system, light or dark",
+                    );
+                }
+            }),
             "new_split" => Self::NewSplit(Direction::cardinal(required()?)?),
             "goto_split" => Self::GotoSplit(Direction::parse(required()?)?),
             "resize_split" => {

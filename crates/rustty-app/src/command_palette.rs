@@ -405,6 +405,22 @@ fn actions() -> Vec<(&'static str, Action)> {
         ("Reload Configuration", Action::ReloadConfig),
         ("Reset Terminal", Action::Reset),
         ("Themes…", Action::Themes),
+        (
+            "Switch to Configured Appearance",
+            Action::SetWindowTheme(None),
+        ),
+        (
+            "Switch to System Appearance",
+            Action::SetWindowTheme(Some(rustty::config::WindowTheme::System)),
+        ),
+        (
+            "Switch to Light Appearance",
+            Action::SetWindowTheme(Some(rustty::config::WindowTheme::Light)),
+        ),
+        (
+            "Switch to Dark Appearance",
+            Action::SetWindowTheme(Some(rustty::config::WindowTheme::Dark)),
+        ),
         ("Toggle Quick Terminal", Action::ToggleQuickTerminal),
         ("Toggle Outliner", Action::ToggleOutliner),
         ("Toggle Pin", Action::TogglePin),
@@ -419,6 +435,22 @@ fn actions() -> Vec<(&'static str, Action)> {
 mod tests {
     use super::*;
     use rustty::config::ConfigLoader;
+
+    #[test]
+    fn appearance_actions_are_available_in_the_command_palette() {
+        let actions = actions();
+        for action in [
+            Action::SetWindowTheme(None),
+            Action::SetWindowTheme(Some(rustty::config::WindowTheme::System)),
+            Action::SetWindowTheme(Some(rustty::config::WindowTheme::Light)),
+            Action::SetWindowTheme(Some(rustty::config::WindowTheme::Dark)),
+        ] {
+            assert_eq!(
+                actions.iter().filter(|(_, entry)| *entry == action).count(),
+                1
+            );
+        }
+    }
 
     #[test]
     fn shortcuts_follow_loaded_bindings_including_remaps_unbinds_and_sequences() {
@@ -1104,7 +1136,13 @@ mod tests {
             &mut focus,
             vec![egui::Event::Text("cfg".into())],
         );
-        for (key, selected) in [(Key::N, 1), (Key::N, 0), (Key::P, 1)] {
+        for (key, selected) in [
+            (Key::N, 1),
+            (Key::N, 2),
+            (Key::N, 0),
+            (Key::P, 2),
+            (Key::P, 1),
+        ] {
             let (_, output) = draw(
                 &context,
                 &mut palette,

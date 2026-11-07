@@ -22,12 +22,12 @@ mod macos {
 
     use objc2::{AnyThread, ClassType, MainThreadMarker, rc::Retained, sel};
     use objc2_app_kit::{
-        NSApplication, NSBitmapImageRep, NSColorSpace, NSEventModifierFlags, NSFloatingWindowLevel,
-        NSImage, NSPanel, NSView, NSWindow, NSWindowButton, NSWindowCollectionBehavior,
-        NSWindowStyleMask, NSWindowTabbingMode, NSWindowTitleVisibility, NSWorkspace,
-        NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidSleepNotification,
-        NSWorkspaceScreensDidWakeNotification, NSWorkspaceSessionDidResignActiveNotification,
-        NSWorkspaceWillSleepNotification,
+        NSAppearanceCustomization, NSApplication, NSBitmapImageRep, NSColorSpace,
+        NSEventModifierFlags, NSFloatingWindowLevel, NSImage, NSPanel, NSView, NSWindow,
+        NSWindowButton, NSWindowCollectionBehavior, NSWindowStyleMask, NSWindowTabbingMode,
+        NSWindowTitleVisibility, NSWorkspace, NSWorkspaceDidWakeNotification,
+        NSWorkspaceScreensDidSleepNotification, NSWorkspaceScreensDidWakeNotification,
+        NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceWillSleepNotification,
     };
     use objc2_foundation::{NSData, NSObjectProtocol, NSString};
     use rustty::config::{Action, Config, KeyBinding, StreamDeckAction};
@@ -42,7 +42,7 @@ mod macos {
             run_on_demand::EventLoopExtRunOnDemand,
         },
         raw_window_handle::{HasWindowHandle, RawWindowHandle},
-        window::{Window, WindowId},
+        window::{Theme, Window, WindowId},
     };
 
     pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,7 +56,7 @@ mod macos {
         event_loop.run_app_on_demand(&mut check)?;
         assert!(check.0, "Winit never initialized the native test windows");
         println!(
-            "native_panel: app icon, window/outliner ownership/style, screen-power lifecycle and Stream Deck menu/shortcuts passed"
+            "native_panel: app icon, window/outliner ownership/style, screen-power lifecycle, app/window appearance and Stream Deck menu/shortcuts passed"
         );
         Ok(())
     }
@@ -141,6 +141,8 @@ mod macos {
             }
             assert_eq!(&power.lock().unwrap()[..3], [false, true, false]);
             assert_eq!(power.lock().unwrap().len(), 4);
+            let actual_system_theme = Platform::system_theme();
+            let original_appearance = app.appearance();
             for panel in [false, true] {
                 let window = event_loop
                     .create_window(
@@ -158,6 +160,18 @@ mod macos {
                 let id = window.id();
                 let native = check_window(&window, panel);
                 assert_eq!(native.tabbingMode(), NSWindowTabbingMode::Disallowed);
+                for theme in [Theme::Light, Theme::Dark] {
+                    platform.set_application_theme(theme);
+                    platform.set_window_theme(&window, theme).unwrap();
+                    assert_eq!(window.theme(), Some(theme));
+                    assert_eq!(Platform::system_theme(), actual_system_theme);
+                    let name = NSString::from_str(match theme {
+                        Theme::Light => "NSAppearanceNameAqua",
+                        Theme::Dark => "NSAppearanceNameDarkAqua",
+                    });
+                    assert_eq!(*app.effectiveAppearance().name(), *name);
+                    assert_eq!(*native.effectiveAppearance().name(), *name);
+                }
                 let view = native.contentView().unwrap();
                 assert!(Platform::window_controls_rect(&window).is_none());
 
@@ -203,6 +217,8 @@ mod macos {
                 assert!(std::ptr::eq(&*native, &*view.window().unwrap()));
             }
             check_outliner(event_loop, &platform);
+            app.setAppearance(original_appearance.as_deref());
+            assert_eq!(Platform::system_theme(), actual_system_theme);
             power.lock().unwrap().clear();
             drop(platform);
             // SAFETY: test token removal in the same isolated center after teardown.
@@ -322,6 +338,8 @@ mod macos {
             )
             .unwrap();
         platform.configure_outliner(&window).unwrap();
+        platform.set_window_theme(&window, Theme::Light).unwrap();
+        assert_eq!(window.theme(), Some(Theme::Light));
         let native = check_window(&window, true);
         assert_eq!(native.title().to_string(), "Outliner");
         assert_eq!(native.titleVisibility(), NSWindowTitleVisibility::Visible);
