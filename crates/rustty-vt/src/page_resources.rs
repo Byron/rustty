@@ -17,6 +17,8 @@ pub(crate) struct SetAdmission<T> {
     max_psl: u8,
     psl_stats: [u16; 32],
     living: usize,
+    #[serde(default)]
+    free_cursor: usize,
 }
 
 impl<T> Default for SetAdmission<T> {
@@ -28,6 +30,7 @@ impl<T> Default for SetAdmission<T> {
             max_psl: 0,
             psl_stats: [0; 32],
             living: 0,
+            free_cursor: 0,
         }
     }
 }
@@ -55,6 +58,13 @@ impl<T> Default for SetEntry<T> {
 pub(crate) enum SetFull {
     NeedsRehash,
     OutOfMemory,
+}
+
+#[derive(PartialEq, Eq)]
+enum Insertion {
+    Existing,
+    New,
+    Reclaimed,
 }
 
 pub(crate) type StyleAdmission = SetAdmission<Style>;
@@ -102,6 +112,7 @@ impl<T: Eq> SetAdmission<T> {
         self.max_psl = 0;
         self.psl_stats.fill(0);
         self.living = 0;
+        self.free_cursor = 0;
     }
 
     pub fn new(layout: SetLayout) -> Self {
@@ -112,6 +123,7 @@ impl<T: Eq> SetAdmission<T> {
             max_psl: 0,
             psl_stats: [0; 32],
             living: 0,
+            free_cursor: 0,
         }
     }
 
@@ -197,14 +209,14 @@ impl<T: Eq> SetAdmission<T> {
         preferred: Option<u16>,
         deleted: &mut impl FnMut(T),
     ) -> Result<u16, SetFull> {
-        let (id, existing) =
+        let (id, insertion) =
             self.prepare_insert(hash, preferred, |entry| entry == &value, deleted)?;
-        if existing {
+        if insertion == Insertion::Existing {
             deleted(value);
             self.retain(id);
             Ok(id)
         } else {
-            Ok(self.insert(value, hash, id, deleted))
+            Ok(self.insert(value, hash, id, insertion, deleted))
         }
     }
 
@@ -215,12 +227,12 @@ impl<T: Eq> SetAdmission<T> {
         preferred: Option<u16>,
         matches: impl Fn(&T) -> bool,
         deleted: &mut impl FnMut(T),
-    ) -> Result<(u16, bool), SetFull> {
+    ) -> Result<(u16, Insertion), SetFull> {
         if let Some(id) = preferred.filter(|&id| id != 0 && usize::from(id) <= self.entries.len()) {
             let entry = &self.entries[usize::from(id) - 1];
             if entry.references == 0 {
                 if let Some(existing) = self.lookup_by(hash, &matches) {
-                    return Ok((existing, true));
+                    return Ok((existing, Insertion::Existing));
                 }
                 if self.psl_stats[31] != 0 {
                     return Err(SetFull::OutOfMemory);
@@ -228,9 +240,9 @@ impl<T: Eq> SetAdmission<T> {
                 if let Some(value) = self.delete_item(id) {
                     deleted(value);
                 }
-                return Ok((id, false));
+                return Ok((id, Insertion::New));
             } else if entry.value.as_ref().is_some_and(&matches) {
-                return Ok((id, true));
+                return Ok((id, Insertion::Existing));
             }
         }
         while self
@@ -244,26 +256,55 @@ impl<T: Eq> SetAdmission<T> {
             self.entries.pop();
         }
         if let Some(id) = self.lookup_by(hash, matches) {
-            return Ok((id, true));
+            return Ok((id, Insertion::Existing));
         }
         if self.psl_stats[31] != 0 {
             return Err(SetFull::OutOfMemory);
         }
         if self.entries.len() + 1 >= self.capacity {
-            return Err(if self.living < (self.capacity as f64 * 0.9) as usize {
+            if self.living >= (self.capacity as f64 * 0.9) as usize {
+                return Err(SetFull::OutOfMemory);
+            }
+            let id = self.reclaim_dead_id(deleted).ok_or_else(|| {
+                debug_assert!(false, "living count left no dead resource ID to reclaim");
                 SetFull::NeedsRehash
-            } else {
-                SetFull::OutOfMemory
-            });
+            })?;
+            return Ok((id, Insertion::Reclaimed));
         }
-        Ok(((self.entries.len() + 1) as u16, false))
+        Ok(((self.entries.len() + 1) as u16, Insertion::New))
+    }
+
+    fn reclaim_dead_id(&mut self, deleted: &mut impl FnMut(T)) -> Option<u16> {
+        let mut index = self.free_cursor;
+        for _ in 0..self.entries.len() {
+            if index >= self.entries.len() {
+                index = 0;
+            }
+            if self.entries[index].references == 0 {
+                let id = (index + 1) as u16;
+                if let Some(value) = self.delete_item(id) {
+                    deleted(value);
+                }
+                self.free_cursor = index + 1;
+                return Some(id);
+            }
+            index += 1;
+        }
+        None
     }
 
     pub fn reserve_entries(&mut self, count: usize) {
         self.entries.reserve(count);
     }
 
-    fn insert(&mut self, value: T, hash: u64, new_id: u16, deleted: &mut impl FnMut(T)) -> u16 {
+    fn insert(
+        &mut self,
+        value: T,
+        hash: u64,
+        new_id: u16,
+        insertion: Insertion,
+        deleted: &mut impl FnMut(T),
+    ) -> u16 {
         let appended = usize::from(new_id) > self.entries.len();
         if appended {
             self.entries.push(SetEntry::default());
@@ -281,7 +322,11 @@ impl<T: Eq> SetAdmission<T> {
             let bucket = (hash as usize).wrapping_add(distance) & mask;
             let id = self.table[bucket];
             let held_psl = self.entries[usize::from(held_id) - 1].psl;
-            if id == 0 || self.entries[usize::from(id) - 1].references == 0 {
+            if id == 0 || {
+                let resident = &self.entries[usize::from(id) - 1];
+                // A shorter replacement would hide live entries later in the probe.
+                resident.references == 0 && resident.psl <= held_psl
+            } {
                 if id != 0 {
                     let dead = &mut self.entries[usize::from(id) - 1];
                     if let Some(value) = dead.value.take() {
@@ -320,6 +365,9 @@ impl<T: Eq> SetAdmission<T> {
             if appended {
                 self.entries.pop();
             }
+            if insertion == Insertion::Reclaimed {
+                self.free_cursor = usize::from(new_id) - 1;
+            }
         }
         self.entries[usize::from(chosen_id) - 1].references = 1;
         self.living += 1;
@@ -350,6 +398,7 @@ impl<T: Eq> SetAdmission<T> {
         if id == 0 {
             return;
         }
+        assert!(count > 0);
         let entry = &mut self.entries[usize::from(id) - 1];
         assert!(entry.references > 0);
         entry.references = entry
@@ -712,14 +761,14 @@ impl HyperlinkAdmission {
             |entry| entry.link.key() == link,
             &mut deleted,
         );
-        let (id, existing) = match prepared {
+        let (id, insertion) = match prepared {
             Ok(value) => value,
             Err(error) => {
                 Self::free_strings(&mut self.strings, id_allocation, uri_allocation);
                 return Err(HyperlinkFull::Set(error));
             }
         };
-        if existing {
+        if insertion == Insertion::Existing {
             Self::free_strings(&mut self.strings, id_allocation, uri_allocation);
             self.set.retain(id);
             return Ok(id);
@@ -744,7 +793,7 @@ impl HyperlinkAdmission {
         let strings = &mut self.strings;
         Ok(self
             .set
-            .insert(entry, hash, id, &mut |entry: HyperlinkEntry| {
+            .insert(entry, hash, id, insertion, &mut |entry: HyperlinkEntry| {
                 *payload_bytes -= entry.payload_bytes();
                 Self::free_strings(strings, entry.id_allocation, entry.uri_allocation);
             }))
@@ -1484,8 +1533,127 @@ mod tests {
     }
 
     #[test]
+    fn live_set_preserves_lookup_through_dead_longer_probe() {
+        let mut set = integer_set(8);
+        let a = set.add_hashed(8, 8).unwrap();
+        let b = set.add_hashed(16, 16).unwrap();
+        let c = set.add_hashed(24, 24).unwrap();
+        set.release(b);
+        let d = set.add_hashed(1, 1).unwrap();
+        // Reaping bucket 1 with PSL 0 would hide c at PSL 2.
+        for (value, id) in [(8, a), (24, c), (1, d)] {
+            assert_eq!(set.lookup_by(value, |entry| *entry == value), Some(id));
+        }
+        assert_eq!(set.add_hashed(24, 24), Ok(c));
+        assert_eq!(set.reference_count(c), 2);
+        assert_eq!(set.count(), 3);
+    }
+
+    fn integer_set(capacity: u16) -> SetAdmission<u64> {
+        SetAdmission::new(
+            PageCapacity {
+                styles: capacity,
+                ..PageCapacity::STANDARD
+            }
+            .metadata()
+            .unwrap()
+            .styles_layout,
+        )
+    }
+
+    #[test]
+    fn live_set_reclaims_exhausted_ids_across_repeated_churn() {
+        for capacity in [3, 5, 16] {
+            let mut set = integer_set(capacity);
+            let n = set.capacity - 1;
+            let original: Vec<_> = (0..n)
+                .map(|i| set.add_hashed(i as u64 + 1000, i as u64).unwrap())
+                .collect();
+            assert_eq!(set.add_hashed(5000, 5000), Err(SetFull::OutOfMemory));
+            for &id in original.iter().step_by(2) {
+                set.release(id);
+            }
+            let threshold = (set.capacity as f64 * 0.9) as usize;
+            let mut current = Vec::new();
+            for round in 0..200 {
+                for (_, id) in current.drain(..) {
+                    set.release(id);
+                }
+                for i in 0..threshold - n / 2 {
+                    let value = 100_000 + round * 1000 + i as u64;
+                    let id = set.add_hashed(value, value).unwrap();
+                    assert!(current.iter().all(|&(_, old)| old != id));
+                    current.push((value, id));
+                }
+                assert_eq!(set.count(), threshold);
+                for &(value, id) in &current {
+                    assert_eq!(set.lookup_by(value, |entry| *entry == value), Some(id));
+                    assert_eq!(set.reference_count(id), 1);
+                }
+                for i in (1..n).step_by(2) {
+                    assert_eq!(
+                        set.lookup_by(i as u64, |entry| *entry == i as u64 + 1000),
+                        Some(original[i])
+                    );
+                    assert_eq!(set.reference_count(original[i]), 1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn live_set_reclaims_id_passed_over_during_insert() {
+        let mut set = integer_set(16);
+        for id in 1..set.capacity as u64 {
+            assert_eq!(set.add_hashed(id, id), Ok(id as u16));
+        }
+        set.release(9);
+        set.release(10);
+        assert_eq!(set.add_hashed(13, 13), Ok(9));
+        set.release(3);
+        assert_eq!(set.add_hashed(19, 19), Ok(3));
+        set.release(5);
+        assert_eq!(set.add_hashed(14, 14), Ok(10));
+        for (value, id) in [(13, 9), (19, 3), (14, 10)] {
+            assert_eq!(set.lookup_by(value, |entry| *entry == value), Some(id));
+        }
+        assert_eq!(set.lookup_by(5, |entry| *entry == 5), None);
+        assert_eq!(set.count(), set.capacity - 2);
+    }
+
+    #[test]
+    fn live_set_reaped_membership_preserves_last_bucket_and_payloads() {
+        for trim in [false, true] {
+            let mut set = integer_set(256);
+            let mut deleted = Vec::new();
+            let last = set.add_hashed(255, 255).unwrap();
+            let a = set.add_hashed(10, 10).unwrap();
+            let b = set.add_hashed(20, 20).unwrap();
+            if !trim {
+                for value in 21..set.capacity as u64 + 17 {
+                    set.add_hashed(value, value).unwrap();
+                }
+                for id in 4..=25 {
+                    set.release(id);
+                }
+            }
+            set.release(a);
+            set.release(b);
+            assert_eq!(
+                set.add_with(276, 276, Some(a), &mut |v| deleted.push(v)),
+                Ok(a)
+            );
+            assert_eq!(set.add_hashed_with(5, 5, &mut |v| deleted.push(v)), Ok(b));
+            assert_eq!(set.lookup_by(255, |v| *v == 255), Some(last));
+            assert_eq!(set.lookup_by(276, |v| *v == 276), Some(a));
+            deleted.sort_unstable();
+            assert_eq!(deleted, [10, 20]);
+        }
+    }
+
+    #[test]
     fn live_set_rehash_threshold_counts_living_entries() {
-        for (released, expected) in [(10, SetFull::OutOfMemory), (11, SetFull::NeedsRehash)] {
+        for (released, expected) in [(10, Err(SetFull::OutOfMemory)), (11, Ok(1))] {
             let layout = PageCapacity::STANDARD.metadata().unwrap().styles_layout;
             let mut set = SetAdmission::new(layout);
             for value in 0..103 {
@@ -1494,9 +1662,71 @@ mod tests {
             for id in 1..=released {
                 set.release(id);
             }
-            assert_eq!(set.add_hashed(1000, 127), Err(expected));
+            assert_eq!(set.add_hashed(1000, 127), expected);
             // A live duplicate still succeeds without requiring free IDs.
             assert_eq!(set.add_hashed(102, 102), Ok(103));
+        }
+    }
+
+    #[test]
+    fn live_set_reuse_cursor_defaults_and_resets() {
+        let mut set = integer_set(8);
+        for value in 1..set.capacity as u64 {
+            set.add_hashed(value, value).unwrap();
+        }
+        let mut legacy = serde_json::to_value(&set).unwrap();
+        legacy.as_object_mut().unwrap().remove("free_cursor");
+        let mut set: SetAdmission<u64> = serde_json::from_value(legacy).unwrap();
+        assert_eq!(set.free_cursor, 0);
+        // A previously saved cursor may exceed the trimmed entry count.
+        set.free_cursor = usize::MAX;
+        set.release(1);
+        assert_eq!(set.add_hashed(100, 100), Ok(1));
+        assert_eq!(set.free_cursor, 1);
+        set.reset();
+        assert_eq!(set.free_cursor, 0);
+        assert_eq!(set.add_hashed(200, 200), Ok(1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn live_set_rejects_zero_release_count() {
+        let mut set = integer_set(8);
+        let id = set.add_hashed(1, 1).unwrap();
+        set.release_many(id, 0);
+    }
+
+    #[test]
+    fn hyperlink_reclaimed_ids_free_both_strings_without_losing_live_cells() {
+        let mut links = hyperlink_admission();
+        assert_eq!(links.set.capacity, 3);
+        let mut changing = links
+            .insert(HyperlinkKey::new(b"uri-0000", Some(b"id-0000"), 0))
+            .unwrap();
+        let stable = links
+            .insert(HyperlinkKey::new(b"uri-stable", Some(b"id-stable"), 0))
+            .unwrap();
+        for id in [changing, stable] {
+            links.retain_cell(id).unwrap();
+            links.release(id);
+        }
+        for round in 1..=200 {
+            links.release_cell(changing);
+            let uri = format!("uri-{round:04}");
+            let id = format!("id-{round:04}");
+            changing = links
+                .insert(HyperlinkKey::new(uri.as_bytes(), Some(id.as_bytes()), 0))
+                .unwrap();
+            links.retain_cell(changing).unwrap();
+            links.release(changing);
+            assert_eq!(links.strings.used_bytes(), 128);
+            assert_eq!(links.get(changing).uri, uri.as_bytes());
+            assert_eq!(links.get(stable).uri, b"uri-stable");
+            assert_eq!(
+                links.payload_bytes,
+                links.set.get(changing).payload_bytes() + links.set.get(stable).payload_bytes()
+            );
+            links.assert_references([changing, stable].into_iter(), None);
         }
     }
 

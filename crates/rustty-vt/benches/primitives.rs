@@ -13,6 +13,9 @@ mod kitty_upload;
 #[path = "../../../test/rustty/charset_bench.rs"]
 mod charset;
 
+#[path = "../../../test/rustty/resource-churn-bench.rs"]
+mod resource_churn;
+
 const COLS: u16 = 128;
 const ROWS: u16 = 32;
 const PATTERNS: [(&str, &str); 4] = [
@@ -1241,6 +1244,7 @@ criterion_group!(
     content_history_reflow,
     captured_scrollback_reflow,
     memory_capped_streams,
+    resource_churn::resources,
     charset::charsets,
     kitty::placements,
     kitty::cells,
