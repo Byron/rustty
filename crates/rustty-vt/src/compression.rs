@@ -503,6 +503,8 @@ mod tests {
         assert!(!terminal.compress_scrollback_step());
         assert_eq!(cold(&terminal), 0);
         let mut plain = terminal.clone();
+        // Compare equal fresh carry histories so only compression differs.
+        let mut terminal = terminal.clone();
         terminal.set_scrollback_compression(true);
         compress(&mut terminal);
         let limits = ScrollbackLimits {

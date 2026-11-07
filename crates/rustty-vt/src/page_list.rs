@@ -8,6 +8,10 @@ use crate::page_layout::PageCapacity;
 use crate::screen::Color;
 use crate::screen::ScrollbackLimits;
 
+#[path = "page_list/capacity.rs"]
+mod capacity;
+use capacity::GrowHints;
+
 /// A live list differs from its clones and replacements even when page serials
 /// repeat. This is transient; resource ownership still uses local page serials.
 #[derive(Debug)]
@@ -40,7 +44,7 @@ pub struct PageAllocationInfo {
     pub allocation_bytes: usize,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct PageList {
     pub pages: VecDeque<Page>,
     pub(crate) next_serial: u64,
@@ -48,6 +52,21 @@ pub(crate) struct PageList {
     identity: ListIdentity,
     #[serde(skip)]
     pub(crate) compression: crate::compression::Compression,
+    #[serde(skip)]
+    grow_hints: GrowHints,
+}
+
+impl Clone for PageList {
+    fn clone(&self) -> Self {
+        Self {
+            pages: self.pages.clone(),
+            next_serial: self.next_serial,
+            identity: self.identity.clone(),
+            compression: self.compression.clone(),
+            // Like native cloned lists, copies start a fresh workload history.
+            grow_hints: GrowHints::default(),
+        }
+    }
 }
 
 impl PageList {
@@ -221,14 +240,21 @@ impl PageList {
         if has_room {
             self.pages.back_mut().unwrap().expose(id, background);
         } else {
-            let capacity = PageCapacity::initial(columns).expect("validated screen dimensions");
+            let growth = self
+                .pages
+                .back()
+                .map(|last| self.grow_hints.next(columns, last));
+            let capacity = growth.as_ref().map_or_else(
+                || PageCapacity::initial(columns).expect("validated screen dimensions"),
+                |growth| growth.capacity,
+            );
             let history = (self.total_rows() + 1).saturating_sub(active_rows);
             let recycle = self.pages.len() > 1
                 && self.pages.front().is_some_and(|page| {
                     usize::from(page.rows) <= history
                         && (effective.bytes.is_some_and(|limit| {
                             self.allocation_bytes()
-                                + capacity.layout().unwrap().allocation_bytes(false)
+                                .saturating_add(capacity.layout().unwrap().allocation_bytes(false))
                                 > limit
                         }) || effective.lines.is_some_and(|limit| history > limit)
                             || memory.is_some_and(|limit| {
@@ -252,11 +278,14 @@ impl PageList {
                 .unwrap_or_else(|| Page::new(capacity, 0, serial));
             page.expose(id, background);
             self.pages.push_back(page);
+            if let Some(growth) = growth {
+                self.grow_hints.push(growth.hint);
+            }
         }
         removed.extend(self.prune(
             active_rows,
             ScrollbackLimits {
-                bytes: None,
+                bytes: if has_room { None } else { effective.bytes },
                 ..effective
             },
             memory,

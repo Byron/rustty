@@ -585,6 +585,14 @@ impl HyperlinkAdmission {
         }
     }
 
+    pub fn count(&self) -> usize {
+        self.set.count()
+    }
+
+    pub fn used_string_bytes(&self) -> usize {
+        self.strings.used_bytes()
+    }
+
     pub fn storage_bytes(&self) -> usize {
         self.set.storage_bytes() + self.strings.storage_bytes() + self.payload_bytes
     }

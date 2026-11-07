@@ -21,7 +21,19 @@ use crate::{
     screen::{Color, HyperlinkData, RowView, SemanticContent, Style},
 };
 
-#[derive(Clone, Copy)]
+pub(crate) fn set_capacity_for_count(count: u64) -> u64 {
+    if count == 0 {
+        0
+    } else {
+        ((count + 1) * 16).div_ceil(13)
+    }
+}
+
+pub(crate) fn hyperlink_bytes_for_count(count: u64) -> u64 {
+    set_capacity_for_count(count) * crate::page_layout::HYPERLINK_ITEM_SIZE as u64
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PageResource {
     Styles,
     Graphemes,
@@ -30,7 +42,66 @@ pub(crate) enum PageResource {
     Strings,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ResourceUsage {
+    pub used: u64,
+    pub capacity: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PageUsage {
+    pub styles: ResourceUsage,
+    pub graphemes: ResourceUsage,
+    pub links: ResourceUsage,
+    pub link_cells: ResourceUsage,
+    pub strings: ResourceUsage,
+}
+
 impl PageResource {
+    pub const ALL: [Self; 5] = [
+        Self::Styles,
+        Self::Graphemes,
+        Self::Links,
+        Self::LinkCells,
+        Self::Strings,
+    ];
+
+    pub fn get(self, capacity: PageCapacity) -> u64 {
+        match self {
+            Self::Styles => u64::from(capacity.styles),
+            Self::Graphemes => u64::from(capacity.grapheme_bytes),
+            Self::Links => u64::from(capacity.hyperlink_bytes),
+            Self::LinkCells => u64::from(capacity.hyperlink_cells),
+            Self::Strings => u64::from(capacity.string_bytes),
+        }
+    }
+
+    pub fn set(self, capacity: &mut PageCapacity, value: u64) {
+        match self {
+            Self::Styles => capacity.styles = value as u16,
+            Self::Graphemes => capacity.grapheme_bytes = value as u32,
+            Self::Links => capacity.hyperlink_bytes = value as u16,
+            Self::LinkCells => capacity.hyperlink_cells = value as u16,
+            Self::Strings => capacity.string_bytes = value as u32,
+        }
+    }
+
+    pub fn maximum(self) -> u64 {
+        match self {
+            Self::Graphemes | Self::Strings => u64::from(u32::MAX),
+            _ => u64::from(u16::MAX),
+        }
+    }
+
+    pub fn usage(self, usage: PageUsage) -> ResourceUsage {
+        match self {
+            Self::Styles => usage.styles,
+            Self::Graphemes => usage.graphemes,
+            Self::Links => usage.links,
+            Self::LinkCells => usage.link_cells,
+            Self::Strings => usage.strings,
+        }
+    }
     pub fn for_link(error: HyperlinkFull) -> Option<Self> {
         match error {
             HyperlinkFull::Strings => Some(Self::Strings),
@@ -856,74 +927,73 @@ impl Page {
         self.mark_row(row);
     }
 
+    /// Read live resource counts and arena bitmaps without touching cell storage.
+    pub fn usage(&self) -> PageUsage {
+        let layout = self.capacity.metadata().expect("validated page capacity");
+        PageUsage {
+            styles: ResourceUsage {
+                used: self.styles.count() as u64,
+                capacity: layout.styles_layout.cap as u64,
+            },
+            graphemes: ResourceUsage {
+                used: self.graphemes.used_bytes() as u64,
+                capacity: (layout.grapheme_alloc_layout.bitmap_count * 64 * 16) as u64,
+            },
+            links: ResourceUsage {
+                used: self.links.count() as u64,
+                capacity: layout.hyperlink_set_layout.cap as u64,
+            },
+            link_cells: ResourceUsage {
+                used: self.link_map.len() as u64,
+                capacity: u64::from(layout.hyperlink_map_layout.capacity) * 80 / 100,
+            },
+            strings: ResourceUsage {
+                used: self.links.used_string_bytes() as u64,
+                capacity: (layout.string_alloc_layout.bitmap_count * 64 * 32) as u64,
+            },
+        }
+    }
+
     /// Rebuild admission transactionally: failures leave live words and maps intact.
     pub fn rebuild(&mut self, grow: Option<PageResource>) -> Result<(), SetFull> {
         #[cfg(feature = "allocation-probe")]
         let _scope = Scope::rebuild(grow.is_some());
         let mut capacity = self.capacity;
         if let Some(resource) = grow {
-            let (old, default, maximum, used) = match resource {
-                PageResource::Styles => (
-                    u64::from(capacity.styles),
-                    16,
-                    u64::from(u16::MAX),
-                    self.styles.count() as u64,
-                ),
-                PageResource::Graphemes => (
-                    u64::from(capacity.grapheme_bytes),
-                    1024,
-                    u64::from(u32::MAX),
-                    self.graphemes.used_bytes() as u64,
-                ),
-                PageResource::Links => (
-                    u64::from(capacity.hyperlink_bytes),
-                    192,
-                    u64::from(u16::MAX),
-                    0,
-                ),
-                PageResource::LinkCells => (
-                    u64::from(capacity.hyperlink_cells),
-                    64,
-                    u64::from(u16::MAX),
-                    self.link_map.len() as u64,
-                ),
-                PageResource::Strings => (
-                    u64::from(capacity.string_bytes),
-                    2048,
-                    u64::from(u32::MAX),
-                    0,
-                ),
-            };
+            let old = resource.get(capacity);
+            let default = resource.get(PageCapacity::default());
+            let maximum = resource.maximum();
             if old == maximum {
                 return Err(SetFull::OutOfMemory);
             }
-            let assign = |cap: &mut PageCapacity, value: u64| match resource {
-                PageResource::Styles => cap.styles = value as u16,
-                PageResource::Graphemes => cap.grapheme_bytes = value as u32,
-                PageResource::Links => cap.hyperlink_bytes = value as u16,
-                PageResource::LinkCells => cap.hyperlink_cells = value as u16,
-                PageResource::Strings => cap.string_bytes = value as u32,
+            let usage = resource.usage(self.usage()).used;
+            let used = if resource == PageResource::Links {
+                hyperlink_bytes_for_count(usage)
+            } else {
+                usage
             };
             let increased = if old == 0 {
                 default
             } else {
                 (old * 2).min(maximum)
             };
-            assign(&mut capacity, increased);
+            resource.set(&mut capacity, increased);
             capacity.layout().map_err(|_| SetFull::OutOfMemory)?;
             if used != 0 && self.rows != 0 {
                 let density = used * u64::from(capacity.rows) / u64::from(self.rows);
-                // A map can reasonably need one linked cell per physical row.
-                // Use that floor for the same bounded native density projection.
-                let base = if matches!(resource, PageResource::LinkCells) {
-                    old.max(u64::from(capacity.rows))
-                } else {
-                    old
+                let floor = match resource {
+                    PageResource::Styles | PageResource::Graphemes => {
+                        resource.get(PageCapacity::STANDARD)
+                    }
+                    PageResource::Links => hyperlink_bytes_for_count(u64::from(capacity.rows)),
+                    PageResource::LinkCells => u64::from(capacity.rows),
+                    PageResource::Strings => u64::from(capacity.rows) * 64,
                 };
+                let base = old.max(floor);
                 let projected = (density + density / 4).min(base * 32).min(maximum);
                 if projected > increased {
                     let mut projected_capacity = capacity;
-                    assign(&mut projected_capacity, projected);
+                    resource.set(&mut projected_capacity, projected);
                     if projected_capacity.layout().is_ok() {
                         capacity = projected_capacity;
                     }

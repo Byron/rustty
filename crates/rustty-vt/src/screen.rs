@@ -3234,6 +3234,7 @@ impl Screen {
     }
 
     fn exact_resource_range_bytes(&self, start: usize, end: usize, columns: u16) -> usize {
+        use crate::page::{hyperlink_bytes_for_count, set_capacity_for_count};
         use crate::page_resources::BitmapAllocator;
         use std::collections::HashSet;
         let mut styles = HashSet::new();
@@ -3264,19 +3265,12 @@ impl Screen {
                 }
             }
         }
-        let set_capacity = |count: usize| {
-            if count == 0 {
-                0
-            } else {
-                ((count + 1) * 16).div_ceil(13)
-            }
-        };
         let capacity = crate::page_layout::PageCapacity {
             cols: columns,
             rows: (end - start) as u16,
-            styles: set_capacity(styles.len()).min(u16::MAX as usize) as u16,
-            hyperlink_bytes: (set_capacity(links.len()) * crate::page_layout::HYPERLINK_ITEM_SIZE)
-                .min(u16::MAX as usize) as u16,
+            styles: set_capacity_for_count(styles.len() as u64).min(u64::from(u16::MAX)) as u16,
+            hyperlink_bytes: hyperlink_bytes_for_count(links.len() as u64).min(u64::from(u16::MAX))
+                as u16,
             hyperlink_cells: linked_cells.min(u16::MAX as usize) as u16,
             grapheme_bytes: grapheme_bytes as u32,
             string_bytes: string_bytes as u32,

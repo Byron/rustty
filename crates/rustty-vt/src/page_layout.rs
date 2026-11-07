@@ -96,22 +96,32 @@ impl PageCapacity {
         if cols == 0 {
             return Err(LayoutError::InvalidDimensions);
         }
-        let original = self.layout()?;
-        let available =
-            (original.total_size - self.metadata()?.total_size) & !(METADATA_ALIGNMENT - 1);
-        let row_bytes = add(ROW_SIZE, mul(CELL_SIZE, usize::from(cols))?)?;
+        let total_size = self.layout()?.total_size;
+        Self { cols, ..self }
+            .fit_rows(total_size)
+            .ok_or(LayoutError::OutOfMemory)
+    }
+
+    /// Preserve resource capacities and fit the largest valid row count.
+    pub(crate) fn fit_rows(self, total_size: usize) -> Option<Self> {
+        if self.cols == 0 {
+            return None;
+        }
+        let metadata = self.metadata().ok()?.total_size;
+        let available = total_size.checked_sub(metadata)?;
+        let row_bytes = ROW_SIZE + CELL_SIZE * usize::from(self.cols);
         let mut rows = (available / row_bytes).min(usize::from(u16::MAX)) as u16;
         while rows > 0 {
-            let adjusted = Self { cols, rows, ..self };
-            // Row-header padding can push the first estimate over a page
-            // boundary. Native adjust trims rows until it fits.
-            match adjusted.layout() {
-                Ok(layout) if layout.total_size <= original.total_size => return Ok(adjusted),
-                Ok(_) | Err(LayoutError::PageTooLarge) => rows -= 1,
-                Err(error) => return Err(error),
+            let fitted = Self { rows, ..self };
+            if fitted
+                .layout()
+                .is_ok_and(|layout| layout.total_size <= total_size)
+            {
+                return Some(fitted);
             }
+            rows -= 1;
         }
-        Err(LayoutError::OutOfMemory)
+        None
     }
 
     pub(crate) fn layout(self) -> Result<PageLayout, LayoutError> {
