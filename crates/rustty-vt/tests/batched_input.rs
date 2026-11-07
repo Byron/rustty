@@ -476,3 +476,76 @@ fn mixed_width_handoffs_and_decode_boundaries_match_scalar_printing() {
         }
     }
 }
+
+#[test]
+fn linked_batches_preserve_public_display_overrides_and_missing_ids() {
+    for missing_id in [false, true] {
+        let mut base = Terminal::new(7, 3, 100);
+        base.feed(b"\x1b[?2027h\x1b]8;id=opaque;http://raw/\xff\x1b\\");
+        let link = std::sync::Arc::make_mut(base.screen_mut().cursor.hyperlink.as_mut().unwrap());
+        link.uri = "display alias".into();
+        if missing_id {
+            link.id = None;
+        }
+        let input = "中 a語 b☝🏻";
+        let mut expected = base.clone();
+        for cp in input.chars() {
+            expected.print(cp);
+        }
+        for handler in [false, true] {
+            for chunk in [usize::MAX, 3, 7] {
+                let mut actual = base.clone();
+                assert!(deliver(&mut actual, input.as_bytes(), chunk, handler).is_empty());
+                let context = format!("missing_id={missing_id}, chunk={chunk}, handler={handler}");
+                same_state(&actual, &expected, &context);
+                // GHOSTSNP preserves opaque URI bytes; JSON also exposes the display override.
+                assert_eq!(
+                    serde_json::to_value(actual.screen()).unwrap(),
+                    serde_json::to_value(expected.screen()).unwrap(),
+                    "{context}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn linked_repaint_and_pending_wrap_handoffs_match_scalar_printing() {
+    for graphemes in [false, true] {
+        for repaint in [false, true] {
+            let mut base = Terminal::new(7, 3, 100);
+            base.feed(if graphemes {
+                b"\x1b[?2027h"
+            } else {
+                b"\x1b[?2027l"
+            });
+            base.feed(b"\x1b]8;;https://example.test\x07abcdefg");
+            if repaint {
+                base.feed(b"\r");
+            }
+            assert_eq!(base.screen().cursor.pending_wrap, !repaint);
+            for input in [
+                "abcdefghijklmnopqrstuvwxyz0123456789",
+                "界 a語 b☝🏻界 a語 b☝🏻界 a語 b☝🏻",
+            ] {
+                let mut expected = base.clone();
+                for cp in input.chars() {
+                    expected.print(cp);
+                }
+                for handler in [false, true] {
+                    for chunk in [usize::MAX, 3, 7] {
+                        let mut actual = base.clone();
+                        assert!(deliver(&mut actual, input.as_bytes(), chunk, handler).is_empty());
+                        same_state(
+                            &actual,
+                            &expected,
+                            &format!(
+                                "graphemes={graphemes}, repaint={repaint}, handler={handler}, chunk={chunk}"
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

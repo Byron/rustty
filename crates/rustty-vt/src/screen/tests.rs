@@ -1416,7 +1416,7 @@ fn mixed_row_writer_crosses_width_changes_and_restyles_exact_cells() {
             .collect();
         let mut state = 0;
         assert_eq!(
-            terminal.screen_mut().write_cursor_codepoints(
+            terminal.screen_mut().write_cursor_codepoints::<false>(
                 &input,
                 &properties,
                 31,
@@ -1477,4 +1477,156 @@ fn mixed_batches_reacquire_styles_after_crossing_a_page() {
         assert_references(terminal.screen());
         assert_references(&detached);
     }
+}
+
+#[test]
+fn linked_row_batches_retain_every_occupied_cell_and_the_cursor() {
+    for explicit in [false, true] {
+        for input in ["abcdefghij", "界界界界界", "界 a語bcde"] {
+            let mut terminal = Terminal::new(32, 3, 100);
+            terminal.feed(if explicit {
+                b"\x1b]8;id=one;https://example.test\x07"
+            } else {
+                b"\x1b]8;;https://example.test\x07"
+            });
+            let (index, row) = terminal.screen().cursor_location();
+            let count = if input.is_ascii() {
+                terminal
+                    .screen_mut()
+                    .write_cursor_ascii(input.as_bytes(), (index, row))
+            } else {
+                let codepoints: Vec<_> = input.chars().collect();
+                let properties: Vec<_> = codepoints
+                    .iter()
+                    .copied()
+                    .map(crate::unicode::print_properties)
+                    .collect();
+                terminal.screen_mut().write_cursor_codepoints::<true>(
+                    &codepoints,
+                    &properties,
+                    31,
+                    false,
+                    true,
+                    &mut 0,
+                )
+            };
+            assert_eq!(count, input.chars().count());
+            let screen = terminal.screen();
+            let page = &screen.pages.pages[index];
+            let id = screen.cursor_link.unwrap().1;
+            assert_eq!(page.link_map.len(), 10);
+            assert!(page.row(row).cells[..10].iter().all(|c| c.has_hyperlink()));
+            page.links
+                .assert_references(std::iter::repeat_n(id, 10), Some(id));
+            assert_references(screen);
+        }
+    }
+}
+
+#[test]
+fn linked_batches_grow_at_actual_map_boundaries_without_losing_refs() {
+    for free in [0, 1, 2, 3, 7] {
+        for (col, input) in [
+            (1, "abcdefghijk"),
+            (1, "界界界界界界"),
+            (1, "界 a語 bc界a"),
+            (200, "界 a"),
+        ] {
+            let mut terminal = Terminal::new(200, 3, 100);
+            let capacity = terminal.screen().pages.pages[0].links.available_cells();
+            assert!(capacity <= 200);
+            terminal.feed(b"\x1b[2;1H\x1b]8;id=filler;https://example.test/filler\x07");
+            terminal.feed(&vec![b'x'; capacity - free]);
+            terminal.feed(
+                format!("\x1b[1;{col}H\x1b]8;id=next;https://example.test/next\x07").as_bytes(),
+            );
+            assert_eq!(
+                terminal.screen().pages.pages[0].links.available_cells(),
+                free
+            );
+            let mut scalar = terminal.clone();
+            for cp in input.chars() {
+                scalar.print(cp);
+            }
+            terminal.feed(input.as_bytes());
+            assert_eq!(
+                snapshot::encode_to_vec(&terminal).unwrap(),
+                snapshot::encode_to_vec(&scalar).unwrap()
+            );
+            assert_references(terminal.screen());
+            assert_references(scalar.screen());
+            let detached = terminal.screen().snapshot_viewport();
+            terminal.feed(b"\x1b]8;;\x07\x1b[Hplain");
+            terminal.resize(73, 3);
+            assert_references(terminal.screen());
+            assert_references(&detached);
+        }
+    }
+}
+
+#[test]
+fn linked_batches_preserve_full_retained_history_across_page_growth() {
+    for bytes in [10_000, 50_000_000] {
+        let mut terminal = Terminal::with_limits(
+            200,
+            3,
+            ScrollbackLimits {
+                lines: None,
+                bytes: Some(bytes),
+            },
+        );
+        for uri in ["https://one", "https://two", "https://three"] {
+            terminal.feed(format!("\x1b]8;;{uri}\x07x").as_bytes());
+        }
+        terminal.feed(b"\x1b[1m\x1b[3;1H");
+        let rows = usize::from(terminal.screen().pages.pages[0].capacity.rows);
+        terminal.feed(&vec![b'\n'; rows - 3]);
+        let old_page = terminal.screen().cursor_link.unwrap().0;
+        let text: String = "界 a語 bc".chars().cycle().take(1607).collect();
+        let mut scalar = terminal.clone();
+        for cp in text.chars() {
+            scalar.print(cp);
+        }
+        terminal.feed(text.as_bytes());
+        assert_ne!(terminal.screen().cursor_link.unwrap().0, old_page);
+        // Binary snapshots contain all retained rows, link identities and styles.
+        assert_eq!(
+            snapshot::encode_to_vec(&terminal).unwrap(),
+            snapshot::encode_to_vec(&scalar).unwrap()
+        );
+        assert_references(terminal.screen());
+        assert_references(scalar.screen());
+        let detached = terminal.screen().snapshot_viewport();
+        for cols in [97, 201] {
+            terminal.resize(cols, 3);
+            scalar.resize(cols, 3);
+            assert_eq!(
+                snapshot::encode_to_vec(&terminal).unwrap(),
+                snapshot::encode_to_vec(&scalar).unwrap()
+            );
+            assert_references(terminal.screen());
+        }
+        assert_references(&detached);
+    }
+}
+
+#[test]
+fn unlinked_mixed_batches_release_a_stale_cursor_link_after_public_clear() {
+    let mut terminal = Terminal::new(7, 3, 100);
+    terminal.feed(b"\x1b[?2027h\x1b]8;id=old;https://example.test\x07a");
+    assert!(terminal.screen().cursor_link.is_some());
+    terminal.screen_mut().cursor.hyperlink = None;
+    let mut scalar = terminal.clone();
+    let input = "界 a語 b☝🏻界 a語 b☝🏻";
+    for cp in input.chars() {
+        scalar.print(cp);
+    }
+    terminal.feed(input.as_bytes());
+    assert!(terminal.screen().cursor_link.is_none());
+    assert_eq!(
+        snapshot::encode_to_vec(&terminal).unwrap(),
+        snapshot::encode_to_vec(&scalar).unwrap()
+    );
+    assert_references(terminal.screen());
+    assert_references(scalar.screen());
 }

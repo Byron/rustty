@@ -1526,7 +1526,7 @@ impl Terminal {
         if self.modes.get(false, 4)
             || !self.modes.dec(7)
             || screen.charset.single.is_some()
-            || screen.cursor.hyperlink.is_some()
+            || screen.linked_overwrite()
         {
             for &byte in bytes {
                 self.print(char::from(byte));
@@ -1591,11 +1591,11 @@ impl Terminal {
         if self.modes.get(false, 4)
             || !self.modes.dec(7)
             || screen.charset.single.is_some()
+            || screen.linked_overwrite()
             || !matches!(
                 screen.charset.slots[screen.charset.gl],
                 Charset::Utf8 | Charset::Ascii
             )
-            || screen.cursor.hyperlink.is_some()
             || self.margins.left != 0
             || self.margins.right != usize::from(self.cols) - 1
         {
@@ -1604,6 +1604,15 @@ impl Terminal {
             }
             return;
         }
+        if self.screen().cursor.hyperlink.is_some() {
+            self.print_utf8_rows::<true>(text);
+        } else {
+            self.print_utf8_rows::<false>(text);
+        }
+    }
+
+    // Text cannot open a link; the linked path still allows scalar admission to close one.
+    fn print_utf8_rows<const MAYBE_LINKED: bool>(&mut self, text: &str) {
         let right = usize::from(self.cols) - 1;
         let graphemes = self.modes.dec(2027);
         // Borrowed parser events stay borrowed; decode bounded chunks without
@@ -1623,25 +1632,40 @@ impl Terminal {
                 break;
             }
             // Skip mixed-row admission for entire narrow, wide or combining blocks.
-            let mixed_widths = properties[..len].iter().fold(0, |bits, p| bits | p) & 3 == 3;
+            let properties_union = properties[..len].iter().fold(0, |bits, p| bits | p);
+            let mixed_widths = properties_union & 3 == 3;
+            // Ordinary and narrow combining blocks are cheaper in the row writer.
+            let filter_specials = MAYBE_LINKED
+                && graphemes
+                && properties_union & 2 != 0
+                && properties_union & (31 << 3) != 0;
             let mut offset = 0;
             while offset < len {
                 let mut state = self.grapheme_state;
-                let count = self.screen_mut().write_cursor_codepoints(
-                    &codepoints[offset..len],
-                    &properties[offset..len],
-                    right,
-                    graphemes,
-                    mixed_widths,
-                    &mut state,
-                );
+                let count =
+                    if !filter_specials || matches!(properties[offset] & (3 | (31 << 3)), 1 | 2) {
+                        self.screen_mut().write_cursor_codepoints::<MAYBE_LINKED>(
+                            &codepoints[offset..len],
+                            &properties[offset..len],
+                            right,
+                            graphemes,
+                            mixed_widths,
+                            &mut state,
+                        )
+                    } else {
+                        0
+                    };
                 if count != 0 {
                     self.grapheme_state = state;
                     self.previous_char = Some(codepoints[offset + count - 1]);
                     self.generation = self.generation.wrapping_add(count as u64);
                     offset += count;
                 } else {
-                    if graphemes && codepoints[offset] == '\u{200d}' && offset + 1 < len {
+                    if graphemes
+                        && codepoints[offset] == '\u{200d}'
+                        && offset + 1 < len
+                        && (!MAYBE_LINKED || self.screen().cursor.hyperlink.is_none())
+                    {
                         let count = self.screen_mut().append_zwj_pair(
                             codepoints[offset + 1],
                             unicode::Properties::from_bits(properties[offset + 1]).grapheme,

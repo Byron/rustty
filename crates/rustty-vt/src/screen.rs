@@ -2044,9 +2044,13 @@ impl Screen {
         use crate::printing;
         debug_assert_eq!(location, self.cursor_location());
         let charset = self.charset.slots[self.charset.gl];
-        let (index, row) = if self.cursor_resources_match(location.0) {
+        let (index, row) = if self.cursor_print_resources_match(location.0) {
             location
         } else {
+            // Public links with no ID deliberately repeat scalar admission.
+            if self.cursor_link.is_some() || self.cursor.hyperlink.is_some() {
+                return 0;
+            }
             self.sync_cursor_resources_slow();
             self.cursor_location()
         };
@@ -2056,7 +2060,10 @@ impl Screen {
             return 0;
         }
         let offset = page.slot(row, self.cursor.col);
-        let len = bytes.len().min(usize::from(page.columns) - self.cursor.col);
+        let mut len = bytes.len().min(usize::from(page.columns) - self.cursor.col);
+        if self.cursor_link.is_some() {
+            len = len.min(page.links.available_cells());
+        }
         let old = page.cells[offset];
         if old.width() != 1
             || old.has_grapheme()
@@ -2086,8 +2093,12 @@ impl Screen {
             }
         }
         if count != 0 {
-            page.mark_cell(row, template);
+            if self.cursor_link.is_some() {
+                self.set_cursor_hyperlink_run((index, row), offset..offset + count);
+            }
+            self.pages.pages[index].mark_cell(row, template);
         }
+        let page = &mut self.pages.pages[index];
         if count != 0 {
             self.graphics.overwrite_sixel(
                 page.row_ids[row],
@@ -2104,7 +2115,7 @@ impl Screen {
         count
     }
 
-    pub(crate) fn write_cursor_codepoints(
+    pub(crate) fn write_cursor_codepoints<const MAYBE_LINKED: bool>(
         &mut self,
         codepoints: &[char],
         properties: &[u32],
@@ -2125,7 +2136,7 @@ impl Screen {
             return 0;
         }
         let available = right + 1 - self.cursor.col;
-        let len = printing::printable_prefix(properties, width, graphemes)
+        let mut len = printing::printable_prefix(properties, width, graphemes)
             .min(available / usize::from(width));
         if len == 0 {
             return 0;
@@ -2136,14 +2147,19 @@ impl Screen {
             return 0;
         }
         // The scalar fallback extends partial-reflow rows before any write.
-        if usize::from(page.columns) <= right || self.cursor_link.is_some() {
+        let resources_match = if MAYBE_LINKED {
+            self.cursor_print_resources_match(index)
+        } else {
+            self.cursor_resources_match(index)
+        };
+        if usize::from(page.columns) <= right || !resources_match {
             return 0;
         }
-        match self.cursor_style {
-            Some((owner, id))
-                if owner == page.serial && page.styles.get(id).same_as(&self.cursor.style) => {}
-            None if self.cursor.style == Style::default() => {}
-            _ => return 0,
+        if MAYBE_LINKED && self.cursor_link.is_some() {
+            len = len.min(page.links.available_cells() / usize::from(width));
+            if len == 0 {
+                return 0;
+            }
         }
         let offset = page.slot(row, self.cursor.col);
         let mut next_state = *state;
@@ -2173,7 +2189,12 @@ impl Screen {
                 .get(len)
                 .is_some_and(|p| (p & 3) ^ u32::from(width) == 3)
             && len * usize::from(width) < available
-            && self.cursor.style.tmux_tab == 0;
+            && self.cursor.style.tmux_tab == 0
+            // A mixed row may occupy every remaining cell; uniform batches
+            // consume smaller available map prefixes before scalar growth.
+            && (!MAYBE_LINKED
+                || self.cursor_link.is_none()
+                || page.links.available_cells() >= available);
         let (count, slots, mut marked) = if mixed {
             let result = self.write_cursor_mixed_codepoints(
                 codepoints,
@@ -2244,6 +2265,9 @@ impl Screen {
         if codepoints[..count].contains(&crate::graphics::unicode::PLACEHOLDER) {
             marked.set_codepoint(Some(crate::graphics::unicode::PLACEHOLDER));
         }
+        if MAYBE_LINKED && self.cursor_link.is_some() {
+            self.set_cursor_hyperlink_run((index, row), offset..offset + slots);
+        }
         let page = &mut self.pages.pages[index];
         page.mark_cell(row, marked);
         self.graphics
@@ -2262,6 +2286,23 @@ impl Screen {
         self.cursor.col = col.min(right);
         self.cursor.pending_wrap = col > right;
         count
+    }
+
+    // Bulk link bookkeeping is absent from ordinary text runs.
+    #[inline(never)]
+    fn set_cursor_hyperlink_run(
+        &mut self,
+        location: (usize, usize),
+        slots: std::ops::Range<usize>,
+    ) {
+        let (index, row) = location;
+        let (_, id) = self.cursor_link.unwrap();
+        self.pages.pages[index].set_hyperlink_run(
+            row,
+            slots,
+            id,
+            self.cursor.hyperlink.as_ref().unwrap(),
+        );
     }
 
     // Keep mixed-only restyling out of the common uniform and scalar fallback paths.
@@ -3068,12 +3109,54 @@ impl Screen {
         self.cursor_link.is_none()
             && self.cursor.hyperlink.is_none()
             && match self.cursor_style {
-                None => self.cursor.style == Style::default(),
+                None => self.cursor.style.same_as(&Style::default()),
                 Some((owner, id)) => {
                     let page = &self.pages.pages[index];
                     owner == page.serial && page.styles.get(id).same_as(&self.cursor.style)
                 }
             }
+    }
+
+    // Repainting linked cells cannot use either batch writer.
+    #[inline(always)]
+    pub(crate) fn linked_overwrite(&self) -> bool {
+        self.cursor.hyperlink.is_some()
+            && !self.cursor.pending_wrap
+            && self.cursor_cell_has_hyperlink()
+    }
+
+    #[inline(never)]
+    fn cursor_cell_has_hyperlink(&self) -> bool {
+        self.cursor_row()
+            .cells
+            .get(self.cursor.col)
+            .is_some_and(|cell| cell.has_hyperlink())
+    }
+
+    #[inline(always)]
+    fn cursor_print_resources_match(&self, index: usize) -> bool {
+        self.cursor_resources_match(index) || self.cursor_link_resources_match(index)
+    }
+
+    // Keep linked validation out of the ordinary unlinked print path.
+    #[inline(never)]
+    fn cursor_link_resources_match(&self, index: usize) -> bool {
+        let (Some((owner, id)), Some(data)) = (self.cursor_link, self.cursor.hyperlink.as_ref())
+        else {
+            return false;
+        };
+        let page = &self.pages.pages[index];
+        if owner != page.serial {
+            return false;
+        }
+        let style_matches = match self.cursor_style {
+            None => self.cursor.style == Style::default(),
+            Some((owner, id)) => {
+                owner == page.serial && page.styles.get(id).same_as(&self.cursor.style)
+            }
+        };
+        let link = page.links.get(id);
+        style_matches && link.uri == data.uri_bytes() && Some(&link.id) == data.id.as_ref()
     }
 
     fn sync_cursor_resources_slow(&mut self) {

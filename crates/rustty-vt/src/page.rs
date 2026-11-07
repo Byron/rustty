@@ -434,6 +434,36 @@ impl Page {
         }
     }
 
+    /// Attach already-admitted, previously unlinked cells without growing the page.
+    /// The caller marks the completed row once after the cell writes.
+    pub fn set_hyperlink_run(
+        &mut self,
+        row: usize,
+        slots: Range<usize>,
+        id: u16,
+        data: &Arc<HyperlinkData>,
+    ) {
+        self.links
+            .retain_cells(
+                id,
+                u16::try_from(slots.len()).expect("run fits a physical row"),
+            )
+            .expect("linked run capacity was checked before writing");
+        self.link_map.reserve(slots.len());
+        let override_data = data != self.links.data(id);
+        for slot in slots {
+            debug_assert!(!self.cells[slot].has_hyperlink());
+            let old = self.link_map.insert(slot as u32, id);
+            debug_assert!(old.is_none());
+            if override_data {
+                self.set_link_data(slot, id, data.clone());
+            }
+            self.cells[slot].set_hyperlink(true);
+        }
+        self.headers[row].set(RowHeader::HYPERLINK, true);
+        self.refresh_charge();
+    }
+
     pub fn copy_cell(&self, slot: usize) -> CellCopy {
         let cell = self.cells[slot];
         let link_id = self.link_id(slot);

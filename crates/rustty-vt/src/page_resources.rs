@@ -626,12 +626,16 @@ impl HyperlinkAdmission {
     }
 
     pub fn retain_cell(&mut self, id: u16) -> Result<(), HyperlinkFull> {
+        self.retain_cells(id, 1)
+    }
+
+    pub fn retain_cells(&mut self, id: u16, count: u16) -> Result<(), HyperlinkFull> {
         if id != 0 {
-            if self.available_cells() == 0 {
+            if self.available_cells() < usize::from(count) {
                 return Err(HyperlinkFull::Map);
             }
-            self.set.retain(id);
-            self.cells += 1;
+            self.set.retain_many(id, count);
+            self.cells += usize::from(count);
         }
         Ok(())
     }

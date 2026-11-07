@@ -173,3 +173,121 @@ def requests(reference):
                 "rows": 3, "operations": [write(text)],
                 "after": [op for op in after if op["op"] != "pages"]},
                ["terminal.pages", "snapshot.cross-decode"])
+
+    yield from _batched_requests(reference)
+
+
+def _batched_requests(reference):
+    def write(text):
+        data = text if isinstance(text, bytes) else text.encode()
+        return {"op": "write", "data": data.hex()}
+
+    def start(uri="http://example.test", identifier=None):
+        return f"\x1b]8;{'id=' + identifier if identifier is not None else ''};{uri}\x1b\\"
+
+    end = "\x1b]8;;\x1b\\"
+
+    def case(name, cols, rows, operations, checkpoint=True):
+        request = {"id": "pages/hyperlinks/batched/" + name, "kind": "snapshot",
+                   "cols": cols, "rows": rows, "observe_semantic": True,
+                   "operations": [{"op": "pages"}, *operations],
+                   "after": [write("\x1b[2b\x1b[6n")]}
+        if not checkpoint:
+            request["kind"] = "input"
+            request["operations"].extend(request.pop("after"))
+        return request, ["terminal.pages", "terminal.cells", "terminal.cursor"]
+
+    texts = {"narrow": "hello world!abc", "wide": "中二三四漢字あア",
+             "mixed": "中 二12三 四a漢字 "}
+    # Explicit identity stays stable across capture and continued printing.
+    for repaint in (False, True):
+        for name, body in (("narrow", "abcdefghijklmnopqrstuvwxyz0123456789"),
+                           ("mixed", "中 a語 b☝🏻" * 3)):
+            yield case(f"event-boundary/{repaint}/{name}", 7, 3, [
+                write("\x1b[?2027h" + start(identifier="event") + "abcdefg"
+                      + ("\r" if repaint else "")),
+                write(body), {"op": "pages"}, {"op": "observe"},
+            ])
+    for identifier in (None, "explicit"):
+        for name, body in texts.items():
+            yield case(f"odd-edge/{identifier}/{name}", 7, 3, [
+                write("\x1b[1;31m\x1b[1\"q\x1b]133;P\x07" + start(identifier=identifier)),
+                write(body), {"op": "pages"}, {"op": "observe"},
+                write(end + "\x1b[2b"), {"op": "observe"},
+            ])
+        yield case(f"underfull/{identifier}", 80, 3, [
+            write(start(identifier=identifier)), write(texts["mixed"]),
+            {"op": "pages"}, {"op": "observe"},
+        ])
+        yield case(f"same-uri-reopen/{identifier}", 80, 3, [
+            write(start(identifier=identifier) + "中 a" + end), {"op": "observe"},
+            write(start(identifier=identifier) + "語 b" + end),
+            {"op": "pages"}, {"op": "observe"},
+        ])
+        yield case(f"grapheme-mode/{identifier}", 7, 3, [
+            write("\x1b[?2027h" + start(identifier=identifier)), write("中 ☝🏻語ःa"),
+            {"op": "pages"}, {"op": "observe"},
+        ])
+    for name, change in (("same", ""), ("other", start("http://other.test")), ("closed", end)):
+        yield case("overwrite/" + name, 15, 3, [
+            write(start() + "o" * 12 + "中\x1b[1;3H" + change),
+            write("a二b三四 c漢defg"), {"op": "pages"}, {"op": "observe"},
+            ])
+    yield case("raw-uri", 7, 3, [
+        write(b"\x1b]8;id=opaque;http://raw/\xff\x1b\\"),
+        write("中 a語 b"), {"op": "pages"}, {"op": "observe"},
+    ])
+    yield case("margin-wrap-control", 10, 3, [
+        write("\x1b[?2027h\x1b[?69h\x1b[3;8s\x1b[1;10H" + start()),
+        write("abcd中 a語 b"), {"op": "pages"}, {"op": "observe"},
+    ])
+    yield case("charset-control", 8, 3, [
+        write("\x1b(0" + start(identifier="line")), write("lqkxmj#q"),
+        {"op": "pages"}, {"op": "observe"}, write("\x1b(B\x1b[2b"),
+        {"op": "observe"},
+    ])
+    colors = "".join(f"\x1b[38;2;{i};0;0ma" for i in range(110))
+    for resource, growth in (("styles", colors), ("graphemes", "a\u0301" * 513)):
+        yield case("cursor-link-after-growth/" + resource, 1024, 2, [
+            write(start("x" * 2016) + "a"), write(growth), {"op": "pages"},
+            {"op": "observe"}, write("中 a語 b" * 4),
+            {"op": "pages"}, {"op": "observe"},
+        ])
+
+    if reference is None:
+        return
+    layout = reference.request({"id": "linked-batch/capacity", "kind": "page_layout",
+                                "page_layout": {"columns": 200}})
+    if not layout["ok"]:
+        raise RuntimeError("linked batching native capacity query failed")
+    capacity = layout["page_layout"]["layout"]["capacity"]
+    map_cells = layout["page_layout"]["layout"]["hyperlink_map_layout"]["capacity"] * 80 // 100
+    if map_cells < 7 or map_cells > 200:
+        raise RuntimeError("linked batching fixture expects a map fitting one filler row")
+    for free in (0, 1, 2, 3, 7):
+        for name, body in texts.items():
+            yield case(f"map-free/{free}/{name}", 200, 3, [
+                write("\x1b[2;1H" + start("filler") + "x" * (map_cells - free)
+                      + "\x1b[H" + start()),
+                {"op": "pages"}, write(body * 8), {"op": "pages"}, {"op": "observe"},
+                    ])
+    yield case("one-map-slot-wide-spacer", 200, 3, [
+        write("\x1b[2;1H" + start("filler") + "x" * (map_cells - 1)
+              + "\x1b[1;200H" + start()),
+        {"op": "pages"}, write("中 a"), {"op": "pages"}, {"op": "observe"},
+    ])
+    # As upstream, older links on the first page ensure re-interned IDs differ.
+    setup = "".join(start(uri) + "x" for uri in ("http://a", "http://b", "http://c"))
+    setup += "\x1b[3;1H" + "\n" * (capacity["rows"] - 3)
+    mixed = "".join(" " if i % 3 == 2 else chr(0x4E00 + i % 512) for i in range(807))
+    narrow = "".join(chr(ord("a") + i % 26) for i in range(1007))
+    # Packing a snapshot prunes tiny-budget history in both native and Rust
+    # decoders. Keep those live checks; the larger budget also checks capture.
+    for limit in (10_000, 50_000_000):
+        for name, body in (("narrow", narrow), ("mixed", mixed)):
+            yield case(f"page-crossing/{limit}/{name}", 200, 3, [
+                {"op": "grid", "grid": {"action": "limits", "bytes": limit}},
+                write("\x1b[1m" + setup), {"op": "pages"}, write(body),
+                {"op": "pages"}, {"op": "observe"},
+                write(end + "\x1b[2b"), {"op": "observe"},
+            ], checkpoint=limit != 10_000)
