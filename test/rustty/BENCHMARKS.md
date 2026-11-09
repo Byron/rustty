@@ -6,6 +6,10 @@ window. Criterion is a development dependency only. No application build is
 needed. Timing excludes terminal construction and input generation; the `feed`
 and `stream` workloads include UTF-8 decoding and VT parsing.
 
+The [November 9 native zgui follow-up](benchmarks/zgui-2026-11-09/README.md)
+records exploratory application CPU/RSS replays and regression evidence for
+retained metadata, signal cleanup, and input settlement without presentation.
+
 The [November 7 mainline reintegration](UPSTREAM-2026-11-07.md) records shared-input
 feed measurements and resource, erase, Unicode and hyperlink comparisons, with
 control costs and retained-memory limits. Its [artifact manifest](benchmarks/upstream-2026-11-07/artifact-manifest.json)
