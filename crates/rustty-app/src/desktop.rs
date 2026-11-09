@@ -2785,6 +2785,9 @@ impl App {
         {
             return;
         }
+        if self.commit_outliner_hover() {
+            self.active = Some(host.id);
+        }
         self.cancel_selection_drag(host);
         let now = Instant::now();
         let focused = self
@@ -3202,6 +3205,9 @@ impl App {
         if self.focused(window) != Some(pane) {
             return;
         }
+        if self.commit_outliner_hover() {
+            self.active = Some(window);
+        }
         if let Some(tab) = self.tab(window).map(|tab| tab.id) {
             for entry in &mut self.tmuxx {
                 entry.cancel_pending_focus(tab);
@@ -3259,8 +3265,14 @@ impl App {
         }
     }
     fn hide_outliner(&mut self) {
+        self.finish_outliner_hover(false);
         if let Some(host) = &mut self.outliner {
             self.consumed_global_keys.extend(host.held_keys.drain());
+            host.hovered = None;
+            host.egui
+                .egui_input_mut()
+                .events
+                .push(egui::Event::PointerGone);
             host.visible = false;
             host.focused = false;
             host.deadline = None;
@@ -3431,11 +3443,19 @@ impl App {
         if let Some(target) = result.selected {
             self.select_outline_target(target);
         } else if let Some(target) = result.preview {
+            self.commit_outliner_hover();
             self.select_outline_target_with_activation(target, false);
+        } else {
+            let alt = self
+                .outliner
+                .as_ref()
+                .is_some_and(|host| host.modifiers.state().alt_key());
+            self.update_outliner_hover(result.hovered, alt);
         }
         Ok(())
     }
     fn select_outline_target(&mut self, target: outliner::Target) {
+        self.commit_outliner_hover();
         self.select_outline_target_with_activation(target, true);
     }
     fn select_outline_target_with_activation(&mut self, target: outliner::Target, activate: bool) {
@@ -3560,6 +3580,7 @@ impl App {
         let mut action = None;
         match &event {
             WindowEvent::CloseRequested => close = true,
+            WindowEvent::CursorLeft { .. } => host.hovered = None,
             WindowEvent::Focused(focused) => {
                 host.focused = *focused;
                 if *focused {
@@ -4500,6 +4521,25 @@ impl App {
             self.save();
             event_loop.exit();
             return true;
+        }
+        if matches!(
+            action,
+            Action::ToggleSplitZoom
+                | Action::ToggleQuadrantZoom
+                | Action::ToggleQuadRoot
+                | Action::ResizeSplit { .. }
+                | Action::Undo
+                | Action::Redo
+                | Action::NewWindow
+                | Action::NewTab
+                | Action::NewSplit(_)
+                | Action::CloseSurface
+                | Action::CloseTab
+                | Action::CloseWindow
+                | Action::CloseAllWindows
+        ) && self.commit_outliner_hover()
+        {
+            self.active = Some(host.id);
         }
         match action {
             Action::Ignore => {}
@@ -9239,6 +9279,49 @@ impl ApplicationHandler<Event> for App {
         if event_loop.exiting() || std::thread::panicking() {
             return;
         }
+        // Resigning key windows synthesize an empty modifier state before focus transfer ends.
+        let modifier_source_focused = matches!(event, WindowEvent::ModifiersChanged(_))
+            && self
+                .windows
+                .get(&window)
+                .map(|host| {
+                    if self.background_smoke {
+                        host.focused
+                    } else {
+                        host.window.has_focus()
+                    }
+                })
+                .or_else(|| {
+                    self.outliner
+                        .as_ref()
+                        .filter(|host| host.window.id() == window)
+                        .map(|host| {
+                            if self.background_smoke {
+                                host.focused
+                            } else {
+                                host.window.has_focus()
+                            }
+                        })
+                })
+                .unwrap_or(false);
+        if let WindowEvent::ModifiersChanged(modifiers) = &event
+            && (modifier_source_focused || !modifiers.state().is_empty())
+        {
+            let hovered = self.outliner.as_mut().and_then(|host| {
+                host.modifiers = *modifiers;
+                if host.window.id() != window {
+                    let _ = host.egui.on_window_event(&host.window, &event);
+                }
+                host.repaint();
+                host.hovered
+            });
+            self.update_outliner_hover(hovered, modifiers.state().alt_key());
+        } else if matches!(event, WindowEvent::Focused(false))
+            && let Some(host) = &mut self.outliner
+        {
+            // Native focus transfer delivers the loss before the destination gains focus.
+            host.check_hover_focus = true;
+        }
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         if self.import_selector {
             self.import_window_event(event_loop, window, event);
@@ -9504,7 +9587,9 @@ impl ApplicationHandler<Event> for App {
             WindowEvent::ModifiersChanged(modifiers) => {
                 host.modifiers = modifiers;
                 let current = input::modifiers(host.modifiers.state());
+                let outliner_hover = self.outliner_hover_active();
                 if let Some(peek) = host.peek
+                    && !outliner_hover
                     && !input::chord_held(peek.chord, current)
                 {
                     if host.window.has_focus() {
@@ -9512,7 +9597,7 @@ impl ApplicationHandler<Event> for App {
                     } else {
                         host.peek = None;
                     }
-                } else if host.peek.is_none() && !host.ui_input() {
+                } else if host.peek.is_none() && !host.ui_input() && !outliner_hover {
                     let trigger = self
                         .config()
                         .keybinds
@@ -9657,6 +9742,7 @@ impl ApplicationHandler<Event> for App {
         self.reconcile(event_loop);
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.check_outliner_hover_focus();
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         self.tick_import_selector();
         #[cfg(all(any(target_os = "macos", target_os = "windows"), debug_assertions))]

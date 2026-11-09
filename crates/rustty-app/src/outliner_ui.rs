@@ -61,6 +61,8 @@ pub struct Output {
     pub selected: Option<Target>,
     /// Change the focused panel while keeping keyboard input in the Outliner.
     pub preview: Option<Target>,
+    /// The navigation item under the pointer, independent of the preview modifier.
+    pub hovered: Option<Target>,
     pub reorder: Option<(Id, Option<Id>)>,
     pub unpin: Option<Id>,
 }
@@ -238,6 +240,13 @@ fn header(ui: &mut egui::Ui, pinned: bool, agents_only: &mut bool) -> bool {
                 )
             });
             response.on_hover_text("Show only panels with agents");
+            let modifier = if cfg!(target_os = "macos") { "Option" } else { "Alt" };
+            let active = ui.input(|input| input.modifiers.alt);
+            let label = if active { "preview" } else { "hover" };
+            ui.label(egui::RichText::new(format!("{modifier}: {label}")).small().color(
+                if active { ui.visuals().selection.stroke.color } else { ui.visuals().weak_text_color() },
+            ))
+            .on_hover_text(format!("Hold {modifier} and hover to preview a panel. Release to return to the selected panel. Click to keep the new selection."));
         });
     });
     changed
@@ -475,7 +484,7 @@ pub fn contents(
         .data(|data| data.get_temp::<Expansion>(expansion_id))
         .unwrap_or_default();
     if searching {
-        let clicked = search_results(
+        let results = search_results(
             ui,
             results.as_deref().unwrap_or_default(),
             &result_groups,
@@ -483,11 +492,12 @@ pub fn contents(
             query_changed || selection_changed || filter_changed,
             search.agents_only,
         );
-        if let Some(Target::Pane { pane, .. }) = clicked {
+        if let Some(Target::Pane { pane, .. }) = results.selected {
             search.selected_pane = Some(pane);
             ui.ctx().request_repaint();
         }
-        output.selected = clicked.or(output.selected);
+        output.selected = results.selected.or(output.selected);
+        output.hovered = results.hovered.or(output.hovered);
     } else {
         let changed = expansion.sync(rows);
         let visible = expansion.visible(rows);
@@ -680,7 +690,9 @@ pub fn contents(
                 if !matches!(row.target, Target::Quad { .. }) || !expansion.is_open(row.target) {
                     paint_label(ui, &row.label, label_rect, text_left, foreground, &[]);
                 }
-                if (changed || selection_changed) && focus == Some(index) {
+                if (changed || selection_changed) && focus == Some(index)
+                    && !ui.input(|input| input.modifiers.alt)
+                {
                     response.scroll_to_me(None);
                 }
                 response.widget_info(|| {
@@ -702,6 +714,9 @@ pub fn contents(
                         search.selected_pane = Some(pane);
                     }
                 }
+                if response.hovered() {
+                    output.hovered = Some(row.target);
+                }
                 response.on_hover_text(row.tmuxx.as_ref().map_or_else(|| description(row), |source| format!("{}\n{source}", description(row))));
             }
         });
@@ -716,6 +731,9 @@ pub fn contents(
     }
     if output.selected.is_some() {
         output.preview = None;
+    }
+    if ui.input(|input| input.pointer.hover_pos().is_none()) {
+        output.hovered = None;
     }
     output
 }
@@ -761,7 +779,7 @@ fn search_results(
     selected_pane: Option<Id>,
     changed: bool,
     compact: bool,
-) -> Option<Target> {
+) -> Output {
     let scroll = egui::ScrollArea::vertical()
         .id_salt("outliner-search-results")
         .max_height(
@@ -772,7 +790,7 @@ fn search_results(
         .min_scrolled_height(0.0)
         .auto_shrink([false, false])
         .animated(false);
-    let mut selected = None;
+    let mut output = Output::default();
     scroll.show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
         let mut ancestors = Vec::new();
@@ -861,7 +879,7 @@ fn search_results(
             } else {
                 &result.path[result.path.len() - 1..]
             };
-            let clicked = breadcrumb_with_panels(
+            let interaction = breadcrumb_with_panels(
                 &mut child,
                 breadcrumb,
                 label_rect.width() - 6.0,
@@ -886,15 +904,19 @@ fn search_results(
                     },
                 )
             });
-            if let Some(target) = clicked {
-                selected = Some(target);
+            if let Some(target) = interaction.selected {
+                output.selected = Some(target);
             } else if response.clicked() {
                 response.surrender_focus();
-                selected = Some(row.target);
+                output.selected = Some(row.target);
+            }
+            if response.hovered() || interaction.hovered.is_some() {
+                // A search breadcrumb represents its panel, including its non-clickable ancestors.
+                output.hovered = interaction.hovered.filter(|_| group.len() > 1).or(Some(row.target));
             }
         }
     });
-    selected
+    output
 }
 
 fn pins(
@@ -1092,13 +1114,14 @@ fn pins(
                     child.visuals_mut().override_text_color = Some(foreground);
                     child.visuals_mut().weak_text_color = Some(foreground);
                 }
-                output.selected = breadcrumb_with_pin_highlight(
+                let interaction = breadcrumb_with_pin_highlight(
                     &mut child,
                     path,
                     crumb_rect.width(),
                     quad_highlight,
-                )
-                .or(output.selected);
+                );
+                output.selected = interaction.selected.or(output.selected);
+                output.hovered = interaction.hovered.or(output.hovered);
                 let blank =
                     Rect::from_min_max(Pos2::new(child.min_rect().right(), rect.top()), rect.max);
                 if blank.width() > 0.0 {
@@ -1113,6 +1136,9 @@ fn pins(
                     });
                     if response.clicked() {
                         output.selected = path.last().map(|row| row.target);
+                    }
+                    if response.hovered() {
+                        output.hovered = path.last().map(|row| row.target);
                     }
                 }
                 let drop = ui.interact(
@@ -1189,7 +1215,7 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
             background,
             egui::Shape::rect_filled(ui.min_rect(), 4, accent.gamma_multiply(0.15)),
         );
-        selected
+        selected.selected
     })
     .inner
 }
@@ -1199,7 +1225,7 @@ fn breadcrumb_with_pin_highlight(
     rows: &[Row],
     max_width: f32,
     pin_highlight: Option<(Rect, TabAccent, egui::layers::ShapeIdx)>,
-) -> Option<Target> {
+) -> Output {
     breadcrumb_with_panels(ui, rows, max_width, None, &[], None, pin_highlight, None)
 }
 
@@ -1213,9 +1239,9 @@ fn breadcrumb_with_panels(
     selected_pane: Option<Id>,
     pin_highlight: Option<(Rect, TabAccent, egui::layers::ShapeIdx)>,
     label_color: Option<Color32>,
-) -> Option<Target> {
+) -> Output {
     if rows.is_empty() || max_width <= 0.0 {
-        return None;
+        return Output::default();
     }
     let pin_highlight = pin_highlight.and_then(|(rect, accent, shape)| {
         rows.iter()
@@ -1287,7 +1313,7 @@ fn breadcrumb_with_panels(
         remaining -= widths[index];
     }
     let mut x = bounds.left();
-    let mut selected = None;
+    let mut output = Output::default();
     for (index, row) in rows.iter().enumerate() {
         let foreground = pin_highlight
             .filter(|(quad, ..)| index <= *quad)
@@ -1332,6 +1358,9 @@ fn breadcrumb_with_panels(
                 Sense::click()
             },
         );
+        if response.hovered() {
+            output.hovered = Some(row.target);
+        }
         let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
         if response.hovered() || response.has_focus() {
             painter.rect_stroke(
@@ -1379,7 +1408,10 @@ fn breadcrumb_with_panels(
                 });
                 if response.clicked() {
                     response.surrender_focus();
-                    selected = Some(panel.target);
+                    output.selected = Some(panel.target);
+                }
+                if response.hovered() {
+                    output.hovered = Some(panel.target);
                 }
                 response.on_hover_text(description(panel));
             }
@@ -1423,12 +1455,12 @@ fn breadcrumb_with_panels(
         });
         if response.clicked() {
             response.surrender_focus();
-            selected = Some(row.target);
+            output.selected = Some(row.target);
         }
         response.on_hover_text(description(row));
         x += width;
     }
-    selected
+    output
 }
 
 fn paint_label(
@@ -2182,6 +2214,8 @@ mod tests {
             },
         );
         output.textures_delta.clear();
+        // Pin command tests ignore passive hits; hover routing has its own coverage.
+        result.hovered = None;
         (output, result)
     }
 
@@ -2271,6 +2305,142 @@ mod tests {
             repeat,
             modifiers: egui::Modifiers::CTRL,
         }
+    }
+
+    #[test]
+    fn hover_reports_navigation_items_without_selecting_and_survives_modifier_changes() {
+        for mode in ["tree", "pins", "agents", "search"] {
+            let context = egui::Context::default();
+            context.enable_accesskit();
+            let mut rows = navigation_rows();
+            rows[4].label = rows[3].label.clone();
+            rows[3].has_agent = true;
+            rows[4].has_agent = true;
+            let pins = if mode == "pins" { vec![3] } else { vec![] };
+            let mut search = SearchState {
+                agents_only: mode == "agents",
+                open: mode == "search",
+                query: if mode == "search" {
+                    "Tests".into()
+                } else {
+                    String::new()
+                },
+                ..Default::default()
+            };
+            let (paint, _, _) =
+                search_frame(&context, &rows, &pins, &mut search, Default::default());
+            let (target, position) = if mode == "pins" {
+                let bounds = node(&paint, &description(&rows[3]))
+                    .unwrap()
+                    .bounds()
+                    .unwrap();
+                (
+                    rows[3].target,
+                    Pos2::new(
+                        (bounds.x0 + bounds.x1) as f32 / 2.0,
+                        (bounds.y0 + bounds.y1) as f32 / 2.0,
+                    ),
+                )
+            } else {
+                let (target, id) = if mode == "tree" {
+                    (
+                        rows[2].target,
+                        egui::Id::new(("outliner-row", rows[2].target)),
+                    )
+                } else {
+                    (
+                        rows[4].target,
+                        egui::Id::new(("outliner-search-result", 4_u64)),
+                    )
+                };
+                (target, context.read_response(id).unwrap().rect.center())
+            };
+            for modifiers in [egui::Modifiers::NONE, egui::Modifiers::ALT] {
+                let (_, output, _) = search_frame(
+                    &context,
+                    &rows,
+                    &pins,
+                    &mut search,
+                    egui::RawInput {
+                        events: if modifiers.alt {
+                            vec![egui::Event::ModifiersChanged(modifiers)]
+                        } else {
+                            vec![
+                                egui::Event::ModifiersChanged(modifiers),
+                                egui::Event::PointerMoved(position),
+                            ]
+                        },
+                        ..Default::default()
+                    },
+                );
+                assert_eq!(
+                    output.hovered,
+                    Some(target),
+                    "{mode}: stationary modifier changes keep the hit"
+                );
+                assert_eq!(output.selected, None);
+                assert_eq!(output.preview, None);
+            }
+            let (_, output, _) = search_frame(
+                &context,
+                &rows,
+                &pins,
+                &mut search,
+                egui::RawInput {
+                    events: vec![egui::Event::PointerGone],
+                    ..Default::default()
+                },
+            );
+            assert_eq!(output.hovered, None, "{mode}: leaving clears the hit");
+        }
+    }
+
+    #[test]
+    fn option_hover_focus_does_not_scroll_the_tree_under_the_pointer() {
+        let context = egui::Context::default();
+        let template = rows().pop().unwrap();
+        let mut rows: Vec<_> = (0..30)
+            .map(|pane| Row {
+                target: Target::Pane { tab: 1, pane },
+                depth: 0,
+                focused: pane == 0,
+                ..template.clone()
+            })
+            .collect();
+        let mut search = SearchState::default();
+        let (_, _, id) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        rows[0].focused = false;
+        rows[29].focused = true;
+        for modifiers in [egui::Modifiers::ALT, egui::Modifiers::NONE] {
+            search_frame(
+                &context,
+                &rows,
+                &[],
+                &mut search,
+                egui::RawInput {
+                    events: vec![egui::Event::ModifiersChanged(modifiers)],
+                    ..Default::default()
+                },
+            );
+            assert_eq!(
+                egui::scroll_area::State::load(&context, id)
+                    .unwrap()
+                    .offset
+                    .y,
+                0.0
+            );
+        }
+        rows[29].focused = false;
+        rows[28].focused = true;
+        search_frame(&context, &rows, &[], &mut search, Default::default());
+        search_frame(&context, &rows, &[], &mut search, Default::default());
+        assert!(
+            egui::scroll_area::State::load(&context, id)
+                .unwrap()
+                .offset
+                .y
+                > 0.0
+        );
     }
 
     #[test]
@@ -2707,6 +2877,7 @@ mod tests {
             output,
             Output {
                 selected: Some(rows[4].target),
+                hovered: Some(rows[4].target),
                 ..Output::default()
             }
         );
@@ -3667,6 +3838,7 @@ mod tests {
             Output {
                 selected: None,
                 preview: None,
+                hovered: None,
                 reorder: Some((4, Some(3))),
                 unpin: None,
             }
@@ -3705,6 +3877,7 @@ mod tests {
             Output {
                 selected: None,
                 preview: None,
+                hovered: None,
                 reorder: Some((3, None)),
                 unpin: None,
             }
@@ -3727,6 +3900,7 @@ mod tests {
             Output {
                 selected: None,
                 preview: None,
+                hovered: None,
                 reorder: Some((3, None)),
                 unpin: None,
             }

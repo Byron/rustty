@@ -1971,6 +1971,7 @@ impl App {
     }
     pub(super) fn saved_workspace(&self) -> Workspace {
         let mut saved = self.workspace.clone();
+        self.saved_outliner_navigation(&mut saved);
         saved.tmuxx.clear();
         for entry in &self.tmuxx {
             saved
