@@ -10,7 +10,11 @@ description = "WGPU terminal rendering into host-owned render passes."
 [dependencies]
 rustty-render.workspace = true
 wgpu.workspace = true
+wgpu29 = { package = "wgpu", version = "29.0.4", default-features = false, features = ["std", "wgsl", "metal", "dx12"], optional = true }
 bytemuck = { version = "1.25", features = ["derive"] }
+
+[features]
+zgui = ["dep:wgpu29"]
 
 [dev-dependencies]
 pollster = "0.4"

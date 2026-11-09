@@ -76,6 +76,7 @@ objc2-quartz-core = "0.3.2"
 block2 = "0.6"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+rustty-render-zgui.workspace = true
 gix-lock = "26.0.0"
 lz4_flex.workspace = true
 rmp-serde.workspace = true

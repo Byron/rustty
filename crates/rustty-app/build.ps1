@@ -217,6 +217,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $repository 'LICENSE') -Destination (Join-Path $licenses 'Ghostty-MIT.txt')
     Copy-Item -LiteralPath (Join-Path $repository 'tmuxx/COPYING') -Destination (Join-Path $licenses 'tmuxx-COPYING.txt')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/iTerm2-Color-Schemes-LICENSE.txt') -Destination $licenses
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/zgui-LICENSE.txt') -Destination $licenses
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/zgui-NOTICE.txt') -Destination $licenses
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resources/ConPTY-LICENSE.txt') -Destination $licenses
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../rustty-font/resources/JetBrainsMono-OFL.txt') -Destination $licenses
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../rustty-font/resources/NerdFontsSymbols-LICENSE.txt') -Destination $licenses

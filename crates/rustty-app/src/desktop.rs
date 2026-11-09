@@ -716,6 +716,7 @@ impl PreparedPane {
         self.dim = dim;
         let clip = visual.rect.intersect(content);
         ComposedPane {
+            id: visual.id,
             transition: animated.then(|| ZoomPaint {
                 background: rustty_render::Color::rgb(self.key.options.background)
                     .opacity(config.background_opacity),
@@ -821,6 +822,7 @@ struct ZoomPaint {
 }
 
 struct ComposedPane {
+    id: Id,
     frame: Arc<Frame>,
     rect: [f32; 4],
     clip: [f32; 4],
@@ -834,11 +836,51 @@ struct ComposedFrame {
 }
 
 impl ComposedFrame {
+    fn zgui_panels(&self) -> Vec<rustty_render_zgui::Panel> {
+        let rect = |[x, y, width, height]: [f32; 4]| {
+            egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height))
+        };
+        if self.panes.iter().any(|pane| pane.transition.is_some()) {
+            // shortcut: retain exact transition blending as one panel; split it when zgui can express the same masks.
+            let bounds = rect([
+                0.0,
+                0.0,
+                self.frame.size[0] as f32,
+                self.frame.size[1] as f32,
+            ]);
+            return vec![rustty_render_zgui::Panel {
+                id: 0,
+                frame: Arc::clone(&self.frame),
+                rect: bounds,
+                clip: bounds,
+                opacity: 1.0,
+                dim: None,
+            }];
+        }
+        self.panes
+            .iter()
+            .map(|pane| rustty_render_zgui::Panel {
+                id: pane.id,
+                frame: Arc::clone(&pane.frame),
+                rect: rect([
+                    pane.rect[0],
+                    pane.rect[1],
+                    pane.frame.size[0] as f32,
+                    pane.frame.size[1] as f32,
+                ]),
+                clip: rect(pane.clip),
+                opacity: 1.0,
+                dim: pane.dim,
+            })
+            .collect()
+    }
+
     fn matches(&self, size: [u32; 2], panes: &[ComposedPane]) -> bool {
         self.frame.size == size
             && self.panes.len() == panes.len()
             && self.panes.iter().zip(panes).all(|(old, new)| {
-                Arc::ptr_eq(&old.frame, &new.frame)
+                old.id == new.id
+                    && Arc::ptr_eq(&old.frame, &new.frame)
                     && old.rect == new.rect
                     && old.clip == new.clip
                     && old.dim == new.dim
@@ -1503,12 +1545,65 @@ struct App {
     startup_error: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Framework {
+    #[default]
+    Egui,
+    Zgui,
+}
+
+impl Framework {
+    fn take_args(args: &mut Vec<String>) -> Result<Self> {
+        let mut framework = Self::default();
+        let mut index = 0;
+        while index < args.len() && !matches!(args[index].as_str(), "-e" | "--") {
+            let (value, count) = if let Some(value) = args[index].strip_prefix("--framework=") {
+                (value, 1)
+            } else if args[index] == "--framework" {
+                let value = args
+                    .get(index + 1)
+                    .ok_or("--framework needs egui or zgui")?;
+                (value.as_str(), 2)
+            } else {
+                index += 1;
+                continue;
+            };
+            framework = match value {
+                "egui" => Self::Egui,
+                "zgui" => Self::Zgui,
+                _ => {
+                    return Err(
+                        format!("unknown framework {value:?}; expected egui or zgui").into(),
+                    );
+                }
+            };
+            args.drain(index..index + count);
+        }
+        Ok(framework)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Egui => "egui",
+            Self::Zgui => "zgui",
+        }
+    }
+}
+
 pub fn run() -> Result<()> {
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+    let framework = Framework::take_args(&mut args)?;
+    if args
+        .iter()
+        .take_while(|arg| !matches!(arg.as_str(), "-e" | "--"))
+        .any(|arg| arg == "--help" || arg == "-h")
+    {
         println!(
             "Rustty — native Rust terminal\n\nUsage: rustty [--config-file=PATH] [--key=value] [-e COMMAND ...]\n       rustty --tmuxx=embedded|persistent|{}|ssh:HOST|system-ssh:HOST\n       rustty tmux [tmuxx options and commands]\n       rustty --config-info\n\nRustty settings override Ghostty settings. See crates/rustty-app/README.md.",
             tmuxx_host::LOCAL_TARGET_HINT
+        );
+        println!(
+            "\n--framework=egui|zgui selects the desktop compositor (default: egui).\nThe zgui compositor retains unchanged terminal panels and requires GPU rendering."
         );
         println!(
             "\nA sole saved session dump loads automatically at startup; multiple dumps open a chooser. Hold Option (Alt on Windows) while quitting to save one.\nConfigure session-dump-on-quit = disabled|unchecked|checked (default: unchecked)."
@@ -1549,6 +1644,7 @@ pub fn run() -> Result<()> {
         window_appearance::Appearance::new(Platform::system_theme().unwrap_or(Theme::Dark));
     let mut loaded = appearance.load(&config_loader, &args, None);
     if show_config {
+        println!("Framework: {}", framework.name());
         println!(
             "Configuration: {:?}\nOwn settings: {}\nEdit settings: {}\nRenderer: {:?}",
             loaded.family,
@@ -1687,11 +1783,14 @@ pub fn run() -> Result<()> {
             on_status(status)
         });
     }
-    let painter = pollster::block_on(painter::Painter::new(
-        context.clone(),
-        gpu_config,
-        loaded.config.renderer,
-    ))?;
+    let painter = match framework {
+        Framework::Egui => pollster::block_on(painter::Painter::new(
+            context.clone(),
+            gpu_config,
+            loaded.config.renderer,
+        ))?,
+        Framework::Zgui => painter::Painter::zgui(loaded.config.renderer, background_smoke)?,
+    };
     let now = Instant::now();
     let close_at = std::env::var("RUSTTY_SMOKE_SECONDS")
         .ok()
@@ -2642,7 +2741,8 @@ impl App {
             cursor_blink_started: Instant::now(),
             #[cfg(target_os = "macos")]
             cursor: CursorState {
-                enabled: std::env::var("RUSTTY_CURSOR_LAYER").as_deref() != Ok("0"),
+                enabled: !self.painter.is_zgui()
+                    && std::env::var("RUSTTY_CURSOR_LAYER").as_deref() != Ok("0"),
                 ..Default::default()
             },
             #[cfg(target_os = "macos")]
@@ -6375,6 +6475,7 @@ impl App {
         let cursor_eligible =
             host.cursor.enabled && offscreen.is_none() && !host.capture && !self.background_smoke;
         let native_progress = cfg!(target_os = "macos")
+            && !self.painter.is_zgui()
             && offscreen.is_none()
             && !host.capture
             && !self.background_smoke;
@@ -7111,6 +7212,11 @@ impl App {
                             composed.unwrap_or_else(|| {
                                 Arc::new(Frame::empty([size.width, size.height]))
                             }),
+                            if self.painter.is_zgui() {
+                                host.composed.as_ref().map_or_else(Vec::new, ComposedFrame::zgui_panels)
+                            } else {
+                                Vec::new()
+                            },
                         ),
                     );
                     let displayed = host.zoom_animation.is_running().then(|| {
@@ -7926,7 +8032,7 @@ impl App {
             .context
             .tessellate(output.shapes, output.pixels_per_point);
         if host.capture
-            && !self.painter.is_software()
+            && self.painter.render_state().is_some()
             && let Some(smoke) = &self.smoke
             && smoke.offscreen
         {
@@ -7941,24 +8047,20 @@ impl App {
             )?;
             host.capture = false;
         }
-        if let Some(directory) = &self.tmuxx_smoke
-            && self.started.elapsed() > Duration::from_secs(1)
-            && !directory.join("result.json").exists()
-            && !host.prepared.is_empty()
-        {
-            let state = self.painter.render_state().ok_or("GPU unavailable")?;
+        let tmuxx_capture = self.tmuxx_smoke.as_ref().is_some_and(|directory| {
+            self.started.elapsed() > Duration::from_secs(1)
+                && !directory.join("result.json").exists()
+                && !host.prepared.is_empty()
+        });
+        host.capture |= tmuxx_capture && self.painter.is_zgui();
+        if tmuxx_capture && let Some(state) = self.painter.render_state() {
             smoke::capture(
                 &state,
                 &primitives,
                 &output.textures_delta,
                 [size.width, size.height],
                 output.pixels_per_point,
-                &directory.join("window.png"),
-            )?;
-            let result = serde_json::json!({ "panes": host.prepared.len(), "windows": self.workspace.windows.len(), "instance": self.tmuxx.first().map(|entry| &entry.instance), "errors": self.errors, "hidden": !host.window.is_visible().unwrap_or(false), "focused": host.window.has_focus(), "floating_panes": host.overlay_panes.len(), "draw_order": host.pane_order });
-            std::fs::write(
-                directory.join("result.json"),
-                serde_json::to_vec_pretty(&result)?,
+                &self.tmuxx_smoke.as_ref().unwrap().join("window.png"),
             )?;
         }
         #[cfg(target_os = "macos")]
@@ -7983,7 +8085,7 @@ impl App {
             } else {
                 None
             };
-        if offscreen.is_some() || self.background_smoke && !self.painter.is_software() {
+        if offscreen.is_some() || self.background_smoke && self.painter.render_state().is_some() {
             let state = self.painter.render_state().ok_or("GPU unavailable")?;
             smoke::submit_offscreen(
                 &state,
@@ -8002,6 +8104,20 @@ impl App {
                 &mut output.textures_delta,
                 std::mem::take(&mut host.capture),
                 &host.window,
+            )?;
+        }
+        if tmuxx_capture && let Some(directory) = &self.tmuxx_smoke {
+            if self.painter.is_zgui() {
+                smoke::save_screenshot(
+                    &mut self.painter,
+                    host.viewport,
+                    &directory.join("window.png"),
+                )?;
+            }
+            let result = serde_json::json!({ "panes": host.prepared.len(), "windows": self.workspace.windows.len(), "instance": self.tmuxx.first().map(|entry| &entry.instance), "errors": self.errors, "hidden": !host.window.is_visible().unwrap_or(false), "focused": host.window.has_focus(), "floating_panes": host.overlay_panes.len(), "draw_order": host.pane_order });
+            std::fs::write(
+                directory.join("result.json"),
+                serde_json::to_vec_pretty(&result)?,
             )?;
         }
         #[cfg(target_os = "macos")]
@@ -10827,6 +10943,87 @@ mod tests {
     use super::*;
 
     #[test]
+    fn framework_selection_preserves_child_arguments_and_rejects_unknown_names() {
+        let mut args = vec!["--framework=zgui".into(), "--font-size=14".into()];
+        assert_eq!(Framework::take_args(&mut args).unwrap(), Framework::Zgui);
+        assert_eq!(args, ["--font-size=14"]);
+        let mut args = vec!["--framework".into(), "egui".into()];
+        assert_eq!(Framework::take_args(&mut args).unwrap(), Framework::Egui);
+        assert!(args.is_empty());
+        for delimiter in ["-e", "--"] {
+            let mut args: Vec<String> = [delimiter, "child", "--framework=child-option"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect();
+            let original = args.clone();
+            assert_eq!(Framework::take_args(&mut args).unwrap(), Framework::Egui);
+            assert_eq!(args, original);
+        }
+        for invalid in [
+            vec!["--framework=unknown"],
+            vec!["--framework"],
+            vec!["--framework", "-e"],
+        ] {
+            let mut args = invalid.into_iter().map(str::to_owned).collect();
+            assert!(Framework::take_args(&mut args).is_err());
+        }
+    }
+
+    #[test]
+    fn zgui_panels_keep_independent_frames_and_exact_animation_composition() {
+        let first = Arc::new(Frame::empty([40, 20]));
+        let second = Arc::new(Frame::empty([40, 20]));
+        let dim = Some(rustty_render::Color::rgb([20, 30, 40]).opacity(0.2));
+        let mut composed = ComposedFrame::new(
+            [80, 20],
+            vec![
+                ComposedPane {
+                    id: 12,
+                    frame: Arc::clone(&first),
+                    rect: [0.0, 0.0, 40.0, 20.0],
+                    clip: [0.0, 0.0, 40.0, 20.0],
+                    dim,
+                    transition: None,
+                },
+                ComposedPane {
+                    id: 15,
+                    frame: Arc::clone(&second),
+                    rect: [40.25, 0.5, 40.75, 20.25],
+                    clip: [40.25, 0.5, 35.0, 19.5],
+                    dim: None,
+                    transition: None,
+                },
+            ],
+        )
+        .unwrap();
+        let panels = composed.zgui_panels();
+        assert_eq!(
+            panels.iter().map(|panel| panel.id).collect::<Vec<_>>(),
+            [12, 15]
+        );
+        assert!(Arc::ptr_eq(&panels[0].frame, &first));
+        assert!(Arc::ptr_eq(&panels[1].frame, &second));
+        assert_eq!(panels[0].dim, dim);
+        assert_eq!(panels[1].rect.min, Pos2::new(40.25, 0.5));
+        assert_eq!(panels[1].rect.width(), 40.0);
+        assert_eq!(panels[1].rect.height(), 20.0);
+        assert_eq!(panels[1].clip.width(), 35.0);
+        assert_eq!(panels[1].clip.height(), 19.5);
+        composed.panes[0].transition = Some(ZoomPaint {
+            background: rustty_render::Color::rgb([0; 3]),
+            frame_background: rustty_render::Color::rgb([0; 3]),
+            opacity: 0.5,
+            background_opacity: 0.5,
+            moving: true,
+        });
+        let panels = composed.zgui_panels();
+        assert_eq!(panels.len(), 1);
+        assert_eq!(panels[0].id, 0);
+        assert!(Arc::ptr_eq(&panels[0].frame, &composed.frame));
+        assert_eq!(panels[0].dim, None);
+    }
+
+    #[test]
     fn typing_dismisses_tab_previews_but_escape_stays_with_the_popup() {
         use winit::keyboard::{Key, NamedKey};
         for key in [
@@ -11562,6 +11759,7 @@ mod tests {
         let composed = ComposedFrame::new(
             [100, 110],
             vec![ComposedPane {
+                id: 1,
                 transition: None,
                 frame: Arc::new(frame),
                 rect: [-5.0, 5.0, 30.0, 30.0],
@@ -11989,6 +12187,7 @@ mod tests {
             .unwrap();
         assert_eq!(interrupted.shown_opacity, 0.25);
         let mut pane = ComposedPane {
+            id: 1,
             frame: source,
             rect: [0.0, 0.0, 8.0, 1.0],
             clip: [0.0, 0.0, 8.0, 1.0],
@@ -12023,6 +12222,7 @@ mod tests {
         frame.quads.push(glyph.clone());
         for opacity in [1.0, 0.5, 0.0] {
             let pane = ComposedPane {
+                id: 1,
                 frame: Arc::new(frame.clone()),
                 rect: [25.0, 30.0, 100.0, 80.0],
                 clip: [25.0, 30.0, 200.0, 160.0],
@@ -12068,6 +12268,7 @@ mod tests {
             let composed = ComposedFrame::new(
                 [2, 1],
                 vec![ComposedPane {
+                    id: 1,
                     frame: Arc::new(frame.clone()),
                     rect: bounds,
                     clip: bounds,
@@ -12113,6 +12314,7 @@ mod tests {
         ));
         let frame = Arc::new(frame);
         let pane = |x, moving| ComposedPane {
+            id: 1,
             frame: Arc::clone(&frame),
             rect: [x, 0.0, 100.0, 80.0],
             clip: [x, 0.0, 100.0, 80.0],
@@ -12414,6 +12616,7 @@ mod tests {
         ));
         let frame = Arc::new(frame);
         let pane = || ComposedPane {
+            id: 1,
             transition: None,
             frame: Arc::clone(&frame),
             rect: [10.0, 15.0, 20.0, 20.0],
@@ -14306,6 +14509,7 @@ mod tests {
             let on = candidate(true);
             let off = candidate(false);
             let pane = |frame: &Arc<Frame>| ComposedPane {
+                id: 1,
                 frame: Arc::clone(frame),
                 rect: [352.0, 32.0, 320.0, 160.0],
                 clip: [354.0, 32.0, 300.0, 160.0],
@@ -14315,6 +14519,7 @@ mod tests {
             let neighbor = Arc::new((*off.frame).clone());
             let panes = |frame: &Arc<Frame>| {
                 let neighbor = |x| ComposedPane {
+                    id: 1,
                     frame: Arc::clone(&neighbor),
                     rect: [x, 32.0, 320.0, 160.0],
                     clip: [x, 32.0, 320.0, 160.0],

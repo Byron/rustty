@@ -48,6 +48,8 @@ def main [
     cp ($root | path join LICENSE) ($notices | path join Ghostty-MIT.txt)
     cp ($root | path join tmuxx COPYING) ($notices | path join tmuxx-COPYING.txt)
     cp ($source | path join iTerm2-Color-Schemes-LICENSE.txt) $notices
+    cp ($source | path join zgui-LICENSE.txt) $notices
+    cp ($source | path join zgui-NOTICE.txt) $notices
     cp ($root | path join crates rustty-font resources JetBrainsMono-OFL.txt) $notices
     cp ($root | path join crates rustty-font resources NerdFontsSymbols-LICENSE.txt) $notices
     cp ($source | path join README.md) ($notices | path join Resources.md)

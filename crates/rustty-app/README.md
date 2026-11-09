@@ -6,6 +6,52 @@ a portable frame renderer and a native desktop application. All crates are
 DirectComposition on Windows. Windows also supports CPU rendering with GDI
 presentation. CoreText and DirectWrite supply the respective native font backends.
 
+## Zgui presentation
+
+Launch `rustty --framework=zgui` to use the alternative
+[zgui](https://github.com/zortax/zgui) retained GPU compositor. With Cargo:
+
+```sh
+cargo run -p rustty-app --bin rustty -- --framework=zgui
+```
+
+`--framework=egui` is the default. Both use the same desktop controller, terminal
+engine, egui UI, native services, workspace, and configuration. This preserves
+tabs, splits, tmuxx, menus, keyboard bindings, IME, accessibility, clipboard
+permissions, and session handling without maintaining a second implementation.
+The flag selects compositing; it does not switch the UI to zgui's CSS or reactive
+component model. Put it before `-e` when launching a command.
+
+Zgui retains a texture for each visible terminal panel. Unchanged panels reuse
+their pixels; terminal output, selection, scrolling, cursor blinking, and other
+visual changes repaint the affected panel. Its damage tracking updates only the
+affected rectangles in a persistent window target, which is then presented.
+Moving or removing panels also damages their former bounds. UI layers retain
+their own textures and preserve their order around the terminal contents.
+Complex zoom and resize transitions temporarily use the existing composed frame.
+There is no per-line or per-character GPU damage tracking.
+
+The zgui crates come from the [Byron/zgui fork](https://github.com/Byron/zgui/tree/rustty)
+at revision `dfb3ab5cc0a5faf7b9ee252a73edb1a17102ca38`, based on upstream tip
+`80baa3c7cb0fbbe1c058f10059e076e41c0a1b9a`. The fork enables transparent Windows
+DirectComposition surfaces with FXC and Metal's available transparent alpha mode.
+Cargo.lock pins the complete dependency graph. Zgui currently uses WGPU 29 while
+the default backend uses WGPU 30; both compile the same Rustty terminal renderer
+and shaders. Retained panel textures require additional GPU memory.
+Zgui requires GPU rendering; `--renderer=software` is rejected and GPU startup
+failures are reported. The default egui backend keeps its Windows software fallback.
+On macOS zgui draws cursor blinking and progress through panel/chrome updates
+instead of the default backend's native overlay layers.
+
+Run the retained-panel and pixel-comparison checks on a machine with a GPU:
+
+```sh
+cargo +1.95.0 test -p rustty-render-zgui --locked -- --include-ignored --test-threads=1
+```
+
+The normal desktop smoke accepts `--framework=zgui` too. Its progress checks
+verify that changing UI chrome does not rasterize terminal panels.
+
 ## Continuous integration
 
 [Rustty CI](../../.github/workflows/rustty.yml) runs on pushes, pull requests, and

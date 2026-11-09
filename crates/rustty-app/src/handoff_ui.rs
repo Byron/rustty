@@ -539,7 +539,7 @@ impl App {
             .flatten()
             .map(|directory| directory.join("selector.png"))
             .filter(|path| !path.exists());
-        if self.background_smoke && !self.painter.is_software() {
+        if self.background_smoke && self.painter.render_state().is_some() {
             let render_state = self.painter.render_state().ok_or("GPU unavailable")?;
             #[cfg(debug_assertions)]
             if let Some(path) = &capture {

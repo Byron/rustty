@@ -966,7 +966,10 @@ impl Smoke {
                     return Err("indefinite progress did not render any animation frames".into());
                 }
                 #[cfg(target_os = "macos")]
-                if !self.offscreen && (host.progress.len() == 0 || self.progress_frames > 30) {
+                if !self.offscreen
+                    && !app.painter.is_zgui()
+                    && (host.progress.len() == 0 || self.progress_frames > 30)
+                {
                     return Err(format!("progress did not settle into compositor animation: {} native bars, {} window frames", host.progress.len(), self.progress_frames).into());
                 }
                 eprintln!(
@@ -3850,6 +3853,7 @@ struct CursorSample {
     cpu_ns: u64,
     frames: u64,
     paints: u64,
+    panel_paints: Option<u64>,
     prepares: u64,
     updates: u64,
     activations: u64,
@@ -3990,6 +3994,7 @@ impl CursorBenchmark {
                 cpu_ns: cpu_time(CpuClock::Process)?,
                 frames: host.frames,
                 paints: app.painter.terminal_paints(host.id),
+                panel_paints: app.painter.panel_paints(host.id),
                 prepares: host.pane_prepares,
                 updates: host.cursor.updates,
                 activations: host.cursor.activations,
@@ -4011,6 +4016,9 @@ impl CursorBenchmark {
         let process_cpu = (cpu_time(CpuClock::Process)? - sample.cpu_ns) as f64 / 1e9;
         let frames = host.frames - sample.frames;
         let paints = app.painter.terminal_paints(host.id) - sample.paints;
+        let panel_paints = sample
+            .panel_paints
+            .map(|before| app.painter.panel_paints(host.id).unwrap() - before);
         let prepares = host.pane_prepares - sample.prepares;
         let updates = host.cursor.updates - sample.updates;
         let activations = host.cursor.activations - sample.activations;
@@ -4022,6 +4030,7 @@ impl CursorBenchmark {
         let passed = unchanged
             && host.focused
             && pane == sample.focused_pane
+            && panel_paints.is_none_or(|panels| panels == paints)
             && if host.cursor.enabled {
                 host.cursor.active
                     && updates >= 6
@@ -4040,6 +4049,7 @@ impl CursorBenchmark {
             "layer_enabled": host.cursor.enabled,
             "settle_seconds": 3, "elapsed_seconds": elapsed,
             "frames": frames, "main_terminal_paints": paints, "pane_prepares": prepares,
+            "retained_panel_paints": panel_paints,
             "layer_updates": updates, "layer_activations": activations,
             "layer_activations_total": host.cursor.activations, "layer_active": host.cursor.active,
             "patch_pixels": host.cursor.patch_pixels, "terminal_unchanged": unchanged,
@@ -4440,8 +4450,7 @@ impl Replay {
             host.prepared.clear();
             host.composed = None;
             host.focus_hint.dismiss();
-            if offscreen {
-                let state = app.painter.render_state().ok_or("GPU unavailable")?;
+            if offscreen && let Some(state) = app.painter.render_state() {
                 self.target = Some(offscreen_texture(&state, [1200, 850]));
             }
         }
@@ -4460,6 +4469,7 @@ impl Replay {
         let cpu_start = cpu_time(CpuClock::Thread)?;
         let frame_start = Instant::now();
         let before = host.frames;
+        let panel_paints_before = app.painter.panel_paints(host.id);
         #[cfg(target_os = "macos")]
         let paints_before = app.painter.terminal_paints(host.id);
         app.draw_frame(event_loop, host, self.target.as_ref())?;
@@ -4468,11 +4478,24 @@ impl Replay {
         if host.frames != before + 1 {
             return Err("replay did not draw a frame".into());
         }
-        #[cfg(target_os = "macos")]
-        if app.painter.terminal_paints(host.id) != paints_before + 1 {
-            return Err(
-                "replay did not encode a terminal render pass; keep the test window visible".into(),
-            );
+        if let Some(before) = panel_paints_before {
+            let expected = u64::from(self.case != "cached_redraw" || self.frame == 0);
+            let painted = app.painter.panel_paints(host.id).unwrap() - before;
+            if painted != expected {
+                return Err(format!(
+                    "zgui replay {} frame {} rasterized {painted} panels; expected {expected}",
+                    self.case, self.frame,
+                )
+                .into());
+            }
+        } else {
+            #[cfg(target_os = "macos")]
+            if app.painter.terminal_paints(host.id) != paints_before + 1 {
+                return Err(
+                    "replay did not encode a terminal render pass; keep the test window visible"
+                        .into(),
+                );
+            }
         }
         let interval = self
             .last_frame
@@ -4501,10 +4524,11 @@ impl Replay {
             "scale_factor": host.window.scale_factor(), "terminal_size": self.size.unwrap(),
             "monitor": host.window.current_monitor().and_then(|monitor| monitor.name()),
             "outer_position": host.window.outer_position().ok().map(|position| [position.x, position.y]),
-            "terminal_render_passes_verified": cfg!(target_os = "macos"),
+            "terminal_render_passes_verified": cfg!(target_os = "macos") && !app.painter.is_zgui(),
+            "retained_panel_work_verified": app.painter.is_zgui(),
             "warmup_frames": workload::WARMUP, "sample_frames": workload::SAMPLES,
             "minimum_replay_pause_ms": 50, "offscreen": offscreen,
-            "offscreen_gpu_submission": self.target.is_some(),
+            "offscreen_gpu_submission": self.target.is_some() || offscreen && app.painter.is_zgui(),
             "gpu_completion_measured": false, "visible_presentation_measured": false,
             "columns": ["terminal_ns", "frame_wall_ns", "frame_thread_cpu_ns", "frame_interval_ns", "rss_bytes"],
             "statistics": {
@@ -4890,7 +4914,9 @@ fn check_terminal_frames(
             return Err("erasing blinking text left a redraw timer running".into());
         }
         #[cfg(target_os = "macos")]
-        native_progress::check_lifecycle(&host.window)?;
+        if !app.painter.is_zgui() {
+            native_progress::check_lifecycle(&host.window)?;
+        }
         // Only the progress overlay changes during these frames. Keep the
         // terminal composition and GPU input alive across the animation.
         let activity = std::mem::take(&mut app.panes.get_mut(&id).unwrap().activity);
@@ -4909,10 +4935,12 @@ fn check_terminal_frames(
                 .frame
                 .clone();
             let prepares = host.pane_prepares;
+            let panel_paints = app.painter.panel_paints(host.id);
             for _ in 0..3 {
                 app.draw(event_loop, host)?;
                 if !Arc::ptr_eq(&frame, &host.composed.as_ref().unwrap().frame)
                     || host.pane_prepares != prepares
+                    || app.painter.panel_paints(host.id) != panel_paints
                 {
                     return Err("progress animation rebuilt unchanged terminal content".into());
                 }
@@ -7721,15 +7749,25 @@ pub(super) fn capture_window(
     }
     host.capture = true;
     app.draw(event_loop, host)?;
+    save_screenshot(&mut app.painter, host.viewport, path)
+}
+
+pub(super) fn save_screenshot(
+    painter: &mut painter::Painter,
+    viewport: ViewportId,
+    path: &Path,
+) -> Result<()> {
     let mut events = Vec::new();
-    app.painter.handle_screenshots(&mut events);
+    painter.handle_screenshots(&mut events);
     let image = events
         .into_iter()
         .find_map(|event| match event {
-            egui::Event::Screenshot { image, .. } => Some(image),
+            egui::Event::Screenshot {
+                viewport_id, image, ..
+            } if viewport_id == viewport => Some(image),
             _ => None,
         })
-        .ok_or("missing software screenshot")?;
+        .ok_or("missing window screenshot")?;
     let mut encoder = png::Encoder::new(
         fs::File::create(path)?,
         image.width() as u32,
