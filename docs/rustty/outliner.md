@@ -65,6 +65,11 @@ stays visible until you type, then becomes a list of matching panel breadcrumbs.
 Search ignores case and permits gaps between letters; matched characters in panel
 names are highlighted. Pinned entries remain above the results.
 
+The funnel button filters for panels with agents and combines with text search.
+Each matching agent gets one compact breadcrumb row, like a pin, even when
+several agents share the same name. Ancestors stay on that row instead of adding
+separate tree levels.
+
 Breadcrumbs represent quads with just their position icon and zoom indicator;
 quad names remain visible in the tree. Tab breadcrumbs show just the tab name;
 their `Cmd+N` shortcuts remain in the tree and tooltips. Other repeated names

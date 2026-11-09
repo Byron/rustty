@@ -415,7 +415,13 @@ pub fn contents(
         results.retain(|result| result.path.last().is_some_and(|row| row.has_agent));
     }
     let searching = search.agents_only || search.open && !search.query.trim().is_empty();
-    let result_groups = search_groups(results.as_deref().unwrap_or_default());
+    let result_groups = if search.agents_only {
+        (0..results.as_ref().map_or(0, Vec::len))
+            .map(|index| vec![index])
+            .collect()
+    } else {
+        search_groups(results.as_deref().unwrap_or_default())
+    };
     let panes: Vec<_> = results
         .as_deref()
         .unwrap_or_default()
@@ -475,6 +481,7 @@ pub fn contents(
             &result_groups,
             search.selected_pane,
             query_changed || selection_changed || filter_changed,
+            search.agents_only,
         );
         if let Some(Target::Pane { pane, .. }) = clicked {
             search.selected_pane = Some(pane);
@@ -753,6 +760,7 @@ fn search_results(
     groups: &[Vec<usize>],
     selected_pane: Option<Id>,
     changed: bool,
+    compact: bool,
 ) -> Option<Target> {
     let scroll = egui::ScrollArea::vertical()
         .id_salt("outliner-search-results")
@@ -779,7 +787,7 @@ fn search_results(
             let Target::Pane { pane, .. } = row.target else {
                 continue;
             };
-            let path = &result.path[..result.path.len() - 1];
+            let path = if compact { &[][..] } else { &result.path[..result.path.len() - 1] };
             let shared = ancestors
                 .iter()
                 .zip(path)
@@ -845,9 +853,17 @@ fn search_results(
                     .max_rect(label_rect.shrink2(Vec2::new(3.0, 2.0))),
             );
             let panels: Vec<_> = group.iter().map(|index| results[*index].path.last().unwrap()).collect();
+            let breadcrumb = if compact {
+                match result.path.first().map(|row| row.target) {
+                    Some(Target::Window(_)) => &result.path[1..],
+                    _ => &result.path,
+                }
+            } else {
+                &result.path[result.path.len() - 1..]
+            };
             let clicked = breadcrumb_with_panels(
                 &mut child,
-                &result.path[result.path.len() - 1..],
+                breadcrumb,
                 label_rect.width() - 6.0,
                 Some(&result.highlights),
                 &panels,
@@ -2255,6 +2271,45 @@ mod tests {
             repeat,
             modifiers: egui::Modifiers::CTRL,
         }
+    }
+
+    #[test]
+    fn agent_filter_gives_each_panel_one_compact_breadcrumb_row() {
+        let context = egui::Context::default();
+        let mut rows = navigation_rows();
+        for row in &mut rows[3..5] {
+            row.has_agent = true;
+            row.label = "Same agent".into();
+        }
+        let mut search = SearchState {
+            agents_only: true,
+            ..Default::default()
+        };
+        let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
+        let rects = [3_u64, 4].map(|pane| {
+            context
+                .read_response(egui::Id::new(("outliner-search-result", pane)))
+                .expect("every matching agent has its own row")
+                .rect
+        });
+        assert_eq!(rects[0].height(), ROW_HEIGHT);
+        assert_eq!(rects[1].top() - rects[0].top(), ROW_HEIGHT + 2.0);
+        assert_eq!(rects[0].left(), rects[1].left());
+        assert_eq!(
+            output
+                .shapes
+                .iter()
+                .filter(|shape| matches!(
+                    &shape.shape, egui::Shape::Text(text) if text.galley.text() == "Work"
+                ))
+                .count(),
+            2,
+            "each agent includes its tab breadcrumb on the same line"
+        );
+        assert_eq!(
+            search_click(&context, &rows, &mut search, rects[1].center()).selected,
+            Some(Target::Pane { tab: 1, pane: 4 }),
+        );
     }
 
     #[test]
