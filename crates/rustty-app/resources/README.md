@@ -26,8 +26,8 @@ Resource provenance:
 
 - `zgui-LICENSE.txt` and `zgui-NOTICE.txt` retain the upstream Apache 2.0 license
   and attribution for the retained compositor. They come from
-  <https://github.com/Byron/zgui/tree/dfb3ab5cc0a5faf7b9ee252a73edb1a17102ca38>,
-  which adds native window transparency fixes to upstream revision
+  <https://github.com/Byron/zgui/tree/1d526ed98cb89c2cc43e063a8445dedeeb556416>,
+  which adds native window transparency fixes and input/layout settlement to upstream revision
   `80baa3c7cb0fbbe1c058f10059e076e41c0a1b9a`.
 - Windows `conpty/` contains `conpty.dll` and `OpenConsole.exe` from Microsoft's
   MIT-licensed `Microsoft.Windows.Console.ConPTY` NuGet package `1.24.260710001`.

@@ -6,6 +6,15 @@ pub struct Preview {
     selected: usize,
     part: Option<(usize, Part)>,
     texture: Option<TextureHandle>,
+    native: Option<Vec<PreviewContent>>,
+}
+
+#[derive(Clone)]
+pub struct PreviewContent {
+    pub mime: String,
+    pub label: String,
+    pub text: Option<String>,
+    pub image: Option<(u32, u32, Vec<u8>)>,
 }
 
 enum Part {
@@ -48,6 +57,47 @@ impl Part {
 }
 
 impl Preview {
+    pub fn native_contents(&mut self, contents: &[Content]) -> &[PreviewContent] {
+        self.native.get_or_insert_with(|| {
+            contents
+                .iter()
+                .map(|content| {
+                    let mut preview = PreviewContent {
+                        mime: String::from_utf8_lossy(&content.mime).into_owned(),
+                        label: format!("{} bytes", content.data.len()),
+                        text: None,
+                        image: None,
+                    };
+                    match Part::decode(content) {
+                        Part::Text(mut text, truncated) => {
+                            if truncated {
+                                text.push_str(
+                                    "\nPreview truncated; the full content will be sent.",
+                                );
+                            }
+                            preview.text = Some(text);
+                        }
+                        Part::Image(image) => {
+                            preview.image = Some((
+                                image.size[0] as u32,
+                                image.size[1] as u32,
+                                image
+                                    .pixels
+                                    .iter()
+                                    .flat_map(|pixel| pixel.to_array())
+                                    .collect(),
+                            ));
+                        }
+                        Part::Unavailable => {
+                            preview.text = Some("This representation cannot be previewed.".into());
+                        }
+                    }
+                    preview
+                })
+                .collect()
+        })
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui, contents: &[Content]) {
         if contents.is_empty() {
             ui.label("No representations.");

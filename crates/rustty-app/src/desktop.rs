@@ -31,6 +31,14 @@ mod tmuxx_theme;
 mod tui_notifications;
 #[path = "window_appearance.rs"]
 mod window_appearance;
+#[path = "zgui_controller.rs"]
+mod zgui_controller;
+#[path = "zgui_runtime.rs"]
+mod zgui_runtime;
+#[path = "zgui_smoke.rs"]
+mod zgui_smoke;
+#[path = "zgui_ui.rs"]
+mod zgui_ui;
 use command_palette::{CommandPalette, PaletteEvent};
 use egui::{Color32, Pos2, Sense, Vec2, ViewportId};
 use rustty::{
@@ -85,6 +93,7 @@ const MIN_WINDOW_SIZE: LogicalSize<f64> = LogicalSize::new(240.0, 120.0);
 #[derive(Debug)]
 enum Event {
     DeckWake,
+    ZguiWake,
     Tmuxx,
     TmuxxCopied(
         tmuxx_host::Target,
@@ -836,45 +845,6 @@ struct ComposedFrame {
 }
 
 impl ComposedFrame {
-    fn zgui_panels(&self) -> Vec<rustty_render_zgui::Panel> {
-        let rect = |[x, y, width, height]: [f32; 4]| {
-            egui::Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height))
-        };
-        if self.panes.iter().any(|pane| pane.transition.is_some()) {
-            // shortcut: retain exact transition blending as one panel; split it when zgui can express the same masks.
-            let bounds = rect([
-                0.0,
-                0.0,
-                self.frame.size[0] as f32,
-                self.frame.size[1] as f32,
-            ]);
-            return vec![rustty_render_zgui::Panel {
-                id: 0,
-                frame: Arc::clone(&self.frame),
-                rect: bounds,
-                clip: bounds,
-                opacity: 1.0,
-                dim: None,
-            }];
-        }
-        self.panes
-            .iter()
-            .map(|pane| rustty_render_zgui::Panel {
-                id: pane.id,
-                frame: Arc::clone(&pane.frame),
-                rect: rect([
-                    pane.rect[0],
-                    pane.rect[1],
-                    pane.frame.size[0] as f32,
-                    pane.frame.size[1] as f32,
-                ]),
-                clip: rect(pane.clip),
-                opacity: 1.0,
-                dim: pane.dim,
-            })
-            .collect()
-    }
-
     fn matches(&self, size: [u32; 2], panes: &[ComposedPane]) -> bool {
         self.frame.size == size
             && self.panes.len() == panes.len()
@@ -959,6 +929,10 @@ struct Host {
     drag: Arc<Mutex<drag::Controller>>,
     drag_mimes: Vec<Vec<u8>>,
     egui: egui_winit::State,
+    zgui: Option<zgui_runtime::NativeRuntime>,
+    zgui_ui: Option<zgui_ui::WindowSignals>,
+    zgui_ui_state: zgui_controller::State,
+    pointer_in_window: bool,
     accesskit_active: bool,
     fonts: rustty_render::Renderer,
     rects: BTreeMap<Id, egui::Rect>,
@@ -1021,6 +995,18 @@ struct Host {
     last_frame_started: Option<Instant>,
 }
 impl Host {
+    fn panel_paints(&self) -> Option<u64> {
+        self.zgui
+            .as_ref()
+            .map(zgui_runtime::NativeRuntime::panel_paints)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn terminal_paints(&self, painter: &painter::Painter) -> u64 {
+        self.panel_paints()
+            .unwrap_or_else(|| painter.terminal_paints(self.id))
+    }
+
     #[cfg(target_os = "macos")]
     fn cursor_candidate(&self, focused: Id) -> Option<CursorCandidate> {
         // shortcut: opaque cursor pane without images; extend after validating transparent and image-backed patches.
@@ -1111,8 +1097,16 @@ impl Host {
         }
     }
 
+    fn pointer_present(&self) -> bool {
+        if self.zgui.is_some() {
+            self.pointer_in_window
+        } else {
+            self.egui.is_pointer_in_window()
+        }
+    }
+
     fn hovered_pane(&self) -> Option<Id> {
-        if !self.egui.is_pointer_in_window() {
+        if !self.pointer_present() {
             return None;
         }
         self.pane_at(self.mouse)
@@ -1131,13 +1125,21 @@ impl Host {
         )
     }
     fn ui_input(&self) -> bool {
-        self.hints.is_some()
+        self.zgui
+            .as_ref()
+            .is_some_and(|runtime| runtime.wants_widget_keys())
+            || self.hints.is_some()
             || self.search_focus.is_some()
             || self.modal_input()
             || self.messages_open && self.messages_focused
     }
     fn modal_input(&self) -> bool {
-        self.palette.open
+        self.zgui_ui_state.modal_input()
+            || self
+                .zgui_ui
+                .as_ref()
+                .is_some_and(zgui_ui::WindowSignals::popup_open)
+            || self.palette.open
             || self.popup_open
             || self.layout_picker.is_some()
             || self.confirm.is_some()
@@ -1145,6 +1147,10 @@ impl Host {
             || !self.clipboard_request.is_empty()
     }
     fn repaint(&self) {
+        self.zgui_ui_state.mark_model_dirty();
+        self.repaint_terminal();
+    }
+    fn repaint_terminal(&self) {
         if self.visible && !self.occluded {
             self.window.request_redraw();
         }
@@ -1603,7 +1609,7 @@ pub fn run() -> Result<()> {
             tmuxx_host::LOCAL_TARGET_HINT
         );
         println!(
-            "\n--framework=egui|zgui selects the desktop compositor (default: egui).\nThe zgui compositor retains unchanged terminal panels and requires GPU rendering."
+            "\n--framework=egui|zgui selects the desktop UI framework (default: egui).\nThe native zgui frontend retains unchanged terminal panels and requires GPU rendering."
         );
         println!(
             "\nA sole saved session dump loads automatically at startup; multiple dumps open a chooser. Hold Option (Alt on Windows) while quitting to save one.\nConfigure session-dump-on-quit = disabled|unchecked|checked (default: unchecked)."
@@ -1789,7 +1795,7 @@ pub fn run() -> Result<()> {
             gpu_config,
             loaded.config.renderer,
         ))?,
-        Framework::Zgui => painter::Painter::zgui(loaded.config.renderer, background_smoke)?,
+        Framework::Zgui => painter::Painter::zgui(loaded.config.renderer)?,
     };
     let now = Instant::now();
     let close_at = std::env::var("RUSTTY_SMOKE_SECONDS")
@@ -2209,6 +2215,9 @@ impl App {
     }
     fn changed(&mut self) {
         self.deck.dirty = true;
+        for host in self.windows.values() {
+            host.zgui_ui_state.mark_model_dirty();
+        }
         self.repaint_outliner();
         // Continuous resizing or title updates must not postpone saving forever.
         self.save_at
@@ -2660,7 +2669,9 @@ impl App {
             platform.set_window_theme(&window, self.appearance.theme(&config))?;
         }
         let viewport = ViewportId::from_hash_of(id);
-        pollster::block_on(self.painter.set_window(viewport, window.clone()))?;
+        if !self.painter.is_zgui() {
+            pollster::block_on(self.painter.set_window(viewport, window.clone()))?;
+        }
         let fonts =
             rustty_render::Renderer::new(font_config(&config, window.scale_factor() as f32))?;
         for family in fonts.missing_families() {
@@ -2675,7 +2686,7 @@ impl App {
             window.theme(),
             Some(self.painter.max_texture_side()),
         );
-        if !self.background_smoke {
+        if !self.background_smoke && !self.painter.is_zgui() {
             egui.init_accesskit(event_loop, &window, self.proxy.clone());
         }
         if !self.import_selector {
@@ -2683,19 +2694,7 @@ impl App {
                 self.spawn_pane(pane, directory, None, None)?;
             }
         }
-        #[cfg(target_os = "macos")]
-        if !quick && !self.background_smoke && self.smoke.is_some() {
-            // Winit's set_visible(true) makes a window key even with with_active(false).
-            self.platform
-                .as_ref()
-                .ok_or("macOS platform unavailable")?
-                .preview_window(&window, false, &config)?;
-        } else {
-            window.set_visible(!quick && !self.background_smoke);
-        }
-        #[cfg(not(target_os = "macos"))]
-        window.set_visible(!quick && !self.background_smoke);
-        let host = Host {
+        let mut host = Host {
             id,
             tmuxx_theme: self.tmuxx_theme(id).map(str::to_owned),
             viewport,
@@ -2703,6 +2702,10 @@ impl App {
             drag,
             drag_mimes: Vec::new(),
             egui,
+            zgui: None,
+            zgui_ui: None,
+            zgui_ui_state: Default::default(),
+            pointer_in_window: false,
             accesskit_active: false,
             fonts,
             rects: BTreeMap::new(),
@@ -2768,6 +2771,21 @@ impl App {
             frames: 0,
             last_frame_started: None,
         };
+        if self.painter.is_zgui() {
+            self.initialize_zgui(event_loop, &mut host)?;
+        }
+        #[cfg(target_os = "macos")]
+        if !quick && !self.background_smoke && self.smoke.is_some() {
+            // Winit's set_visible(true) makes a window key even with with_active(false).
+            self.platform
+                .as_ref()
+                .ok_or("macOS platform unavailable")?
+                .preview_window(&window, false, &config)?;
+        } else {
+            window.set_visible(!quick && !self.background_smoke);
+        }
+        #[cfg(not(target_os = "macos"))]
+        window.set_visible(!quick && !self.background_smoke);
         self.windows.insert(window.id(), host);
         if !quick {
             if activate {
@@ -2894,7 +2912,7 @@ impl App {
         if focused == Some(pane) {
             host.focus_hint.dismiss();
             host.cursor_blink_started = now;
-            host.repaint();
+            host.repaint_terminal();
         }
     }
     fn paste_target_exists(&self, window: Id, pane: Id) -> bool {
@@ -3357,6 +3375,13 @@ impl App {
         if let Some(host) = &self.outliner {
             host.repaint();
         }
+        for host in self
+            .windows
+            .values()
+            .filter(|host| host.zgui_ui_state.outliner_open)
+        {
+            host.repaint();
+        }
     }
     fn hide_outliner(&mut self) {
         if let Some(host) = &mut self.outliner {
@@ -3780,6 +3805,8 @@ impl App {
         let previous_tab_label = self.pane_tab_label(id);
         let previously_working = self.panes.get(&id).is_some_and(Pane::reported_active);
         let previously_agent = self.panes.get(&id).is_some_and(Pane::has_agent);
+        let previous_progress = self.panes.get(&id).and_then(Pane::progress);
+        let previously_exited = self.panes.get(&id).is_some_and(|pane| pane.exited);
         let tmuxx = self.tmuxx_pane(id).is_some();
         let previous_directory = self.panes.get(&id).map(|pane| pane.cwd.clone());
         let live = previous_tab_label.is_some();
@@ -4161,7 +4188,8 @@ impl App {
                 host.window.set_cursor(cursor);
             }
             let title_in_ui = title_changed
-                && (host.accesskit_active && host.prepared.contains_key(&id)
+                && ((host.accesskit_active || host.zgui.is_some())
+                    && host.prepared.contains_key(&id)
                     || matches!(&host.confirm, Some(Confirmation::Paste(paste)) if paste.pane == id)
                     || host
                         .clipboard_request
@@ -4182,9 +4210,13 @@ impl App {
             if indicators_changed
                 || self.errors.len() != previous_errors
                 || title_in_ui
-                || terminal_changed
+                || directory_changed
+                || previous_progress != self.panes.get(&id).and_then(Pane::progress)
+                || previously_exited != self.panes.get(&id).is_some_and(|pane| pane.exited)
             {
                 host.repaint();
+            } else if terminal_changed {
+                host.repaint_terminal();
             }
         }
         // Output updates this pane's metadata above. Only closing a pane changes
@@ -4455,18 +4487,37 @@ impl App {
             host.hints = None;
         }
         let ui_input = host.ui_input();
-        let clipboard = if ui_input {
-            match action {
-                Action::PasteFromClipboard => host.egui.clipboard_text(),
-                Action::PasteFromSelection => self.selection_text(),
-                _ => None,
+        if action == Action::PasteFromSelection
+            && host
+                .zgui
+                .as_ref()
+                .is_some_and(zgui_runtime::NativeRuntime::wants_keyboard)
+        {
+            if let Some(text) = self.selection_text() {
+                host.zgui.as_mut().unwrap().paste_text(text);
             }
-        } else {
-            None
-        };
-        if input::edit_menu_action(host.egui.egui_input_mut(), &action, ui_input, clipboard) {
             host.repaint();
             return true;
+        }
+        if let Some(runtime) = &mut host.zgui {
+            if runtime.edit_action(&action) {
+                host.repaint();
+                return true;
+            }
+        } else {
+            let clipboard = if ui_input {
+                match action {
+                    Action::PasteFromClipboard => host.egui.clipboard_text(),
+                    Action::PasteFromSelection => self.selection_text(),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            if input::edit_menu_action(host.egui.egui_input_mut(), &action, ui_input, clipboard) {
+                host.repaint();
+                return true;
+            }
         }
         let focused = self.focused(host.id);
         let exits_app = self.config().quit_after_last_window_closed
@@ -4909,6 +4960,11 @@ impl App {
                 host.focus_text_input = host.palette.open || host.search_focus.is_some();
             }
             Action::ToggleOutliner => {
+                if host.zgui.is_some() {
+                    host.zgui_ui_state.outliner_open = !host.zgui_ui_state.outliner_open;
+                    host.repaint();
+                    return true;
+                }
                 self.toggle_outliner(event_loop);
             }
             Action::NewTemporaryTmuxxWindow | Action::NewPersistentTmuxxWindow => {
@@ -5980,7 +6036,7 @@ impl App {
             self.add_window(false);
             self.reconcile(event_loop);
         }
-        if action == Action::ToggleOutliner {
+        if action == Action::ToggleOutliner && !self.painter.is_zgui() {
             self.toggle_outliner(event_loop);
             return true;
         }
@@ -6306,7 +6362,7 @@ impl App {
             }
             self.send_input(id, input);
         }
-        host.repaint();
+        host.repaint_terminal();
         // Discard the native translation now, before a later event can open Find.
         true
     }
@@ -6407,21 +6463,477 @@ fn pane_grid_size(size: Vec2, scale: f32, cell: [u32; 2], config: &Config) -> (u
     (columns, rows)
 }
 
+struct FramePreparation {
+    composed: Option<Arc<Frame>>,
+    panels: Vec<ComposedPane>,
+    accessible: Vec<(Id, egui::Rect)>,
+    terminal_ime_rect: Option<egui::Rect>,
+    needs_blink: bool,
+    deadline: Option<Instant>,
+    error: Option<String>,
+}
+
 impl App {
     fn split_minimum(&self, host: &Host) -> [f32; 2] {
         if self.tmuxx_window(host.id).is_some() {
             return [0.0; 2];
         }
         let metrics = host.fonts.metrics();
-        pane_minimum_size(
+        let mut minimum = pane_minimum_size(
             [metrics.cell_width, metrics.cell_height],
             host.window.scale_factor() as f32,
             self.window_config(host.id),
-        )
+        );
+        if host.zgui.is_some() {
+            minimum[1] += 26.0;
+        }
+        minimum
     }
 
     fn draw(&mut self, event_loop: &ActiveEventLoop, host: &mut Host) -> Result<()> {
         self.draw_frame(event_loop, host, None)
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "both frontends share the same terminal preparation state"
+    )]
+    fn prepare_panels(
+        &mut self,
+        host: &mut Host,
+        active: &Tab,
+        content: egui::Rect,
+        zoom_panes: &mut [zoom_animation::Pane],
+        config: &Config,
+        now: Instant,
+        blink_on: bool,
+    ) -> FramePreparation {
+        let scale = host.window.scale_factor() as f32;
+        let size = host.window.inner_size();
+        let focused = active.focused;
+        let mut needs_blink = false;
+        let mut animation_deadline: Option<Instant> = None;
+        let mut render_error = None;
+        host.prepared
+            .retain(|id, _| zoom_panes.iter().any(|pane| pane.id == *id));
+        host.resize_frames.retain(|id, _| {
+            host.zoom_animation.is_running() && zoom_panes.iter().any(|pane| pane.id == *id)
+        });
+        let mut composed = None;
+        let mut panels = Vec::new();
+        let mut accessible = Vec::new();
+        if let Some(entry) = self.tmuxx_window(host.id)
+            && let Some(connection) = entry.view_connection()
+            && let Some(session) = entry.mapping.sessions.get(&host.id)
+        {
+            let metrics = host.fonts.metrics();
+            let (cols, rows) = self
+                .tab(host.id)
+                .map(|tab| {
+                    rustty_app::tmuxx_workspace::grid_size(
+                        tab,
+                        host.content,
+                        host.peek.is_some(),
+                        [
+                            metrics.cell_width as f32 / scale,
+                            metrics.cell_height as f32 / scale,
+                        ],
+                        [
+                            config.window_padding_x.start + config.window_padding_x.end + 2.0,
+                            config.window_padding_y.start
+                                + config.window_padding_y.end
+                                + 2.0
+                                + if host.zgui.is_some() { 26.0 } else { 0.0 },
+                        ],
+                    )
+                })
+                .unwrap_or((80, 24));
+            if let Err(error) = connection.view_size(
+                *session,
+                cols,
+                rows,
+                metrics.cell_width.min(u16::MAX.into()) as u16,
+                metrics.cell_height.min(u16::MAX.into()) as u16,
+            ) {
+                render_error = Some(error.to_string());
+            }
+        }
+        let mut terminal_ime_rect = None;
+        // An atlas eviction can happen halfway through a multi-pane frame.
+        // Rebuild against its new generation before handing a frame to WGPU.
+        for attempt in 0..2 {
+            let mut composition = Vec::with_capacity(host.rects.len());
+            accessible.clear();
+            for visual in zoom_panes.iter_mut() {
+                let (id, rect) = (
+                    visual.id,
+                    visual.resize.map_or(visual.layout, |resize| resize.layout),
+                );
+                if let Some(resize) = visual.resize
+                    && host
+                        .resize_frames
+                        .get(&id)
+                        .is_none_or(|frame| frame.transition != resize.transition)
+                    && let Some(prepared) = host.prepared.get(&id)
+                {
+                    let (source, source_opacity, source_grid_height, bottom) =
+                        host.resize_frames.remove(&id).map_or_else(
+                            || {
+                                (
+                                    Arc::clone(&prepared.frame),
+                                    1.0,
+                                    prepared.screen.height() as f32
+                                        * host.fonts.metrics().cell_height as f32,
+                                    None,
+                                )
+                            },
+                            |frame| {
+                                let bottom = frame.bottom.map(|bottom| {
+                                    let source_y = bottom.source_y + frame.shown_grid_height
+                                        - frame.source_grid_height;
+                                    resize_animation::Bottom {
+                                        source_y,
+                                        target_y: source_y,
+                                    }
+                                });
+                                (
+                                    frame.shown,
+                                    frame.shown_opacity,
+                                    frame.shown_grid_height,
+                                    bottom,
+                                )
+                            },
+                        );
+                    host.resize_frames.insert(
+                        id,
+                        ResizeFrame {
+                            transition: resize.transition,
+                            shown: Arc::clone(&source),
+                            source,
+                            source_opacity,
+                            source_grid_height,
+                            shown_grid_height: source_grid_height,
+                            target: None,
+                            bottom,
+                            cross_fade: None,
+                            shown_opacity: source_opacity,
+                        },
+                    );
+                }
+                if !active.contains(id) {
+                    let Some(prepared) = host.prepared.get_mut(&id) else {
+                        continue;
+                    };
+                    let dim = prepared.dim;
+                    if prepared.frame.generation != host.fonts.generation() {
+                        match host.fonts.prepare_cached(
+                            &prepared.screen,
+                            prepared.key.view,
+                            &prepared.key.options,
+                            &mut prepared.rows,
+                        ) {
+                            Ok(frame) => {
+                                prepared.frame = Arc::new(frame);
+                                host.pane_prepares += 1;
+                            }
+                            Err(error) => {
+                                render_error = Some(error.to_string());
+                                continue;
+                            }
+                        }
+                    }
+                    let mut composed = prepared.compose(visual, content, scale, config, dim, true);
+                    if let Some(frame) = host.resize_frames.get(&id) {
+                        frame.retain(&mut composed);
+                    }
+                    composition.push(composed);
+                    continue;
+                }
+                let Some(pane) = self.panes.get_mut(&id) else {
+                    continue;
+                };
+                let physical = rect.size() * scale;
+                let padding = [
+                    config.window_padding_x.start * scale,
+                    config.window_padding_y.start * scale,
+                ];
+                let metrics = host.fonts.metrics();
+                let (cols, rows) = pane_grid_size(
+                    rect.size(),
+                    scale,
+                    [metrics.cell_width, metrics.cell_height],
+                    config,
+                );
+                // Image placement and pixel mouse input share the renderer's cell grid.
+                if let Err(error) = pane.session.resize(
+                    cols,
+                    rows,
+                    u32::from(cols)
+                        .saturating_mul(metrics.cell_width)
+                        .min(u16::MAX as u32) as u16,
+                    u32::from(rows)
+                        .saturating_mul(metrics.cell_height)
+                        .min(u16::MAX as u32) as u16,
+                ) {
+                    render_error = Some(error.to_string());
+                    continue;
+                }
+                let mut terminal = match pane.session.terminal() {
+                    Ok(terminal) => terminal,
+                    Err(error) => {
+                        render_error = Some(error.to_string());
+                        continue;
+                    }
+                };
+                if terminal.modes.dec(2026)
+                    && host.prepared.get(&id).is_some_and(|prepared| {
+                        prepared.frame.generation != host.fonts.generation()
+                    })
+                {
+                    // Like resize, atlas replacement ends a batch: old
+                    // texture coordinates cannot mix with the new atlas.
+                    terminal.set_mode(true, 2026, false);
+                }
+                let synchronized = pane.sync_output.update(&mut terminal, now).is_some();
+                if !synchronized && let Some(search) = &mut pane.search {
+                    search.refresh(&mut terminal);
+                }
+                if !synchronized
+                    && let Some((owner, drag)) = &mut host.selection_drag
+                    && *owner == id
+                {
+                    let pointer = selection_pointer(
+                        &terminal,
+                        host.mouse,
+                        rect,
+                        scale,
+                        padding,
+                        [metrics.cell_width, metrics.cell_height],
+                        host.modifiers.state().alt_key(),
+                    );
+                    if !drag.refresh(
+                        &mut terminal,
+                        &mut pane.selection_gesture,
+                        host.mouse,
+                        pointer,
+                        now,
+                    ) {
+                        host.selection_drag = None;
+                    }
+                }
+                let now_ms = self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+                if !synchronized && let Some(next) = terminal.tick_graphics(now_ms) {
+                    let deadline =
+                        Instant::now() + Duration::from_millis(next.saturating_sub(now_ms));
+                    animation_deadline =
+                        Some(animation_deadline.map_or(deadline, |old| old.min(deadline)));
+                }
+                let accepts_input = !pane.exited && pane.session.accepts_input();
+                let is_focused =
+                    host.focused && id == focused && host.peek.is_none() && accepts_input;
+                needs_blink |= !synchronized
+                    && is_focused
+                    && !pane.exited
+                    && (terminal.screen().has_extra_cursors()
+                        || (!host.composing
+                            && terminal.screen().cursor.visible
+                            && terminal
+                                .screen()
+                                .cursor
+                                .row
+                                .saturating_add(terminal.screen().viewport_offset)
+                                < terminal.rows as usize))
+                    && terminal.screen().cursor.blink;
+                let (foreground, background) = if terminal.modes.dec(5) {
+                    (terminal.background, terminal.foreground)
+                } else {
+                    (terminal.foreground, terminal.background)
+                };
+                let cursor_color = terminal.cursor_color.unwrap_or(foreground);
+                let resolve = |color: config::TerminalColor| match color {
+                    config::TerminalColor::Rgb(color) => [color.r, color.g, color.b],
+                    config::TerminalColor::CellForeground => foreground,
+                    config::TerminalColor::CellBackground => background,
+                };
+                let options = RenderOptions {
+                    size: [physical.x.max(1.0) as u32, physical.y.max(1.0) as u32],
+                    padding,
+                    foreground,
+                    background,
+                    cursor_color,
+                    cursor_text: config.cursor_text.map(resolve).unwrap_or(background),
+                    selection_background: config
+                        .selection_background
+                        .map(resolve)
+                        .unwrap_or([65, 85, 120]),
+                    selection_foreground: config.selection_foreground.map(resolve),
+                    indexed_colors: Some(indexed_colors(
+                        config,
+                        foreground,
+                        background,
+                        cursor_color,
+                    )),
+                    search_highlights: pane
+                        .search
+                        .as_mut()
+                        .map(|search| search.highlights(&mut terminal))
+                        .unwrap_or_default(),
+                    palette: terminal
+                        .palette
+                        .as_slice()
+                        .try_into()
+                        .unwrap_or([[0; 3]; 256]),
+                    focused: is_focused,
+                    cursor_visible: accepts_input && (id != focused || !host.composing),
+                    extra_cursor_visible: accepts_input,
+                    blink_visible: blink_on || !is_focused,
+                    background_opacity: config.background_opacity,
+                    preedit: (is_focused && !host.preedit.is_empty()).then(|| {
+                        rustty_render::Preedit {
+                            text: host.preedit.clone(),
+                            selection: host.preedit_selection,
+                        }
+                    }),
+                };
+                let key = PaneRenderKey::new(&terminal, options, rect, scale);
+                let snapshot = (!synchronized
+                    && !host
+                        .prepared
+                        .get_mut(&id)
+                        .is_some_and(|pane| pane.matches(&key, &host.fonts)))
+                .then(|| pane.session.display_screen(&terminal));
+                drop(terminal);
+                if let Some(snapshot) = snapshot {
+                    let snapshot = match snapshot {
+                        Ok(snapshot) => snapshot,
+                        Err(error) => {
+                            render_error = Some(error.to_string());
+                            continue;
+                        }
+                    };
+                    let rows = host
+                        .prepared
+                        .get_mut(&id)
+                        .map(|prepared| std::mem::take(&mut prepared.rows))
+                        .unwrap_or_default();
+                    match PreparedPane::new(key, snapshot, &mut host.fonts, rows) {
+                        Ok(prepared) => {
+                            host.prepared.insert(id, prepared);
+                            host.pane_prepares += 1;
+                        }
+                        Err(error) => {
+                            host.prepared.remove(&id);
+                            render_error = Some(error.to_string());
+                            continue;
+                        }
+                    }
+                }
+                let Some(prepared) = host.prepared.get_mut(&id) else {
+                    continue;
+                };
+                needs_blink |=
+                    !synchronized && is_focused && !pane.exited && prepared.frame.blinking_text;
+                let mut composed_pane = prepared.compose(
+                    visual,
+                    content,
+                    scale,
+                    config,
+                    (id != focused && config.unfocused_split_opacity < 1.0).then(|| {
+                        let color = config.unfocused_split_fill.unwrap_or(config.background);
+                        rustty_render::Color::rgb([color.r, color.g, color.b])
+                            .opacity(1.0 - config.unfocused_split_opacity)
+                    }),
+                    host.zoom_animation.is_running(),
+                );
+                if let Some(resize) = visual.resize
+                    && let Some(frame) = host.resize_frames.get_mut(&id)
+                {
+                    match frame.present(
+                        &prepared.frame,
+                        resize.phase,
+                        prepared.screen.height() as f32 * host.fonts.metrics().cell_height as f32,
+                        host.fonts.metrics().cell_height as f32,
+                        prepared.key.options.padding[1],
+                    ) {
+                        Ok(frame) => composed_pane.frame = frame,
+                        Err(error) => {
+                            render_error = Some(error.to_string());
+                            continue;
+                        }
+                    }
+                    // Content opacity is already baked into the retained frame.
+                    let paint = composed_pane.transition.as_mut().unwrap();
+                    paint.opacity = paint.background_opacity;
+                    if frame.cross_fade == Some(true) {
+                        visual.opacity = 1.0;
+                    } else {
+                        composed_pane.dim = composed_pane
+                            .dim
+                            .map(|dim| dim.opacity(frame.shown_opacity));
+                    }
+                    host.zoom_animation
+                        .cross_fade(id, frame.cross_fade == Some(true));
+                } else if let Some(frame) = host.resize_frames.get(&id) {
+                    frame.retain(&mut composed_pane);
+                }
+                composition.push(composed_pane);
+                accessible.push((id, visual.rect.intersect(content)));
+                if id == focused && accepts_input {
+                    terminal_ime_rect =
+                        Some(prepared.ime_rect.translate(visual.rect.min - rect.min));
+                }
+            }
+            host.fonts
+                .retain_images(host.prepared.values().flat_map(|pane| {
+                    pane.screen
+                        .graphics
+                        .images
+                        .values()
+                        .map(|image| (image, &pane.key.options))
+                }));
+            if host.zgui.is_some() {
+                if composition
+                    .iter()
+                    .any(|pane| pane.frame.generation != host.fonts.generation())
+                {
+                    if attempt == 0 {
+                        continue;
+                    }
+                    render_error = Some("Visible glyphs exceed the shared atlas budget".into());
+                } else {
+                    panels = composition;
+                }
+                break;
+            }
+            let size = [size.width, size.height];
+            if let Some(retained) = &host.composed
+                && retained.matches(size, &composition)
+            {
+                composed = Some(Arc::clone(&retained.frame));
+                break;
+            }
+            match ComposedFrame::new(size, composition) {
+                Ok(retained) => {
+                    composed = Some(Arc::clone(&retained.frame));
+                    host.composed = Some(retained);
+                    break;
+                }
+                Err(_) if attempt == 0 => {}
+                Err(_) => {
+                    render_error = Some("Visible glyphs exceed the shared atlas budget".into());
+                    host.composed = None;
+                }
+            }
+        }
+        FramePreparation {
+            composed,
+            panels,
+            accessible,
+            terminal_ime_rect,
+            needs_blink,
+            deadline: animation_deadline,
+            error: render_error,
+        }
     }
 
     fn draw_frame(
@@ -6430,6 +6942,9 @@ impl App {
         host: &mut Host,
         offscreen: Option<&wgpu::Texture>,
     ) -> Result<()> {
+        if host.zgui.is_some() {
+            return self.draw_zgui_frame(event_loop, host);
+        }
         host.messages_open = !self.errors.is_empty();
         if !host.visible || host.occluded {
             #[cfg(target_os = "macos")]
@@ -6869,338 +7384,16 @@ impl App {
                             )
                         })
                         .collect();
-                    host.prepared.retain(|id, _| zoom_panes.iter().any(|pane| pane.id == *id));
-                    host.resize_frames.retain(|id, _| host.zoom_animation.is_running() && zoom_panes.iter().any(|pane| pane.id == *id));
-                    let mut composed = None;
-                    let mut accessible = Vec::new();
-                    if let Some(entry) = self.tmuxx_window(host.id)
-                        && let Some(connection) = entry.view_connection()
-                        && let Some(session) = entry.mapping.sessions.get(&host.id)
-                    {
-                        let metrics = host.fonts.metrics();
-                        let (cols, rows) = self.tab(host.id).map(|tab| rustty_app::tmuxx_workspace::grid_size(
-                            tab, host.content, host.peek.is_some(),
-                            [metrics.cell_width as f32 / scale, metrics.cell_height as f32 / scale],
-                            [config.window_padding_x.start + config.window_padding_x.end + 2.0,
-                             config.window_padding_y.start + config.window_padding_y.end + 2.0],
-                        )).unwrap_or((80, 24));
-                        if let Err(error) = connection.view_size(*session, cols, rows, metrics.cell_width.min(u16::MAX.into()) as u16, metrics.cell_height.min(u16::MAX.into()) as u16) { render_error = Some(error.to_string()); }
+                    let preparation = self.prepare_panels(host, active, content, &mut zoom_panes, &config, now, blink_on);
+                    let composed = preparation.composed;
+                    let accessible = preparation.accessible;
+                    let terminal_ime_rect = preparation.terminal_ime_rect;
+                    needs_blink |= preparation.needs_blink;
+                    if let Some(deadline) = preparation.deadline {
+                        animation_deadline = Some(animation_deadline.map_or(deadline, |old| old.min(deadline)));
                     }
-                    let mut terminal_ime_rect = None;
-                    // An atlas eviction can happen halfway through a multi-pane frame.
-                    // Rebuild against its new generation before handing a frame to WGPU.
-                    for attempt in 0..2 {
-                        let mut composition = Vec::with_capacity(host.rects.len());
-                        accessible.clear();
-                        for visual in &mut zoom_panes {
-                            let (id, rect) = (visual.id, visual.resize.map_or(visual.layout, |resize| resize.layout));
-                            if let Some(resize) = visual.resize
-                                && host.resize_frames.get(&id).is_none_or(|frame| frame.transition != resize.transition)
-                                && let Some(prepared) = host.prepared.get(&id)
-                            {
-                                let (source, source_opacity, source_grid_height, bottom) = host.resize_frames.remove(&id).map_or_else(
-                                    || (Arc::clone(&prepared.frame), 1.0, prepared.screen.height() as f32 * host.fonts.metrics().cell_height as f32, None),
-                                    |frame| {
-                                        let bottom = frame.bottom.map(|bottom| {
-                                            let source_y = bottom.source_y + frame.shown_grid_height - frame.source_grid_height;
-                                            resize_animation::Bottom { source_y, target_y: source_y }
-                                        });
-                                        (frame.shown, frame.shown_opacity, frame.shown_grid_height, bottom)
-                                    },
-                                );
-                                host.resize_frames.insert(id, ResizeFrame {
-                                    transition: resize.transition,
-                                    shown: Arc::clone(&source),
-                                    source,
-                                    source_opacity,
-                                    source_grid_height,
-                                    shown_grid_height: source_grid_height,
-                                    target: None,
-                                    bottom,
-                                    cross_fade: None,
-                                    shown_opacity: source_opacity,
-                                });
-                            }
-                            if !active.contains(id) {
-                                let Some(prepared) = host.prepared.get_mut(&id) else { continue; };
-                                let dim = prepared.dim;
-                                if prepared.frame.generation != host.fonts.generation() {
-                                    match host.fonts.prepare_cached(&prepared.screen, prepared.key.view, &prepared.key.options, &mut prepared.rows) {
-                                        Ok(frame) => {
-                                            prepared.frame = Arc::new(frame);
-                                            host.pane_prepares += 1;
-                                        }
-                                        Err(error) => {
-                                            render_error = Some(error.to_string());
-                                            continue;
-                                        }
-                                    }
-                                }
-                                let mut composed = prepared.compose(visual, content, scale, &config, dim, true);
-                                if let Some(frame) = host.resize_frames.get(&id) {
-                                    frame.retain(&mut composed);
-                                }
-                                composition.push(composed);
-                                continue;
-                            }
-                            let Some(pane) = self.panes.get_mut(&id) else {
-                                continue;
-                            };
-                            let physical = rect.size() * scale;
-                            let padding = [
-                                config.window_padding_x.start * scale,
-                                config.window_padding_y.start * scale,
-                            ];
-                            let metrics = host.fonts.metrics();
-                            let (cols, rows) = pane_grid_size(
-                                rect.size(), scale, [metrics.cell_width, metrics.cell_height],
-                                &config,
-                            );
-                            // Image placement and pixel mouse input share the renderer's cell grid.
-                            if let Err(error) = pane.session.resize(
-                                cols,
-                                rows,
-                                u32::from(cols)
-                                    .saturating_mul(metrics.cell_width)
-                                    .min(u16::MAX as u32) as u16,
-                                u32::from(rows)
-                                    .saturating_mul(metrics.cell_height)
-                                    .min(u16::MAX as u32) as u16,
-                            ) {
-                                render_error = Some(error.to_string());
-                                continue;
-                            }
-                            let mut terminal = match pane.session.terminal() {
-                                Ok(terminal) => terminal,
-                                Err(error) => {
-                                    render_error = Some(error.to_string());
-                                    continue;
-                                }
-                            };
-                            if terminal.modes.dec(2026)
-                                && host.prepared.get(&id).is_some_and(|prepared| {
-                                    prepared.frame.generation != host.fonts.generation()
-                                })
-                            {
-                                // Like resize, atlas replacement ends a batch: old
-                                // texture coordinates cannot mix with the new atlas.
-                                terminal.set_mode(true, 2026, false);
-                            }
-                            let synchronized =
-                                pane.sync_output.update(&mut terminal, now).is_some();
-                            if !synchronized && let Some(search) = &mut pane.search {
-                                search.refresh(&mut terminal);
-                            }
-                            if !synchronized
-                                && let Some((owner, drag)) = &mut host.selection_drag
-                                && *owner == id
-                            {
-                                let pointer = selection_pointer(
-                                    &terminal,
-                                    host.mouse,
-                                    rect,
-                                    scale,
-                                    padding,
-                                    [metrics.cell_width, metrics.cell_height],
-                                    host.modifiers.state().alt_key(),
-                                );
-                                if !drag.refresh(
-                                    &mut terminal,
-                                    &mut pane.selection_gesture,
-                                    host.mouse,
-                                    pointer,
-                                    now,
-                                ) {
-                                    host.selection_drag = None;
-                                }
-                            }
-                            let now_ms =
-                                self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
-                            if !synchronized && let Some(next) = terminal.tick_graphics(now_ms) {
-                                let deadline = Instant::now()
-                                    + Duration::from_millis(next.saturating_sub(now_ms));
-                                animation_deadline = Some(
-                                    animation_deadline.map_or(deadline, |old| old.min(deadline)),
-                                );
-                            }
-                            let accepts_input = !pane.exited && pane.session.accepts_input();
-                            let is_focused = host.focused && id == focused && host.peek.is_none() && accepts_input;
-                            needs_blink |= !synchronized
-                                && is_focused
-                                && !pane.exited
-                                && (terminal.screen().has_extra_cursors()
-                                    || (!host.composing
-                                        && terminal.screen().cursor.visible
-                                        && terminal.screen().cursor.row
-                                            .saturating_add(terminal.screen().viewport_offset)
-                                            < terminal.rows as usize))
-                                && terminal.screen().cursor.blink;
-                            let (foreground, background) = if terminal.modes.dec(5) {
-                                (terminal.background, terminal.foreground)
-                            } else {
-                                (terminal.foreground, terminal.background)
-                            };
-                            let cursor_color = terminal.cursor_color.unwrap_or(foreground);
-                            let resolve = |color: config::TerminalColor| match color {
-                                config::TerminalColor::Rgb(color) => [color.r, color.g, color.b],
-                                config::TerminalColor::CellForeground => foreground,
-                                config::TerminalColor::CellBackground => background,
-                            };
-                            let options = RenderOptions {
-                                size: [physical.x.max(1.0) as u32, physical.y.max(1.0) as u32],
-                                padding,
-                                foreground,
-                                background,
-                                cursor_color,
-                                cursor_text: config.cursor_text.map(resolve).unwrap_or(background),
-                                selection_background: config
-                                    .selection_background
-                                    .map(resolve)
-                                    .unwrap_or([65, 85, 120]),
-                                selection_foreground: config.selection_foreground.map(resolve),
-                                indexed_colors: Some(indexed_colors(
-                                    &config,
-                                    foreground,
-                                    background,
-                                    cursor_color,
-                                )),
-                                search_highlights: pane
-                                    .search
-                                    .as_mut()
-                                    .map(|search| search.highlights(&mut terminal))
-                                    .unwrap_or_default(),
-                                palette: terminal
-                                    .palette
-                                    .as_slice()
-                                    .try_into()
-                                    .unwrap_or([[0; 3]; 256]),
-                                focused: is_focused,
-                                cursor_visible: accepts_input && (id != focused || !host.composing),
-                                extra_cursor_visible: accepts_input,
-                                blink_visible: blink_on || !is_focused,
-                                background_opacity: config.background_opacity,
-                                preedit: (is_focused && !host.preedit.is_empty()).then(|| {
-                                    rustty_render::Preedit {
-                                        text: host.preedit.clone(),
-                                        selection: host.preedit_selection,
-                                    }
-                                }),
-                            };
-                            let key = PaneRenderKey::new(&terminal, options, rect, scale);
-                            let snapshot = (!synchronized
-                                && !host
-                                    .prepared
-                                    .get_mut(&id)
-                                    .is_some_and(|pane| pane.matches(&key, &host.fonts)))
-                            .then(|| pane.session.display_screen(&terminal));
-                            drop(terminal);
-                            if let Some(snapshot) = snapshot {
-                                let snapshot = match snapshot {
-                                    Ok(snapshot) => snapshot,
-                                    Err(error) => {
-                                        render_error = Some(error.to_string());
-                                        continue;
-                                    }
-                                };
-                                let rows = host.prepared.get_mut(&id)
-                                    .map(|prepared| std::mem::take(&mut prepared.rows))
-                                    .unwrap_or_default();
-                                match PreparedPane::new(key, snapshot, &mut host.fonts, rows) {
-                                    Ok(prepared) => {
-                                        host.prepared.insert(id, prepared);
-                                        host.pane_prepares += 1;
-                                    }
-                                    Err(error) => {
-                                        host.prepared.remove(&id);
-                                        render_error = Some(error.to_string());
-                                        continue;
-                                    }
-                                }
-                            }
-                            let Some(prepared) = host.prepared.get_mut(&id) else {
-                                continue;
-                            };
-                            needs_blink |= !synchronized
-                                && is_focused
-                                && !pane.exited
-                                && prepared.frame.blinking_text;
-                            let mut composed_pane = prepared.compose(
-                                visual, content, scale, &config,
-                                (id != focused && config.unfocused_split_opacity < 1.0).then(
-                                    || {
-                                        let color = config
-                                            .unfocused_split_fill
-                                            .unwrap_or(config.background);
-                                        rustty_render::Color::rgb([color.r, color.g, color.b])
-                                            .opacity(1.0 - config.unfocused_split_opacity)
-                                    },
-                                ),
-                                host.zoom_animation.is_running(),
-                            );
-                            if let Some(resize) = visual.resize
-                                && let Some(frame) = host.resize_frames.get_mut(&id)
-                            {
-                                match frame.present(
-                                    &prepared.frame, resize.phase,
-                                    prepared.screen.height() as f32 * host.fonts.metrics().cell_height as f32,
-                                    host.fonts.metrics().cell_height as f32,
-                                    prepared.key.options.padding[1],
-                                ) {
-                                    Ok(frame) => composed_pane.frame = frame,
-                                    Err(error) => {
-                                        render_error = Some(error.to_string());
-                                        continue;
-                                    }
-                                }
-                                // Content opacity is already baked into the retained frame.
-                                let paint = composed_pane.transition.as_mut().unwrap();
-                                paint.opacity = paint.background_opacity;
-                                if frame.cross_fade == Some(true) {
-                                    visual.opacity = 1.0;
-                                } else {
-                                    composed_pane.dim = composed_pane.dim.map(|dim| dim.opacity(frame.shown_opacity));
-                                }
-                                host.zoom_animation.cross_fade(id, frame.cross_fade == Some(true));
-                            } else if let Some(frame) = host.resize_frames.get(&id) {
-                                frame.retain(&mut composed_pane);
-                            }
-                            composition.push(composed_pane);
-                            accessible.push((id, visual.rect.intersect(content)));
-                            if id == focused && accepts_input {
-                                terminal_ime_rect = Some(prepared.ime_rect.translate(visual.rect.min - rect.min));
-                            }
-                        }
-                        host.fonts.retain_images(
-                            host.prepared
-                                .values()
-                                .flat_map(|pane| {
-                                    pane.screen
-                                        .graphics
-                                        .images
-                                        .values()
-                                        .map(|image| (image, &pane.key.options))
-                                }),
-                        );
-                        let size = [size.width, size.height];
-                        if let Some(retained) = &host.composed
-                            && retained.matches(size, &composition)
-                        {
-                            composed = Some(Arc::clone(&retained.frame));
-                            break;
-                        }
-                        match ComposedFrame::new(size, composition) {
-                            Ok(retained) => {
-                                composed = Some(Arc::clone(&retained.frame));
-                                host.composed = Some(retained);
-                                break;
-                            }
-                            Err(_) if attempt == 0 => {}
-                            Err(_) => {
-                                render_error =
-                                    Some("Visible glyphs exceed the shared atlas budget".into());
-                                host.composed = None;
-                            }
-                        }
+                    if preparation.error.is_some() {
+                        render_error = preparation.error;
                     }
                     ui.painter().add(
                         self.painter.terminal_callback(
@@ -7212,11 +7405,7 @@ impl App {
                             composed.unwrap_or_else(|| {
                                 Arc::new(Frame::empty([size.width, size.height]))
                             }),
-                            if self.painter.is_zgui() {
-                                host.composed.as_ref().map_or_else(Vec::new, ComposedFrame::zgui_panels)
-                            } else {
-                                Vec::new()
-                            },
+
                         ),
                     );
                     let displayed = host.zoom_animation.is_running().then(|| {
@@ -8187,8 +8376,11 @@ impl App {
             && host.peek.is_none()
             && host.divider_drag.is_none()
             && host.mouse_button.is_none()
-            && host.egui.is_pointer_in_window()
-            && !self.context.egui_is_using_pointer()
+            && host.pointer_present()
+            && host.zgui.as_ref().map_or_else(
+                || !self.context.egui_is_using_pointer(),
+                |runtime| !runtime.has_pointer_capture(),
+            )
             && [host.mouse, position].into_iter().all(|position| {
                 host.rects.iter().any(|(id, rect)| {
                     // Undo the painting inset: split gaps only change the native cursor.
@@ -9121,7 +9313,7 @@ impl ApplicationHandler<Event> for App {
                 self.finish_tmuxx_copy(target, name, result);
                 self.refresh_tmuxx(event_loop);
             }
-            Event::DeckWake => {}
+            Event::DeckWake | Event::ZguiWake => {}
             Event::Output(id) => {
                 if let Some(smoke) = &mut self.smoke {
                     smoke.record("pty-output");
@@ -9385,6 +9577,13 @@ impl ApplicationHandler<Event> for App {
         let Some(mut host) = self.windows.remove(&window) else {
             return;
         };
+        match &event {
+            WindowEvent::CursorEntered { .. } | WindowEvent::CursorMoved { .. } => {
+                host.pointer_in_window = true
+            }
+            WindowEvent::CursorLeft { .. } => host.pointer_in_window = false,
+            _ => {}
+        }
         host.messages_open = !self.errors.is_empty();
         if let WindowEvent::Ime(ime) = &event
             && self.hint_ime(&mut host, ime)
@@ -9496,28 +9695,77 @@ impl ApplicationHandler<Event> for App {
             WindowEvent::Ime(Ime::Preedit(text, _) | Ime::Commit(text)) => !text.is_empty(),
             _ => false,
         };
-        if dismiss_preview && outliner_ui::hover::dismiss(&self.context, host.viewport) {
+        if host.zgui.is_none()
+            && dismiss_preview
+            && outliner_ui::hover::dismiss(&self.context, host.viewport)
+        {
             host.popup_open = false;
             host.repaint();
         }
-        let egui_event_start = host.egui.egui_input_mut().events.len();
-        let response = host.egui.on_window_event(&host.window, &event);
-        let egui_event_end = host.egui.egui_input_mut().events.len();
-        if passive_motion {
-            // Merely ignoring response.repaint leaves PointerMoved queued, which
-            // restarts egui's repaint loop when the next cursor-blink frame runs.
-            host.deferred_pointer = input::defer_pointer_move(host.egui.egui_input_mut());
-        } else if matches!(
-            event,
-            WindowEvent::CursorMoved { .. }
-                | WindowEvent::CursorLeft { .. }
-                | WindowEvent::MouseInput { .. }
-                | WindowEvent::Touch(_)
-        ) {
-            host.deferred_pointer = None;
+        let native = host.zgui.is_some();
+        if native
+            && matches!(
+                event,
+                WindowEvent::KeyboardInput { .. } | WindowEvent::Ime(_)
+            )
+        {
+            // Settle the preceding click before choosing between a widget and the PTY.
+            let result = self.settle_zgui_input(event_loop, &mut host);
+            if let Err(error) = result {
+                self.errors.push(error.to_string());
+                self.windows.insert(window, host);
+                return;
+            }
         }
-        if response.repaint && !passive_motion && !matches!(event, WindowEvent::RedrawRequested) {
-            host.repaint();
+        let pointer_released = matches!(
+            event,
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                ..
+            }
+        );
+
+        let native_modal_before = native && host.modal_input();
+        let native_key_handled = native
+            && matches!(&event,
+            WindowEvent::KeyboardInput { event, is_synthetic: false, .. }
+                if self.keyboard(event_loop, &mut host, event));
+        let egui_event_start;
+        let egui_event_end;
+        if native {
+            egui_event_start = 0;
+            egui_event_end = 0;
+            let input = !matches!(
+                event,
+                WindowEvent::KeyboardInput { .. } | WindowEvent::Ime(_)
+            ) || (!native_key_handled && host.ui_input());
+            if input {
+                host.zgui.as_mut().unwrap().event(&event);
+            }
+            let commands = host.zgui_ui.as_ref().unwrap().drain_commands();
+            for command in commands {
+                self.zgui_command(event_loop, &mut host, command);
+            }
+        } else {
+            egui_event_start = host.egui.egui_input_mut().events.len();
+            let response = host.egui.on_window_event(&host.window, &event);
+            egui_event_end = host.egui.egui_input_mut().events.len();
+            if passive_motion {
+                // A deferred move must not restart egui's repaint loop on the next blink.
+                host.deferred_pointer = input::defer_pointer_move(host.egui.egui_input_mut());
+            } else if matches!(
+                event,
+                WindowEvent::CursorMoved { .. }
+                    | WindowEvent::CursorLeft { .. }
+                    | WindowEvent::MouseInput { .. }
+                    | WindowEvent::Touch(_)
+            ) {
+                host.deferred_pointer = None;
+            }
+            if response.repaint && !passive_motion && !matches!(event, WindowEvent::RedrawRequested)
+            {
+                host.repaint();
+            }
         }
         match event {
             WindowEvent::CloseRequested => {
@@ -9662,7 +9910,7 @@ impl ApplicationHandler<Event> for App {
                 event,
                 is_synthetic: false,
                 ..
-            } if self.keyboard(event_loop, &mut host, &event) => {
+            } if !native && self.keyboard(event_loop, &mut host, &event) => {
                 // Retain UI events queued by actions, but discard this key's native translation.
                 host.egui
                     .egui_input_mut()
@@ -9718,12 +9966,13 @@ impl ApplicationHandler<Event> for App {
                     }
                     Ime::Enabled => {}
                 }
-                host.repaint();
+                host.repaint_terminal();
             }
             WindowEvent::CursorMoved { position, .. } => {
+                host.pointer_in_window = true;
                 let pos = position.to_logical::<f32>(host.window.scale_factor());
                 host.mouse = Pos2::new(pos.x, pos.y);
-                if !host.modal_input() {
+                if !native_modal_before && !host.modal_input() {
                     let button = host.mouse_button;
                     self.mouse(&mut host, vt::MouseAction::Move, button);
                 } else {
@@ -9735,7 +9984,9 @@ impl ApplicationHandler<Event> for App {
                 return;
             }
             WindowEvent::CursorLeft { .. } => self.clear_mouse_hover(&mut host),
-            WindowEvent::MouseInput { state, button, .. } if !host.modal_input() => {
+            WindowEvent::MouseInput { state, button, .. }
+                if !native_modal_before && !host.modal_input() =>
+            {
                 let button = match button {
                     MouseButton::Left => Some(vt::MouseButton::Left),
                     MouseButton::Middle => Some(vt::MouseButton::Middle),
@@ -9759,7 +10010,7 @@ impl ApplicationHandler<Event> for App {
                     host.selection_drag = None;
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } => {
+            WindowEvent::MouseWheel { delta, .. } if !native_modal_before => {
                 self.scroll(&mut host, delta);
             }
             WindowEvent::DroppedFile(path) => match Platform::cursor_position(&host.window) {
@@ -9767,6 +10018,10 @@ impl ApplicationHandler<Event> for App {
                 Err(error) => self.errors.push(error),
             },
             _ => {}
+        }
+        if pointer_released {
+            host.mouse_button = None;
+            host.selection_drag = None;
         }
         self.update_mouse_hover(&mut host);
         self.windows.insert(window, host);
@@ -9957,10 +10212,26 @@ impl ApplicationHandler<Event> for App {
             {
                 next = Some(next.map_or(deadline, |old| old.min(deadline)));
             }
+            if (!host.visible || host.occluded)
+                && let Some(runtime) = &mut host.zgui
+                && let Err(error) = runtime.service_hidden()
+            {
+                self.errors.push(error.to_string());
+            }
+            if let Some(runtime) = &mut host.zgui
+                && let Some(deadline) = runtime.deadline()
+            {
+                if deadline <= now {
+                    runtime.deadline_reached();
+                    host.repaint_terminal();
+                } else {
+                    next = Some(next.map_or(deadline, |old| old.min(deadline)));
+                }
+            }
             if let Some(deadline) = host.deadline {
                 if deadline <= now {
                     host.deadline = None;
-                    host.repaint();
+                    host.repaint_terminal();
                 } else if host.visible && !host.occluded {
                     next = Some(next.map_or(deadline, |old| old.min(deadline)));
                 }
@@ -10967,60 +11238,6 @@ mod tests {
             let mut args = invalid.into_iter().map(str::to_owned).collect();
             assert!(Framework::take_args(&mut args).is_err());
         }
-    }
-
-    #[test]
-    fn zgui_panels_keep_independent_frames_and_exact_animation_composition() {
-        let first = Arc::new(Frame::empty([40, 20]));
-        let second = Arc::new(Frame::empty([40, 20]));
-        let dim = Some(rustty_render::Color::rgb([20, 30, 40]).opacity(0.2));
-        let mut composed = ComposedFrame::new(
-            [80, 20],
-            vec![
-                ComposedPane {
-                    id: 12,
-                    frame: Arc::clone(&first),
-                    rect: [0.0, 0.0, 40.0, 20.0],
-                    clip: [0.0, 0.0, 40.0, 20.0],
-                    dim,
-                    transition: None,
-                },
-                ComposedPane {
-                    id: 15,
-                    frame: Arc::clone(&second),
-                    rect: [40.25, 0.5, 40.75, 20.25],
-                    clip: [40.25, 0.5, 35.0, 19.5],
-                    dim: None,
-                    transition: None,
-                },
-            ],
-        )
-        .unwrap();
-        let panels = composed.zgui_panels();
-        assert_eq!(
-            panels.iter().map(|panel| panel.id).collect::<Vec<_>>(),
-            [12, 15]
-        );
-        assert!(Arc::ptr_eq(&panels[0].frame, &first));
-        assert!(Arc::ptr_eq(&panels[1].frame, &second));
-        assert_eq!(panels[0].dim, dim);
-        assert_eq!(panels[1].rect.min, Pos2::new(40.25, 0.5));
-        assert_eq!(panels[1].rect.width(), 40.0);
-        assert_eq!(panels[1].rect.height(), 20.0);
-        assert_eq!(panels[1].clip.width(), 35.0);
-        assert_eq!(panels[1].clip.height(), 19.5);
-        composed.panes[0].transition = Some(ZoomPaint {
-            background: rustty_render::Color::rgb([0; 3]),
-            frame_background: rustty_render::Color::rgb([0; 3]),
-            opacity: 0.5,
-            background_opacity: 0.5,
-            moving: true,
-        });
-        let panels = composed.zgui_panels();
-        assert_eq!(panels.len(), 1);
-        assert_eq!(panels[0].id, 0);
-        assert!(Arc::ptr_eq(&panels[0].frame, &composed.frame));
-        assert_eq!(panels[0].dim, None);
     }
 
     #[test]

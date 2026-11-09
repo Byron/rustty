@@ -44,6 +44,12 @@ pub struct UiAreas {
 }
 
 impl UiAreas {
+    pub fn set_rects(&mut self, rects: Vec<egui::Rect>) {
+        self.hit_test = Some(std::sync::Arc::new(move |position| {
+            rects.iter().any(|rect| rect.contains(position))
+        }));
+    }
+
     pub fn capture(&mut self, context: &egui::Context) {
         let (areas, transforms) =
             context.memory(|memory| (memory.areas().clone(), memory.to_global.clone()));

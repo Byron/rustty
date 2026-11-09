@@ -76,7 +76,17 @@ objc2-quartz-core = "0.3.2"
 block2 = "0.6"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-rustty-render-zgui.workspace = true
+rustty-render-wgpu = { workspace = true, features = ["zgui"] }
+zgui = { git = "https://github.com/Byron/zgui", rev = "1d526ed98cb89c2cc43e063a8445dedeeb556416" }
+zgui-ui = { git = "https://github.com/Byron/zgui", rev = "1d526ed98cb89c2cc43e063a8445dedeeb556416" }
+zgui-ui-tokens = { git = "https://github.com/Byron/zgui", rev = "1d526ed98cb89c2cc43e063a8445dedeeb556416" }
+zgui-image = { git = "https://github.com/Byron/zgui", rev = "1d526ed98cb89c2cc43e063a8445dedeeb556416" }
+zgui-platform-winit = { git = "https://github.com/Byron/zgui", rev = "1d526ed98cb89c2cc43e063a8445dedeeb556416" }
+zgui-render-wgpu = { git = "https://github.com/Byron/zgui", rev = "1d526ed98cb89c2cc43e063a8445dedeeb556416" }
+zgui-render-vector-vello = { git = "https://github.com/Byron/zgui", rev = "1d526ed98cb89c2cc43e063a8445dedeeb556416" }
+accesskit-zgui = { package = "accesskit", version = "0.24.1" }
+accesskit-winit-zgui = { package = "accesskit_winit", version = "0.33.2" }
+raw-window-handle = "0.6"
 gix-lock = "26.0.0"
 lz4_flex.workspace = true
 rmp-serde.workspace = true
@@ -84,6 +94,9 @@ serde_bytes.workspace = true
 muda = "0.19"
 elgato-streamdeck = { git = "https://github.com/OpenActionAPI/rust-elgato-streamdeck", rev = "c8b9f85467be437f783ac8bb569a2dc63fca6374" }
 image = { version = "0.25", default-features = false, features = ["png"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dev-dependencies]
+zgui-platform-headless = { git = "https://github.com/Byron/zgui", rev = "1d526ed98cb89c2cc43e063a8445dedeeb556416" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Use the driver's Rust Windows backend so cross-checks do not require C SDK headers.

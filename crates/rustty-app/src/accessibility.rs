@@ -2,6 +2,7 @@
 use egui::accesskit::{self as ak, Node, NodeId, TextPosition, TextSelection};
 use rustty::vt::{GridPoint, Screen, Selection};
 
+#[derive(Clone)]
 struct Row {
     id: NodeId,
     row: u64,
@@ -12,6 +13,7 @@ struct Row {
     node: Node,
 }
 
+#[derive(Clone)]
 pub struct TerminalText {
     pub id: egui::Id,
     rows: Vec<Row>,
@@ -233,6 +235,112 @@ impl TerminalText {
             .nodes
             .extend(self.rows.iter().map(|row| (row.id, row.node.clone())));
     }
+
+    /// Publish the same terminal text spans through zgui's newer AccessKit version.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub fn zgui_append_to(
+        &self,
+        parent_id: accesskit_zgui::NodeId,
+        scale: f32,
+        update: &mut accesskit_zgui::TreeUpdate,
+    ) {
+        use accesskit_zgui as native;
+        let Some((_, parent)) = update.nodes.iter_mut().find(|(id, _)| *id == parent_id) else {
+            return;
+        };
+        parent.set_role(native::Role::Terminal);
+        parent.clear_value();
+        parent.set_children(
+            self.rows
+                .iter()
+                .map(|row| native_row_id(row.id))
+                .collect::<Vec<_>>(),
+        );
+        parent.add_action(native::Action::Focus);
+        parent.add_action(native::Action::ScrollUp);
+        parent.add_action(native::Action::ScrollDown);
+        parent.add_action(native::Action::SetTextSelection);
+        if let Some(selection) = self.selection {
+            let position = |position: TextPosition| native::TextPosition {
+                node: native_row_id(position.node),
+                character_index: position.character_index,
+            };
+            parent.set_text_selection(native::TextSelection {
+                anchor: position(selection.anchor),
+                focus: position(selection.focus),
+            });
+        } else {
+            parent.clear_text_selection();
+        }
+        update.nodes.extend(self.rows.iter().map(|row| {
+            let source = &row.node;
+            let mut node = native::Node::new(native::Role::TextRun);
+            node.set_value(source.value().unwrap_or_default());
+            node.set_character_lengths(source.character_lengths().to_vec());
+            node.set_character_positions(
+                source
+                    .character_positions()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|value| value * scale)
+                    .collect::<Vec<_>>(),
+            );
+            node.set_character_widths(
+                source
+                    .character_widths()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|value| value * scale)
+                    .collect::<Vec<_>>(),
+            );
+            node.set_text_direction(native::TextDirection::LeftToRight);
+            if let Some(bounds) = source.bounds() {
+                let scale = f64::from(scale);
+                node.set_bounds(native::Rect {
+                    x0: bounds.x0 * scale,
+                    y0: bounds.y0 * scale,
+                    x1: bounds.x1 * scale,
+                    y1: bounds.y1 * scale,
+                });
+            }
+            (native_row_id(row.id), node)
+        }));
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub fn zgui_contains(
+        &self,
+        parent: accesskit_zgui::NodeId,
+        node: accesskit_zgui::NodeId,
+    ) -> bool {
+        parent == node || self.rows.iter().any(|row| native_row_id(row.id) == node)
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub fn zgui_selection(
+        &self,
+        selection: accesskit_zgui::TextSelection,
+    ) -> Option<Option<Selection>> {
+        let position = |position: accesskit_zgui::TextPosition| {
+            self.rows
+                .iter()
+                .find(|row| native_row_id(row.id) == position.node)
+                .map(|row| TextPosition {
+                    node: row.id,
+                    character_index: position.character_index,
+                })
+        };
+        self.selection(TextSelection {
+            anchor: position(selection.anchor)?,
+            focus: position(selection.focus)?,
+        })
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn native_row_id(id: NodeId) -> accesskit_zgui::NodeId {
+    // Each hosted zgui runtime uses document zero; the upper half is reserved for terminal rows.
+    accesskit_zgui::NodeId(id.0 | (1 << 63))
 }
 
 #[cfg(test)]
@@ -448,5 +556,58 @@ mod tests {
         text.append_to(&mut update);
         assert_eq!(update.nodes[0].1.children().len(), 2);
         assert_eq!(update.nodes[1].1.role(), ak::Role::TextRun);
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn native_zgui_text_preserves_cell_spans_and_scaled_bounds() {
+        use accesskit_zgui as native;
+        let mut terminal = rustty::vt::Terminal::new(12, 2, 0);
+        terminal.feed("A界e\u{301}B".as_bytes());
+        let text = TerminalText::new(17, terminal.screen(), [3.0, 4.0], [10.0, 20.0]);
+        let parent = native::NodeId(4);
+        let mut update = native::TreeUpdate {
+            nodes: vec![(parent, native::Node::new(native::Role::Image))],
+            tree: None,
+            tree_id: native::TreeId::ROOT,
+            focus: parent,
+        };
+        text.zgui_append_to(parent, 2.0, &mut update);
+        let node = &update.nodes[0].1;
+        assert_eq!(node.role(), native::Role::Terminal);
+        assert!(node.supports_action(native::Action::SetTextSelection));
+        let (row_id, row) = &update.nodes[1];
+        assert_eq!(&row.character_lengths()[..4], &[1, 3, 3, 1]);
+        assert_eq!(
+            &row.character_widths().unwrap()[..4],
+            &[20.0, 40.0, 20.0, 20.0]
+        );
+        assert_eq!(row.bounds().unwrap().x0, 6.0);
+        assert!(text.zgui_contains(parent, *row_id));
+        let range = native::TextSelection {
+            anchor: native::TextPosition {
+                node: *row_id,
+                character_index: 1,
+            },
+            focus: native::TextPosition {
+                node: *row_id,
+                character_index: 3,
+            },
+        };
+        terminal.screen_mut().selection = text.zgui_selection(range).unwrap();
+        assert_eq!(
+            terminal.screen().selection_text().as_deref(),
+            Some("界e\u{301}")
+        );
+        assert!(
+            text.zgui_selection(native::TextSelection {
+                focus: native::TextPosition {
+                    node: native::NodeId(1),
+                    ..range.focus
+                },
+                ..range
+            })
+            .is_none()
+        );
     }
 }

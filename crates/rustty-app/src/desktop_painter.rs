@@ -1,4 +1,4 @@
-//! Select presentation once at startup; terminal layout and UI stay shared.
+//! Presentation for the egui frontend; native zgui windows own their runtime.
 use egui::{Context, ViewportId};
 use rustty::config::Renderer as Preference;
 use rustty_render::Frame;
@@ -18,7 +18,7 @@ pub struct Painter {
 
 enum Backend {
     Gpu(Box<egui_wgpu::winit::Painter>),
-    Zgui(Box<rustty_render_zgui::Painter>),
+    Zgui,
     #[cfg(target_os = "windows")]
     Software(Box<Software>),
 }
@@ -32,7 +32,7 @@ struct Software {
 }
 
 impl Painter {
-    pub fn zgui(preference: Preference, offscreen: bool) -> Result<Self> {
+    pub fn zgui(preference: Preference) -> Result<Self> {
         if preference == Preference::Software {
             return Err(
                 "the zgui framework requires GPU rendering; use --renderer=gpu or --renderer=auto"
@@ -40,7 +40,7 @@ impl Painter {
             );
         }
         Ok(Self {
-            backend: Backend::Zgui(Box::new(rustty_render_zgui::Painter::new(offscreen))),
+            backend: Backend::Zgui,
             #[cfg(target_os = "windows")]
             auto_fallback: false,
             description: "zgui (initializing)".into(),
@@ -115,19 +115,16 @@ impl Painter {
     }
 
     pub fn description(&self) -> &str {
-        match &self.backend {
-            Backend::Zgui(painter) => painter.description(),
-            _ => &self.description,
-        }
+        &self.description
     }
 
     pub fn is_zgui(&self) -> bool {
-        matches!(self.backend, Backend::Zgui(_))
+        matches!(self.backend, Backend::Zgui)
     }
 
     pub fn is_software(&self) -> bool {
         match self.backend {
-            Backend::Gpu(_) | Backend::Zgui(_) => false,
+            Backend::Gpu(_) | Backend::Zgui => false,
             #[cfg(target_os = "windows")]
             Backend::Software(_) => true,
         }
@@ -135,7 +132,7 @@ impl Painter {
 
     pub async fn set_window(&mut self, viewport: ViewportId, window: Arc<Window>) -> Result<()> {
         match &mut self.backend {
-            Backend::Zgui(painter) => painter.set_window(viewport, window),
+            Backend::Zgui => Ok(()),
             Backend::Gpu(gpu) => {
                 let first = gpu.render_state().is_none();
                 match gpu.set_window(viewport, Some(window.clone())).await {
@@ -182,16 +179,13 @@ impl Painter {
     pub fn render_state(&self) -> Option<egui_wgpu::RenderState> {
         match &self.backend {
             Backend::Gpu(gpu) => gpu.render_state(),
-            Backend::Zgui(_) => None,
+            Backend::Zgui => None,
             #[cfg(target_os = "windows")]
             Backend::Software(_) => None,
         }
     }
 
     pub fn max_texture_side(&self) -> usize {
-        if let Backend::Zgui(painter) = &self.backend {
-            return painter.max_texture_side();
-        }
         self.render_state().map_or(8192, |state| {
             state.device.limits().max_texture_dimension_2d as usize
         })
@@ -199,9 +193,6 @@ impl Painter {
 
     #[cfg(target_os = "macos")]
     pub fn terminal_paints(&self, window: u64) -> u64 {
-        if let Backend::Zgui(painter) = &self.backend {
-            return painter.terminal_paints(window);
-        }
         self.render_state().map_or(0, |state| {
             state
                 .renderer
@@ -213,13 +204,6 @@ impl Painter {
         })
     }
 
-    pub fn panel_paints(&self, window: u64) -> Option<u64> {
-        match &self.backend {
-            Backend::Zgui(painter) => Some(painter.panel_paints(window)),
-            _ => None,
-        }
-    }
-
     pub fn remove_window(
         &mut self,
         _viewport: ViewportId,
@@ -227,7 +211,7 @@ impl Painter {
         remaining: &egui::ViewportIdSet,
     ) {
         match &mut self.backend {
-            Backend::Zgui(painter) => painter.remove_window(_viewport),
+            Backend::Zgui => {}
             Backend::Gpu(gpu) => {
                 gpu.gc_viewports(remaining);
                 if let Some(state) = gpu.render_state()
@@ -256,7 +240,7 @@ impl Painter {
     ) {
         match &mut self.backend {
             Backend::Gpu(gpu) => gpu.on_window_resized(viewport, width, height),
-            Backend::Zgui(painter) => painter.on_window_resized(viewport, width, height),
+            Backend::Zgui => {}
             #[cfg(target_os = "windows")]
             Backend::Software(_) => {}
         }
@@ -267,13 +251,9 @@ impl Painter {
         rect: egui::Rect,
         window: u64,
         frame: Arc<Frame>,
-        panels: Vec<rustty_render_zgui::Panel>,
     ) -> egui::Shape {
         match &self.backend {
-            Backend::Zgui(_) => egui::Shape::Callback(egui::PaintCallback {
-                rect,
-                callback: Arc::new(rustty_render_zgui::TerminalPaint { window, panels }),
-            }),
+            Backend::Zgui => unreachable!("native zgui windows do not render egui callbacks"),
             Backend::Gpu(gpu) => egui::Shape::Callback(egui_wgpu::Callback::new_paint_callback(
                 rect,
                 TerminalPaint {
@@ -303,16 +283,7 @@ impl Painter {
         window: &Arc<Window>,
     ) -> Result<()> {
         match &mut self.backend {
-            Backend::Zgui(painter) => {
-                painter.paint(
-                    viewport,
-                    pixels_per_point,
-                    primitives,
-                    textures,
-                    capture,
-                    window,
-                )?;
-            }
+            Backend::Zgui => return Err("native zgui windows do not render egui meshes".into()),
             Backend::Gpu(gpu) => {
                 gpu.paint_and_update_textures(
                     viewport,
@@ -362,7 +333,7 @@ impl Painter {
     pub fn handle_screenshots(&mut self, events: &mut Vec<egui::Event>) {
         match &mut self.backend {
             Backend::Gpu(gpu) => gpu.handle_screenshots(events),
-            Backend::Zgui(painter) => painter.handle_screenshots(events),
+            Backend::Zgui => {}
             #[cfg(target_os = "windows")]
             Backend::Software(software) => events.append(&mut software.screenshots),
         }
@@ -487,7 +458,7 @@ mod tests {
 
     #[test]
     fn zgui_rejects_explicit_software_presentation() {
-        assert!(Painter::zgui(Preference::Software, true).is_err());
+        assert!(Painter::zgui(Preference::Software).is_err());
     }
 
     #[test]

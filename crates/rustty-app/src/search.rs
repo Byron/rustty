@@ -33,6 +33,14 @@ pub fn field_id(pane: Id) -> egui::Id {
 }
 
 impl Search {
+    pub fn status(&self) -> String {
+        format!(
+            "{}/{}",
+            self.matches.selected_index().map_or(0, |index| index + 1),
+            self.matches.total_matches(),
+        )
+    }
+
     pub fn refresh(&mut self, terminal: &mut vt::Terminal) {
         let changed = self.matches.set_needle(self.query.as_bytes());
         if !changed && self.generation == Some(terminal.generation) {

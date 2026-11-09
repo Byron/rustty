@@ -166,18 +166,26 @@ impl Hints {
     pub fn backspace(&mut self) {
         self.prefix.pop();
     }
+    pub fn prompt(&self) -> String {
+        format!(
+            "{} link: {}{}  ·  Backspace edits  ·  Esc cancels",
+            if self.copy { "Copy" } else { "Open" },
+            self.prefix.to_uppercase(),
+            "_".repeat(self.entries[0].label.len() - self.prefix.len())
+        )
+    }
+    pub fn visible_entries(&self) -> impl Iterator<Item = &Entry> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.label.starts_with(&self.prefix))
+    }
     pub fn paint(&self, ui: &egui::Ui) {
         let painter = ui
             .painter()
             .with_clip_rect(self.rect.intersect(ui.clip_rect()));
         let background = Color32::from_rgb(247, 208, 93);
         let foreground = Color32::from_rgb(25, 25, 25);
-        let text = format!(
-            "{} link: {}{}  ·  Backspace edits  ·  Esc cancels",
-            if self.copy { "Copy" } else { "Open" },
-            self.prefix.to_uppercase(),
-            "_".repeat(self.entries[0].label.len() - self.prefix.len())
-        );
+        let text = self.prompt();
         let galley = painter.layout_no_wrap(
             text.clone(),
             egui::FontId::proportional(12.0),

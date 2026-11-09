@@ -143,6 +143,92 @@ impl State {
 }
 
 impl App {
+    pub(super) fn zgui_import_model(&self) -> zgui_ui::DialogModel {
+        use super::zgui_ui::{DialogButton, DialogModel};
+        let button = |id: String, label: String, primary, disabled| DialogButton {
+            id,
+            label,
+            primary,
+            disabled,
+            destructive: false,
+        };
+        let mut model = DialogModel {
+            id: "import".into(), title: "Import Saved Session State".into(),
+            description: "Choose saved session state to restore its windows and terminal contents.\nImported panels restore display and scrollback. Local shells start when their tab is opened.".into(),
+            fields: Vec::new(), checks: Vec::new(), preview: Vec::new(), buttons: Vec::new(), dismissible: true,
+        };
+        if let Some(state) = &self.handoff {
+            for row in state.rows() {
+                let prefix = if state.selected.as_ref() == Some(&row.id) {
+                    "✓ "
+                } else {
+                    ""
+                };
+                model.buttons.push(button(
+                    format!("select:{}", row.id),
+                    format!("{prefix}{} · {}", row.label, row.detail),
+                    false,
+                    false,
+                ));
+            }
+            if state.dumps.is_empty() {
+                model
+                    .description
+                    .push_str("\nNo saved sessions are available.");
+            }
+            if let Some(error) = &state.error {
+                model.description.push_str(&format!("\n{error}"));
+            }
+        }
+        model.buttons.extend([
+            button("cancel".into(), "Cancel".into(), false, false),
+            button("refresh".into(), "Refresh".into(), false, false),
+            button(
+                "import".into(),
+                "Import".into(),
+                true,
+                self.handoff.as_ref().is_none_or(|state| {
+                    state
+                        .selected
+                        .as_ref()
+                        .is_none_or(|id| !state.dumps.iter().any(|dump| &dump.id == id))
+                }),
+            ),
+        ]);
+        model
+    }
+
+    pub(super) fn zgui_import_command(&mut self, event_loop: &ActiveEventLoop, command: &str) {
+        match command {
+            "cancel" => self.cancel_import_selector(event_loop),
+            "refresh" => {
+                if let Some(state) = &mut self.handoff {
+                    state.refresh();
+                }
+            }
+            "import" => {
+                let source = self
+                    .handoff
+                    .as_ref()
+                    .and_then(|state| state.selected.clone());
+                if let Some(source) = source
+                    && let Err(error) = self.import_handoff(event_loop, &source)
+                    && let Some(state) = &mut self.handoff
+                {
+                    state.error = Some(error.to_string());
+                }
+            }
+            command => {
+                if let Some(id) = command.strip_prefix("select:")
+                    && let Some(state) = &mut self.handoff
+                    && state.dumps.iter().any(|dump| dump.id == id)
+                {
+                    state.selected = Some(id.into());
+                }
+            }
+        }
+    }
+
     #[cfg(debug_assertions)]
     pub(super) fn tick_handoff_smoke(&mut self, event_loop: &ActiveEventLoop) {
         let Some(mut smoke) = self.handoff.as_mut().and_then(|state| state.smoke.take()) else {
@@ -307,7 +393,11 @@ impl App {
             workspace,
             panels,
             active_window: self.active.filter(|id| self.tmuxx_window(*id).is_none()),
-            outliner_visible: self.outliner.as_ref().is_some_and(|host| host.visible),
+            outliner_visible: self.outliner.as_ref().is_some_and(|host| host.visible)
+                || self
+                    .windows
+                    .values()
+                    .any(|host| host.zgui_ui_state.outliner_open),
         })?)
     }
 
@@ -431,7 +521,18 @@ impl App {
             host.window.focus_window();
         }
         if dump.outliner_visible {
-            self.toggle_outliner(event_loop);
+            if self.painter.is_zgui() {
+                if let Some(host) = self
+                    .windows
+                    .values_mut()
+                    .find(|host| Some(host.id) == self.active)
+                {
+                    host.zgui_ui_state.outliner_open = true;
+                    host.repaint();
+                }
+            } else {
+                self.toggle_outliner(event_loop);
+            }
         }
         let config = self.config().clone();
         if let Some(platform) = &mut self.platform
@@ -452,9 +553,17 @@ impl App {
         let Some(mut host) = self.windows.remove(&id) else {
             return;
         };
-        let response = host.egui.on_window_event(&host.window, &event);
-        if response.repaint {
-            host.repaint();
+        if let Some(runtime) = &mut host.zgui {
+            runtime.event(&event);
+            let commands = host.zgui_ui.as_ref().unwrap().drain_commands();
+            for command in commands {
+                self.zgui_command(event_loop, &mut host, command);
+            }
+        } else {
+            let response = host.egui.on_window_event(&host.window, &event);
+            if response.repaint {
+                host.repaint();
+            }
         }
         match event {
             WindowEvent::CloseRequested => self.cancel_import_selector(event_loop),
@@ -500,6 +609,9 @@ impl App {
         event_loop: &ActiveEventLoop,
         host: &mut Host,
     ) -> Result<()> {
+        if host.zgui.is_some() {
+            return self.draw_zgui_frame(event_loop, host);
+        }
         let size = host.window.inner_size();
         if size.width == 0 || size.height == 0 {
             return Ok(());

@@ -21,6 +21,68 @@ pub(super) struct CommandPalette {
 }
 
 impl CommandPalette {
+    pub fn is_theme_picker(&self) -> bool {
+        self.themes.is_some()
+    }
+
+    pub fn entries(&self, config: &Config) -> Vec<(String, String)> {
+        let query = self.query.trim();
+        if let Some(themes) = &self.themes {
+            themes
+                .iter()
+                .filter(|theme| matches_query(&theme.name, query))
+                .map(|theme| {
+                    (
+                        theme.name.clone(),
+                        if theme.user { "User" } else { "Bundled" }.to_owned(),
+                    )
+                })
+                .collect()
+        } else {
+            actions()
+                .into_iter()
+                .filter(|(label, _)| matches_query(label, query))
+                .map(|(label, action)| {
+                    (
+                        label.to_owned(),
+                        shortcut_label(&config.keybinds, &action).unwrap_or_default(),
+                    )
+                })
+                .collect()
+        }
+    }
+
+    pub fn select(&mut self, index: usize, accept: bool) -> Option<PaletteEvent> {
+        if let Some(themes) = &self.themes {
+            let theme = themes
+                .iter()
+                .filter(|theme| matches_query(&theme.name, self.query.trim()))
+                .nth(index)?;
+            self.selected = Some(index);
+            if accept {
+                self.open = false;
+                Some(PaletteEvent::AcceptTheme(theme.clone()))
+            } else if self.last_preview.as_ref() != Some(&theme.path) {
+                self.last_preview = Some(theme.path.clone());
+                Some(PaletteEvent::PreviewTheme(theme.clone()))
+            } else {
+                None
+            }
+        } else {
+            let (_, action) = actions()
+                .into_iter()
+                .filter(|(label, _)| matches_query(label, self.query.trim()))
+                .nth(index)?;
+            self.selected = Some(index);
+            if accept {
+                self.open = false;
+                Some(PaletteEvent::Action(action))
+            } else {
+                None
+            }
+        }
+    }
+
     pub fn toggle(&mut self) {
         self.open = !self.open;
         self.query.clear();

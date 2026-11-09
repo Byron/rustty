@@ -383,6 +383,9 @@ impl Smoke {
     }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
         self.check_background_windows(app)?;
+        if app.painter.is_zgui() && self.timing.is_none() {
+            return super::zgui_smoke::check(app, event_loop, &self.directory);
+        }
         if std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some() {
             let now = Instant::now();
             match self.stage {
@@ -3973,7 +3976,7 @@ impl CursorBenchmark {
             return Err("cursor benchmark did not retain its nonoverlapping pane layout".into());
         }
         if self.sample.is_none() {
-            if app.painter.terminal_paints(host.id) == 0 {
+            if host.terminal_paints(&app.painter) == 0 {
                 return Err(
                     "cursor benchmark has no terminal render passes; unlock the Mac and wake its displays"
                         .into(),
@@ -3993,8 +3996,8 @@ impl CursorBenchmark {
                 started: now,
                 cpu_ns: cpu_time(CpuClock::Process)?,
                 frames: host.frames,
-                paints: app.painter.terminal_paints(host.id),
-                panel_paints: app.painter.panel_paints(host.id),
+                paints: host.terminal_paints(&app.painter),
+                panel_paints: host.panel_paints(),
                 prepares: host.pane_prepares,
                 updates: host.cursor.updates,
                 activations: host.cursor.activations,
@@ -4015,10 +4018,10 @@ impl CursorBenchmark {
         let elapsed = now.duration_since(sample.started).as_secs_f64();
         let process_cpu = (cpu_time(CpuClock::Process)? - sample.cpu_ns) as f64 / 1e9;
         let frames = host.frames - sample.frames;
-        let paints = app.painter.terminal_paints(host.id) - sample.paints;
+        let paints = host.terminal_paints(&app.painter) - sample.paints;
         let panel_paints = sample
             .panel_paints
-            .map(|before| app.painter.panel_paints(host.id).unwrap() - before);
+            .map(|before| host.panel_paints().unwrap() - before);
         let prepares = host.pane_prepares - sample.prepares;
         let updates = host.cursor.updates - sample.updates;
         let activations = host.cursor.activations - sample.activations;
@@ -4137,7 +4140,7 @@ fn check_cursor_lifecycle(
         Ok(())
     };
     let redraw_burst = |app: &mut App, host: &mut Host| -> Result<()> {
-        let paints = app.painter.terminal_paints(host.id);
+        let paints = host.terminal_paints(&app.painter);
         let started = Instant::now();
         for _ in 0..3 {
             app.draw(event_loop, host)?;
@@ -4156,7 +4159,7 @@ fn check_cursor_lifecycle(
         if elapsed >= Duration::from_millis(500) {
             return Err(format!("cursor retirement burst stalled for {elapsed:?}").into());
         }
-        if app.painter.terminal_paints(host.id) != paints + 3 {
+        if host.terminal_paints(&app.painter) != paints + 3 {
             return Err("cursor retirement burst did not render all three frames".into());
         }
         let drawables = host
@@ -4178,14 +4181,14 @@ fn check_cursor_lifecycle(
         .ok_or("missing active cursor layer")?
         .set_visible(true);
     host.cursor_blink_started = Instant::now();
-    let paints = app.painter.terminal_paints(host.id);
+    let paints = host.terminal_paints(&app.painter);
     app.panes[&pane]
         .session
         .terminal()?
         .feed(b"\x1b7\x1b[Hchanged content\x1b8");
     app.draw(event_loop, host)?;
     if !retired(host)
-        || app.painter.terminal_paints(host.id) != paints + 1
+        || host.terminal_paints(&app.painter) != paints + 1
         || host.prepared[&pane].key.generation != app.panes[&pane].session.terminal()?.generation
     {
         return Err("ordinary content redraw did not replace and retire the cursor layer".into());
@@ -4268,7 +4271,7 @@ fn check_cursor_lifecycle(
         .find(|&id| id != pane)
     {
         activate(app, host)?;
-        let paints = app.painter.terminal_paints(host.id);
+        let paints = host.terminal_paints(&app.painter);
         app.panes[&neighbor]
             .session
             .terminal()?
@@ -4276,7 +4279,7 @@ fn check_cursor_lifecycle(
         host.cursor_blink_started = Instant::now();
         app.draw(event_loop, host)?;
         if !retired(host)
-            || app.painter.terminal_paints(host.id) != paints + 1
+            || host.terminal_paints(&app.painter) != paints + 1
             || host.prepared[&neighbor].key.generation
                 != app.panes[&neighbor].session.terminal()?.generation
         {
@@ -4469,9 +4472,9 @@ impl Replay {
         let cpu_start = cpu_time(CpuClock::Thread)?;
         let frame_start = Instant::now();
         let before = host.frames;
-        let panel_paints_before = app.painter.panel_paints(host.id);
+        let panel_paints_before = host.panel_paints();
         #[cfg(target_os = "macos")]
-        let paints_before = app.painter.terminal_paints(host.id);
+        let paints_before = host.terminal_paints(&app.painter);
         app.draw_frame(event_loop, host, self.target.as_ref())?;
         let frame_ns = frame_start.elapsed().as_nanos() as u64;
         let frame_cpu = cpu_time(CpuClock::Thread)? - cpu_start;
@@ -4480,7 +4483,7 @@ impl Replay {
         }
         if let Some(before) = panel_paints_before {
             let expected = u64::from(self.case != "cached_redraw" || self.frame == 0);
-            let painted = app.painter.panel_paints(host.id).unwrap() - before;
+            let painted = host.panel_paints().unwrap() - before;
             if painted != expected {
                 return Err(format!(
                     "zgui replay {} frame {} rasterized {painted} panels; expected {expected}",
@@ -4490,7 +4493,7 @@ impl Replay {
             }
         } else {
             #[cfg(target_os = "macos")]
-            if app.painter.terminal_paints(host.id) != paints_before + 1 {
+            if host.terminal_paints(&app.painter) != paints_before + 1 {
                 return Err(
                     "replay did not encode a terminal render pass; keep the test window visible"
                         .into(),
@@ -4935,12 +4938,12 @@ fn check_terminal_frames(
                 .frame
                 .clone();
             let prepares = host.pane_prepares;
-            let panel_paints = app.painter.panel_paints(host.id);
+            let panel_paints = host.panel_paints();
             for _ in 0..3 {
                 app.draw(event_loop, host)?;
                 if !Arc::ptr_eq(&frame, &host.composed.as_ref().unwrap().frame)
                     || host.pane_prepares != prepares
-                    || app.painter.panel_paints(host.id) != panel_paints
+                    || host.panel_paints() != panel_paints
                 {
                     return Err("progress animation rebuilt unchanged terminal content".into());
                 }
