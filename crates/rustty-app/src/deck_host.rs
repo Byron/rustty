@@ -334,7 +334,7 @@ impl App {
     pub(super) fn reveal_pane(&mut self, pane: Id) {
         self.reveal_pane_with_host(pane, None);
     }
-    fn reveal_pane_with_host(&mut self, pane: Id, mut host: Option<&mut Host>) -> bool {
+    pub(super) fn reveal_pane_with_host(&mut self, pane: Id, mut host: Option<&mut Host>) -> bool {
         let target = self.workspace.windows.iter().find_map(|window| {
             window
                 .tabs

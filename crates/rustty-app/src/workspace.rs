@@ -798,8 +798,6 @@ impl Tab {
         }
     }
     pub fn begin_peek(&mut self, chord: Modifiers) -> Option<Peek> {
-        self.quadrant_zoom
-            .or_else(|| self.root.quadrant(self.focused))?;
         if chord == Modifiers::default() {
             return None;
         }
@@ -2631,7 +2629,9 @@ mod tests {
         let mut tab = quadrants();
         assert!(tab.begin_peek(Modifiers::default()).is_none());
         let mut single = Tab::new(1, 2, "/tmp".into());
-        assert!(single.begin_peek(chord).is_none());
+        let peek = single.begin_peek(chord).unwrap();
+        assert_eq!(single.finish_peek(peek), single.focused);
+        assert_eq!((single.zoom, single.quadrant_zoom), (None, None));
     }
 
     #[test]

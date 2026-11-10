@@ -4,6 +4,8 @@ mod clipboard_preview;
 mod command_palette;
 #[path = "deck_host.rs"]
 mod deck_host;
+#[path = "desktop_agent_peek.rs"]
+mod desktop_agent_peek;
 #[path = "drag_controller.rs"]
 mod drag;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -946,6 +948,7 @@ struct Host {
     preedit: String,
     preedit_selection: Option<(usize, usize)>,
     peek: Option<Peek>,
+    agent_peek: desktop_agent_peek::Overlay,
     presented_peek: Option<Peek>,
     navigation_warning: Option<(Id, Instant)>,
     mouse: Pos2,
@@ -2060,6 +2063,15 @@ impl App {
                     host.occluded,
                     host.peek.is_some(),
                 ));
+                if host.visible && !host.occluded {
+                    visible.extend(
+                        host.agent_peek
+                            .state
+                            .cards
+                            .iter()
+                            .map(|card| card.target.pane),
+                    );
+                }
             }
         }
         visible
@@ -2633,6 +2645,7 @@ impl App {
             preedit: String::new(),
             preedit_selection: None,
             peek: None,
+            agent_peek: desktop_agent_peek::Overlay::default(),
             presented_peek: None,
             navigation_warning: None,
             mouse: Pos2::ZERO,
@@ -4073,6 +4086,11 @@ impl App {
             );
         }
         for host in self.windows.values() {
+            if host.peek.is_some()
+                && (agent_changed || program_changed || host.agent_peek.state.contains(id))
+            {
+                host.repaint();
+            }
             let Some(window) = self
                 .index(host.id)
                 .map(|index| &self.workspace.windows[index])
@@ -4132,6 +4150,9 @@ impl App {
 
     fn repaint_pane(&self, pane: Id, indicators_changed: bool) {
         for host in self.windows.values() {
+            if host.peek.is_some() && (indicators_changed || host.agent_peek.state.contains(pane)) {
+                host.repaint();
+            }
             if self.index(host.id).is_some_and(|index| {
                 let window = &self.workspace.windows[index];
                 window.tabs.iter().enumerate().any(|(index, tab)| {
@@ -6035,6 +6056,9 @@ impl App {
         if input::global_key_is_consumed(&mut self.consumed_global_keys, physical, state, repeat) {
             return true;
         }
+        if state == ElementState::Released {
+            return false;
+        }
         if host.ui_input()
             || host.composing
             || !host.peek.is_some_and(|peek| {
@@ -6043,14 +6067,11 @@ impl App {
         {
             return false;
         }
-        if state != ElementState::Pressed {
+        if repeat {
             return true;
         }
         // A prefix can be released before this key, or focus can move to another window.
         self.consumed_global_keys.insert(physical);
-        if repeat {
-            return true;
-        }
         host.sequence.clear();
         host.sequence_len = 0;
         let minimum = self.split_minimum(host);
@@ -6066,6 +6087,7 @@ impl App {
     }
 
     fn finish_peek(&mut self, host: &mut Host) {
+        host.agent_peek = desktop_agent_peek::Overlay::default();
         if let Some(peek) = host.peek.take()
             && let Some(tab) = self.tab_mut(host.id)
         {
@@ -6075,12 +6097,25 @@ impl App {
         host.repaint();
     }
 
+    fn release_peek(&mut self, host: &mut Host) {
+        if host.window.has_focus() {
+            self.finish_peek(host);
+        } else {
+            host.peek = None;
+            host.agent_peek = desktop_agent_peek::Overlay::default();
+            host.repaint();
+        }
+    }
+
     fn keyboard(
         &mut self,
         event_loop: &ActiveEventLoop,
         host: &mut Host,
         key: &winit::event::KeyEvent,
     ) -> bool {
+        if self.agent_peek_key(host, key) {
+            return true;
+        }
         if self.hint_key(
             host,
             &key.logical_key,
@@ -6397,7 +6432,30 @@ impl App {
         };
         self.validate_hints(host);
         let config = self.window_config(host.id).clone();
-        let state = self.workspace.windows[index].clone();
+        let now = Instant::now();
+        let animations_enabled = config.window_animations.unwrap_or_else(|| {
+            #[cfg(target_os = "macos")]
+            {
+                !Platform::reduce_motion()
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                !self.painter.is_software()
+            }
+        });
+        let agent_peek_moving = self.update_agent_peek(host, animations_enabled, &config, now);
+        let mut state = self.workspace.windows[index].clone();
+        let landing = host.agent_peek.landing.is_some();
+        let destination_view = self.agent_peek_view(host);
+        let peek_layout = host.peek.is_some() && destination_view.is_none();
+        if let Some(tab) = destination_view {
+            state.active_tab = state
+                .tabs
+                .iter()
+                .position(|candidate| candidate.id == tab.id)
+                .unwrap();
+            state.tabs[state.active_tab] = tab;
+        }
         if let Some(Confirmation::Paste(paste)) = &host.confirm
             && !self.paste_target_exists(host.id, paste.pane)
         {
@@ -6464,6 +6522,7 @@ impl App {
         }
         input::filter_egui_events(&mut raw, host.ui_input());
         if host.zoom_animation.is_running()
+            && !host.agent_peek.state.active()
             && !host.modal_input()
             && host.content.contains([host.mouse.x, host.mouse.y])
         {
@@ -6479,7 +6538,6 @@ impl App {
             raw.events.push(egui::Event::PointerGone);
         }
         let context = self.context.clone();
-        let now = Instant::now();
         // Popups also use the shared context; restore its theme after this window's pass.
         let previous_theme = context.options(|options| options.theme_preference);
         context.set_theme(self.appearance.ui_theme(&config));
@@ -6519,16 +6577,6 @@ impl App {
         let (blink_on, blink_deadline) = cursor_blink_phase(host.cursor_blink_started, now);
         let mut needs_blink = false;
         let mut animation_deadline: Option<Instant> = None;
-        let animations_enabled = config.window_animations.unwrap_or_else(|| {
-            #[cfg(target_os = "macos")]
-            {
-                !Platform::reduce_motion()
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                !self.painter.is_software()
-            }
-        });
         let mut zoom_panes = Vec::new();
         if host
             .navigation_warning
@@ -6550,6 +6598,10 @@ impl App {
             && !(host.search_focus.is_some() && host.focus_text_input)
             && !host.modal_input();
         let mut output = context.run_ui(raw, |root_ui| {
+            // Request inside every pass so the viewport and repaint generation are current.
+            if agent_peek_moving {
+                root_ui.ctx().request_repaint();
+            }
             host.messages_focused = messages_input(&context) || messages_keyboard_input;
             // The shared context must be inside this window's viewport before clearing focus.
             if std::mem::take(&mut host.unfocus_text_input) {
@@ -6765,14 +6817,15 @@ impl App {
                         width: content.width(),
                         height: content.height(),
                     };
+                    self.refresh_agent_peek_geometry(host);
                     let cell_height = host.fonts.metrics().cell_height as f32 / scale;
                     let minimum = self.split_minimum(host);
-                    let required = active.visible_tree(host.peek.is_some()).minimum_size(minimum);
+                    let required = active.visible_tree(peek_layout).minimum_size(minimum);
                     let min_inner_size = LogicalSize::new(
                         MIN_WINDOW_SIZE.width.max(f64::from(required[0] + size.width as f32 / scale - content.width())),
                         MIN_WINDOW_SIZE.height.max(f64::from(required[1] + size.height as f32 / scale - content.height())),
                     );
-                    if host.min_inner_size != min_inner_size {
+                    if !landing && host.min_inner_size != min_inner_size {
                         host.min_inner_size = min_inner_size;
                         host.window.set_min_inner_size(Some(min_inner_size));
                         let current = size.to_logical::<f64>(f64::from(scale));
@@ -6780,8 +6833,8 @@ impl App {
                             let _ = host.window.request_inner_size(LogicalSize::new(current.width.max(min_inner_size.width), current.height.max(min_inner_size.height)));
                         }
                     }
-                    let layout = active.layout_with_minimum(host.content, host.peek.is_some(), cell_height, minimum);
-                    zoom_panes = host.zoom_animation.update(active, host.peek.is_some(), host.content, cell_height, minimum, scale, &config, animations_enabled, now);
+                    let layout = active.layout_with_minimum(host.content, peek_layout, cell_height, minimum);
+                    zoom_panes = host.zoom_animation.update(active, peek_layout, host.content, cell_height, minimum, scale, &config, animations_enabled && !landing, now);
                     if host.zoom_animation.is_running() {
                         ui.ctx().request_repaint();
                         self.cancel_selection_drag(host);
@@ -6833,12 +6886,12 @@ impl App {
                         && let Some(session) = entry.mapping.sessions.get(&host.id)
                     {
                         let metrics = host.fonts.metrics();
-                        let (cols, rows) = self.tab(host.id).map(|tab| rustty_app::tmuxx_workspace::grid_size(
-                            tab, host.content, host.peek.is_some(),
+                        let (cols, rows) = rustty_app::tmuxx_workspace::grid_size(
+                            active, host.content, peek_layout,
                             [metrics.cell_width as f32 / scale, metrics.cell_height as f32 / scale],
                             [config.window_padding_x.start + config.window_padding_x.end + 2.0,
                              config.window_padding_y.start + config.window_padding_y.end + 2.0],
-                        )).unwrap_or((80, 24));
+                        );
                         if let Err(error) = connection.view_size(*session, cols, rows, metrics.cell_width.min(u16::MAX.into()) as u16, metrics.cell_height.min(u16::MAX.into()) as u16) { render_error = Some(error.to_string()); }
                     }
                     let mut terminal_ime_rect = None;
@@ -7125,9 +7178,24 @@ impl App {
                                 terminal_ime_rect = Some(prepared.ime_rect.translate(visual.rect.min - rect.min));
                             }
                         }
+                        if let Err(error) = self.prepare_agent_peek(host, now, &mut animation_deadline) {
+                            render_error = Some(error.to_string());
+                        }
+                        if composition.iter().any(|pane| pane.frame.generation != host.fonts.generation()) {
+                            if attempt == 0 { continue; }
+                            render_error = Some("Agent previews exceed the shared atlas budget".into());
+                            host.agent_peek.composed = None;
+                            break;
+                        }
+                        if let Err(error) = self.compose_agent_peek(host, [size.width, size.height], scale) {
+                            if attempt == 0 { continue; }
+                            render_error = Some(error.to_string());
+                            host.agent_peek.composed = None;
+                        }
                         host.fonts.retain_images(
                             host.prepared
                                 .values()
+                                .chain(host.agent_peek.prepared.values())
                                 .flat_map(|pane| {
                                     pane.screen
                                         .graphics
@@ -7553,6 +7621,7 @@ impl App {
                 }
             }
             if !modal_input {
+                self.paint_agent_peek(root_ui, host, &config, accent);
                 host.search_focus = requested_search.or(search_focus);
                 if let Some(id) = host.search_focus
                     && id != focused
@@ -8611,6 +8680,9 @@ impl App {
     }
 
     fn mouse(&mut self, host: &mut Host, action: vt::MouseAction, button: Option<vt::MouseButton>) {
+        if !host.modal_input() && self.agent_peek_mouse(host, action, button) {
+            return;
+        }
         self.update_mouse_hover(host);
         if host.hints.is_some() || host.modal_input() {
             return;
@@ -9560,6 +9632,7 @@ impl ApplicationHandler<Event> for App {
                 } else {
                     self.cancel_selection_drag(&mut host);
                     host.peek = None;
+                    host.agent_peek = desktop_agent_peek::Overlay::default();
                     host.modifiers = Modifiers::default();
                     host.consumed_keys.clear();
                     host.divider_drag = None;
@@ -9608,11 +9681,7 @@ impl ApplicationHandler<Event> for App {
                     && !outliner_hover
                     && !input::chord_held(peek.chord, current)
                 {
-                    if host.window.has_focus() {
-                        self.finish_peek(&mut host);
-                    } else {
-                        host.peek = None;
-                    }
+                    self.release_peek(&mut host);
                 } else if host.peek.is_none() && !host.ui_input() && !outliner_hover {
                     let trigger = self
                         .config()

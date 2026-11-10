@@ -434,7 +434,73 @@ The chord also starts Peek from an unzoomed view; releasing it enters the select
 quad even if you kept the current selection. If the native window has already lost
 focus when the chord is released, Peek is cancelled without zooming in.
 
-The action has no default shortcut. For example:
+**Agent Peek** projects live panels from all tabs and windows over the dimmed Quad
+Peek view. It is also available in tabs without quads. The bottom selector bar
+shows the same status icons as filled Stream Deck slots, with panel counts and
+shortcut letters; empty states are hidden. No Stream Deck device is required.
+
+| Key | Panels |
+| --- | --- |
+| `n` | Needs input |
+| `r` | Running |
+| `d` | Done / ready |
+| `i` | Idle |
+| `e` | Error |
+| `p` | Paused |
+| `u` | Unknown |
+| `a` | All |
+
+Press a selector key or click its icon to activate it. Press it again, or Escape,
+to dismiss the overlay. The selected icon has an accent background and underline.
+Changing selectors slides shared panels into their new positions while other
+panels enter or leave. Keep holding the Peek modifier chord throughout the session.
+Releasing it closes both the overlay and Quad Peek, including any pending selection
+animation. Dismissing only the overlay returns to Quad Peek while the chord is held.
+
+Preview frames fit their source panel's proportions and keep their size when
+hovered. Terminal activity updates the previews without resizing their PTYs, including
+panels in hidden tabs and other windows. Selecting a number or clicking a panel
+floats it into place in one continuous motion when it belongs to the same window.
+Its text scales uniformly into the live panel while the background crossfades to
+its tab and enclosing quad/root zoom. The floating panel stays opaque throughout.
+Panels in another window fly off the right edge before that window receives focus.
+The tab layout is used when there is no containing quad. Focus and completion
+acknowledgement change only when the selection animation finishes.
+
+Numbers stay fixed while a selector is open. With ten or more panels, type the
+whole number; Enter selects a number that is also a prefix, such as `1` when `10`
+exists. Backspace edits that number. Closed or replaced reports disappear and
+cannot be selected. State changes keep panels in place; a different state appears
+beside the panel number. Matching state icons are omitted, while All shows each
+panel's state. Reopening a selector refreshes its membership and order. Ready
+panels appear newest first; other non-running states use latest reported activity,
+and running panels keep a stable order. Duplicate agent reports and local
+acknowledgement do not advance that activity timestamp.
+
+The following defaults control entering, dismissing and rearranging the overlay,
+selection landing/flyout, and the dimming beneath it:
+
+```ini
+agent-peek-animation-duration = 180ms
+agent-peek-select-animation-duration = 180ms
+agent-peek-background-dim = 65%
+```
+
+Durations accept the same units, zero and empty-value reset as other animations.
+Dimming accepts 0–100%, with an optional `%` suffix; empty resets its default.
+These settings reload normally and follow `window-animations` and Reduce Motion.
+
+Run the disposable native fixture without displaying windows or using USB:
+
+```sh
+RUSTTY_SMOKE_DIR=/tmp/rustty-agent-peek-check RUSTTY_SMOKE_OFFSCREEN=1 \
+  RUSTTY_SMOKE_AGENT_PEEK=1 target/debug/rustty --config-file=/tmp/empty-rustty.conf
+```
+
+Set `RUSTTY_SMOKE_AGENT_PEEK=timing` to check opening and cross-tab landing through
+the native event loop, with idle terminals and no forced animation frames.
+
+The Toggle Quad Root action has no default shortcut. For example:
 
 ```ini
 keybind = ctrl+shift+g=toggle_quad_root

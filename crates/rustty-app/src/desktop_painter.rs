@@ -199,12 +199,16 @@ impl Painter {
                         .get_mut::<GpuRenderers>()
                 {
                     renderers.0.remove(&window);
+                    renderers.0.remove(&(window | (1 << 63)));
+                    renderers.0.remove(&(window | (1 << 62)));
                 }
             }
             #[cfg(target_os = "windows")]
             Backend::Software(software) => {
                 software.surfaces.remove(&_viewport);
                 software.renderer.free_window(window);
+                software.renderer.free_window(window | (1 << 63));
+                software.renderer.free_window(window | (1 << 62));
             }
         }
     }

@@ -2,6 +2,8 @@
 use super::*;
 use std::fs;
 
+#[path = "agent_peek_smoke.rs"]
+mod agent_peek_smoke;
 #[path = "cursors_smoke.rs"]
 mod cursors_smoke;
 #[path = "drag_smoke.rs"]
@@ -74,6 +76,7 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
         active_title_accesskit: false,
         events: BTreeMap::new(),
         timing: None,
+        agent_peek_timing: None,
         #[cfg(target_os = "macos")]
         cursor_benchmark: None,
         report: None,
@@ -116,6 +119,7 @@ pub(super) struct Smoke {
     active_title_accesskit: bool,
     events: BTreeMap<&'static str, u64>,
     timing: Option<Replay>,
+    agent_peek_timing: Option<agent_peek_smoke::Timing>,
     #[cfg(target_os = "macos")]
     cursor_benchmark: Option<CursorBenchmark>,
     report: Option<serde_json::Value>,
@@ -220,6 +224,7 @@ impl Smoke {
             active_title_accesskit: false,
             events: BTreeMap::new(),
             timing,
+            agent_peek_timing: None,
             #[cfg(target_os = "macos")]
             cursor_benchmark,
             report: None,
@@ -230,7 +235,8 @@ impl Smoke {
         let timing = std::env::var_os("RUSTTY_SMOKE_TIMING").is_some();
         let cursor_benchmark =
             cfg!(target_os = "macos") && std::env::var_os("RUSTTY_SMOKE_CURSOR_LAYER").is_some();
-        let deck_only = std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only");
+        let deck_only = std::env::var("RUSTTY_SMOKE_DECK").as_deref() == Ok("only")
+            || std::env::var_os("RUSTTY_SMOKE_AGENT_PEEK").is_some();
         let hints_only = std::env::var_os("RUSTTY_SMOKE_HINTS").is_some();
         let output_only = std::env::var_os("RUSTTY_SMOKE_OUTPUT").is_some();
         let rows_only = std::env::var_os("RUSTTY_SMOKE_ROWS").is_some();
@@ -384,6 +390,20 @@ impl Smoke {
     }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
         self.check_background_windows(app)?;
+        if std::env::var("RUSTTY_SMOKE_AGENT_PEEK").as_deref() == Ok("timing") {
+            if self.agent_peek_timing.is_none() {
+                self.agent_peek_timing = Some(agent_peek_smoke::Timing::new(app, event_loop)?);
+            }
+            return self
+                .agent_peek_timing
+                .as_mut()
+                .unwrap()
+                .step(app, &self.directory);
+        }
+        if std::env::var_os("RUSTTY_SMOKE_AGENT_PEEK").is_some() {
+            agent_peek_smoke::check(app, event_loop, &self.directory)?;
+            return Ok(true);
+        }
         if std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some() {
             let now = Instant::now();
             match self.stage {
@@ -1620,6 +1640,22 @@ fn check_quad_peek_numbers(
         badges.sort_by_key(|(number, _)| *number);
         if badges.iter().map(|(number, _)| *number).collect::<Vec<_>>() != [1, 2, 3, 4, 5] {
             return Err(format!("Quad Peek painted the wrong badges: {badges:?}").into());
+        }
+        let before = host.peek.unwrap();
+        let focused = app.focused(host.id);
+        for physical in [KeyCode::Digit2, KeyCode::Numpad2].map(PhysicalKey::Code) {
+            app.consumed_global_keys.remove(&physical);
+            if app.peek_key(host, physical, ElementState::Released, false)
+                || !app.peek_key(host, physical, ElementState::Pressed, true)
+                || app.consumed_global_keys.contains(&physical)
+                || app.peek_key(host, physical, ElementState::Released, false)
+                || host.peek.is_none_or(|peek| {
+                    peek.target != before.target || peek.selected_quad != before.selected_quad
+                })
+                || app.focused(host.id) != focused
+            {
+                return Err(format!("unowned Quad Peek key tail changed selection or claimed ownership: {physical:?}").into());
+            }
         }
         for (index, target) in targets.iter().enumerate() {
             let bounds = app

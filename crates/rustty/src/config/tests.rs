@@ -226,6 +226,8 @@ fn animation_durations_support_independent_overrides_zero_and_reset() {
             config.quad_peek_animation_duration,
             config.zoom_animation_duration,
             config.zoom_from_quad_animation_duration,
+            config.agent_peek_animation_duration,
+            config.agent_peek_select_animation_duration,
         ]
     };
     let keys = [
@@ -234,31 +236,57 @@ fn animation_durations_support_independent_overrides_zero_and_reset() {
         "quad-peek-animation-duration",
         "zoom-animation-duration",
         "zoom-from-quad-animation-duration",
+        "agent-peek-animation-duration",
+        "agent-peek-select-animation-duration",
     ];
-    let defaults = [100, 250, 100, 250, 250].map(Duration::from_millis);
+    let defaults = [100, 250, 100, 250, 250, 180, 180].map(Duration::from_millis);
     assert_eq!(durations(&home.loader.load().config), defaults);
     home.own(
         "split-animation-duration=75ms\n\
          quad-zoom-animation-duration=125ms\n\
          quad-peek-animation-duration=50ms\n\
          zoom-animation-duration=200ms\n\
-         zoom-from-quad-animation-duration=1s 25ms\n",
+         zoom-from-quad-animation-duration=1s 25ms\n\
+         agent-peek-animation-duration=200ms\n\
+         agent-peek-select-animation-duration=100ms\n",
     );
-    let overrides = [75, 125, 50, 200, 1_025].map(Duration::from_millis);
+    let overrides = [75, 125, 50, 200, 1_025, 200, 100].map(Duration::from_millis);
     let loaded = home.loader.load();
     assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
     assert_eq!(durations(&loaded.config), overrides);
     for (value, expected, diagnostic_count) in [
-        ("0", [Duration::ZERO; 5], 0),
+        ("0", [Duration::ZERO; 7], 0),
         ("", defaults, 0),
-        ("250", overrides, 5),
-        ("-1ms", overrides, 5),
-        ("1.5ms", overrides, 5),
+        ("250", overrides, 7),
+        ("-1ms", overrides, 7),
+        ("1.5ms", overrides, 7),
     ] {
         let args = keys.map(|key| format!("--{key}={value}"));
         let loaded = home.loader.load_with_args(&args);
         assert_eq!(loaded.diagnostics.len(), diagnostic_count, "{value}");
         assert_eq!(durations(&loaded.config), expected, "{value}");
+    }
+}
+
+#[test]
+fn agent_peek_dimming_validates_percentages_and_resets() {
+    let home = TestHome::new();
+    home.own("agent-peek-background-dim=25%\n");
+    for (value, expected, diagnostics) in [
+        ("0", 0.0, 0),
+        ("100%", 1.0, 0),
+        ("37.5%", 0.375, 0),
+        ("", 0.65, 0),
+        ("101%", 0.25, 1),
+        ("-1", 0.25, 1),
+        ("NaN", 0.25, 1),
+        ("inf", 0.25, 1),
+    ] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--agent-peek-background-dim={value}")]));
+        assert_eq!(loaded.diagnostics.len(), diagnostics, "{value}");
+        assert_eq!(loaded.config.agent_peek_background_dim, expected, "{value}");
     }
 }
 
