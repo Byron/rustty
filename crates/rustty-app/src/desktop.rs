@@ -158,6 +158,13 @@ impl Pane {
         !self.exited && self.agent.is_registered() || self.program.state().is_some()
     }
 
+    fn agent_state(&self, id: Id) -> Option<vt::agent::State> {
+        self.has_agent()
+            .then(|| self.deck_view(id, ""))
+            .flatten()
+            .map(|view| view.state)
+    }
+
     fn reported_active(&self) -> bool {
         if !self.agent.is_registered()
             && let Some(state) = self.program.state()
@@ -3390,8 +3397,13 @@ impl App {
             self.panes.get(&id).is_some_and(Pane::reported_active)
         });
         for row in rows {
-            row.has_agent = matches!(row.target, outliner::Target::Pane { pane, .. }
-                if self.panes.get(&pane).is_some_and(Pane::has_agent));
+            row.agent_state = match row.target {
+                outliner::Target::Pane { pane, .. } => self
+                    .panes
+                    .get(&pane)
+                    .and_then(|state| state.agent_state(pane)),
+                _ => None,
+            };
             if let outliner::Target::Pane { pane, .. } = row.target
                 && let Some(pane) = self.panes.get(&pane)
                 && let Some(tooltip) = pane.program_tooltip()
@@ -3700,7 +3712,7 @@ impl App {
         self.deck.dirty = true;
         let previous_tab_label = self.pane_tab_label(id);
         let previously_working = self.panes.get(&id).is_some_and(Pane::reported_active);
-        let previously_agent = self.panes.get(&id).is_some_and(Pane::has_agent);
+        let previous_agent_state = self.panes.get(&id).and_then(|pane| pane.agent_state(id));
         let tmuxx = self.tmuxx_pane(id).is_some();
         let previous_directory = self.panes.get(&id).map(|pane| pane.cwd.clone());
         let live = previous_tab_label.is_some();
@@ -4002,10 +4014,13 @@ impl App {
             pane.running = None;
             stopped |= pane.activity.clear();
         }
-        // Only a change in the rendered tab label/underline warrants a hidden-tab
-        // repaint. Raw titles can be masked by a custom title or another pane.
-        let indicators_changed =
-            program_changed || stopped || previous_tab_label != self.pane_tab_label(id);
+        let agent_changed =
+            previous_agent_state != self.panes.get(&id).and_then(|pane| pane.agent_state(id));
+        // Raw titles can be masked by a custom title or another pane.
+        let indicators_changed = program_changed
+            || agent_changed
+            || stopped
+            || previous_tab_label != self.pane_tab_label(id);
         let directory_changed =
             previous_directory.as_ref() != self.panes.get(&id).map(|pane| &pane.cwd);
         if directory_changed {
@@ -4015,7 +4030,7 @@ impl App {
             || directory_changed
             || title_changed
             || previously_working != self.panes.get(&id).is_some_and(Pane::reported_active)
-            || previously_agent != self.panes.get(&id).is_some_and(Pane::has_agent)
+            || agent_changed
         {
             self.repaint_outliner();
         }
@@ -6393,7 +6408,8 @@ impl App {
         let tmuxx_tag = self
             .tmuxx_window(host.id)
             .map(|entry| entry.window_tag(host.id, &self.config().tmuxx_connections));
-        let breadcrumb = outliner::breadcrumb(active, &self.directory_labels);
+        let mut breadcrumb = outliner::breadcrumb(active, &self.directory_labels);
+        self.annotate_outline_rows(&mut breadcrumb);
         if host
             .selection_drag
             .as_ref()

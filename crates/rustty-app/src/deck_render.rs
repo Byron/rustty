@@ -6,6 +6,8 @@ use rustty::vt::agent::State;
 use rustty_font::{BitmapFormat, FontConfig, FontStyle, FontSystem, GlyphBitmap};
 use unicode_segmentation::UnicodeSegmentation;
 
+pub use crate::deck::state_color as color;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Visual {
     Agent {
@@ -255,16 +257,6 @@ impl Renderer {
     }
 }
 
-pub fn color(state: Option<State>) -> [u8; 3] {
-    match state {
-        Some(State::Working) => [22, 131, 255],
-        Some(State::NeedsInput) => [255, 154, 61],
-        Some(State::Done) => [53, 216, 107],
-        Some(State::Error) => [255, 75, 97],
-        _ => NEUTRAL,
-    }
-}
-
 fn rounded_distance(
     x: f32,
     y: f32,
@@ -316,49 +308,23 @@ fn circle(image: &mut RgbImage, center: (f32, f32), radius: f32, width: f32, col
 
 fn draw_mark(image: &mut RgbImage, state: Option<State>, center: (f32, f32), color: [u8; 3]) {
     let (x, y) = center;
-    match state {
-        Some(State::Working) => {
-            for (dx, height) in [(-10.0, 13.0), (0.0, 27.0), (10.0, 20.0)] {
-                line(
-                    image,
-                    (x + dx, y + 13.5 - height),
-                    (x + dx, y + 13.5),
-                    4.2,
-                    color,
-                );
+    let Some(state) = state else {
+        line(image, (x - 12.0, y), (x + 12.0, y), 2.5, [86, 92, 98]);
+        return;
+    };
+    for mark in crate::deck::state_marks(state) {
+        match *mark {
+            crate::deck::StateMark::Line(from, to, width) => line(
+                image,
+                (x + from[0], y + from[1]),
+                (x + to[0], y + to[1]),
+                width,
+                color,
+            ),
+            crate::deck::StateMark::Ring(radius, width) => {
+                circle(image, center, radius, width, color)
             }
         }
-        Some(State::NeedsInput) => {
-            line(image, (x, y - 13.0), (x, y + 4.0), 5.0, color);
-            line(image, (x, y + 12.0), (x, y + 12.0), 5.5, color);
-        }
-        Some(State::Done) => {
-            line(image, (x - 13.0, y), (x - 3.0, y + 10.0), 4.4, color);
-            line(image, (x - 3.0, y + 10.0), (x + 14.0, y - 12.0), 4.4, color);
-        }
-        Some(State::Error) => {
-            line(
-                image,
-                (x - 11.0, y - 11.0),
-                (x + 11.0, y + 11.0),
-                4.4,
-                color,
-            );
-            line(
-                image,
-                (x + 11.0, y - 11.0),
-                (x - 11.0, y + 11.0),
-                4.4,
-                color,
-            );
-        }
-        Some(State::Paused) => {
-            line(image, (x - 7.0, y - 12.0), (x - 7.0, y + 12.0), 5.0, color);
-            line(image, (x + 7.0, y - 12.0), (x + 7.0, y + 12.0), 5.0, color);
-        }
-        Some(State::Unknown) => circle(image, center, 12.0, 3.0, color),
-        Some(State::Idle) => line(image, center, center, 17.0, color),
-        None => line(image, (x - 12.0, y), (x + 12.0, y), 2.5, [86, 92, 98]),
     }
 }
 

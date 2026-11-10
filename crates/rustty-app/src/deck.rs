@@ -17,6 +17,81 @@ pub const PAGE_SIZE: usize = 9;
 pub const ACK_HISTORY: usize = 64;
 pub const GROUPS: [State; 4] = [State::NeedsInput, State::Working, State::Done, State::Idle];
 
+pub fn state_color(state: Option<State>) -> [u8; 3] {
+    match state {
+        Some(State::Working) => [22, 131, 255],
+        Some(State::NeedsInput) => [255, 154, 61],
+        Some(State::Done) => [53, 216, 107],
+        Some(State::Error) => [255, 75, 97],
+        _ => [145, 152, 158],
+    }
+}
+
+pub(crate) enum StateMark {
+    Line([f32; 2], [f32; 2], f32),
+    Ring(f32, f32),
+}
+
+// The native breadcrumbs and physical keys share their status artwork.
+pub(crate) fn state_marks(state: State) -> &'static [StateMark] {
+    use StateMark::{Line, Ring};
+    match state {
+        State::Working => &[
+            Line([-10.0, 0.5], [-10.0, 13.5], 4.2),
+            Line([0.0, -13.5], [0.0, 13.5], 4.2),
+            Line([10.0, -6.5], [10.0, 13.5], 4.2),
+        ],
+        State::NeedsInput => &[
+            Line([0.0, -13.0], [0.0, 4.0], 5.0),
+            Line([0.0, 12.0], [0.0, 12.0], 5.5),
+        ],
+        State::Done => &[
+            Line([-13.0, 0.0], [-3.0, 10.0], 4.4),
+            Line([-3.0, 10.0], [14.0, -12.0], 4.4),
+        ],
+        State::Error => &[
+            Line([-11.0, -11.0], [11.0, 11.0], 4.4),
+            Line([11.0, -11.0], [-11.0, 11.0], 4.4),
+        ],
+        State::Paused => &[
+            Line([-7.0, -12.0], [-7.0, 12.0], 5.0),
+            Line([7.0, -12.0], [7.0, 12.0], 5.0),
+        ],
+        State::Unknown => &[Ring(12.0, 3.0)],
+        State::Idle => &[Line([0.0, 0.0], [0.0, 0.0], 17.0)],
+    }
+}
+
+pub fn paint_state(painter: &egui::Painter, rect: egui::Rect, state: State) {
+    let [r, g, b] = state_color(Some(state));
+    let color = egui::Color32::from_rgb(r, g, b);
+    let scale = rect.width().min(rect.height()) / 34.0;
+    let center = rect.center();
+    for mark in state_marks(state) {
+        match *mark {
+            StateMark::Line(from, to, width) => {
+                let from = center + egui::Vec2::from(from) * scale;
+                let to = center + egui::Vec2::from(to) * scale;
+                let radius = width * scale / 2.0;
+                if from != to {
+                    painter.line_segment([from, to], egui::Stroke::new(width * scale, color));
+                }
+                painter.circle_filled(from, radius, color);
+                if from != to {
+                    painter.circle_filled(to, radius, color);
+                }
+            }
+            StateMark::Ring(radius, width) => {
+                painter.circle_stroke(
+                    center,
+                    radius * scale,
+                    egui::Stroke::new(width * scale, color),
+                );
+            }
+        }
+    }
+}
+
 /// A presentation of the owner's most urgent OSC 7501 record, including restored state.
 #[derive(Default)]
 pub struct ProgramReport {
@@ -896,6 +971,36 @@ impl Dashboard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn state_marks_fit_small_breadcrumb_icons() {
+        let context = egui::Context::default();
+        for size in [12.0, 18.0, 24.0] {
+            for state in [
+                State::Idle,
+                State::Working,
+                State::NeedsInput,
+                State::Done,
+                State::Error,
+                State::Paused,
+                State::Unknown,
+            ] {
+                let rect =
+                    egui::Rect::from_min_size(egui::pos2(40.0, 40.0), egui::Vec2::splat(size));
+                let mut output = context.run_ui(Default::default(), |root| {
+                    paint_state(root.painter(), rect, state);
+                });
+                output.textures_delta.clear();
+                assert!(!output.shapes.is_empty(), "{state:?} must stay visible");
+                for shape in output.shapes {
+                    assert!(
+                        rect.contains_rect(shape.shape.visual_bounding_rect()),
+                        "{state:?} must fit its {size}-point icon"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn program_status_projects_urgency_inherited_names_progress_and_attention() {

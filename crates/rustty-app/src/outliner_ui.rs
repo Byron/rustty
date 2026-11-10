@@ -11,6 +11,9 @@ use std::ops::Range;
 
 const ROW_HEIGHT: f32 = 30.0;
 const ICON_SIZE: f32 = 20.0;
+const AGENT_ICON_SIZE: f32 = 16.0;
+const CRUMB_PADDING: f32 = 6.0;
+const CRUMB_ICON_GAP: f32 = 6.0;
 const INDENT: f32 = 18.0;
 pub const TMUXX_TAG_WIDTH: f32 = 44.0;
 
@@ -352,12 +355,14 @@ pub fn tab_contents(
                     }
                 }
                 let icon = Rect::from_min_size(
-                    Pos2::new(left + INDENT + 3.0, rect.center().y - ICON_SIZE / 2.0),
-                    Vec2::splat(ICON_SIZE),
+                    Pos2::new(left + INDENT + 3.0, rect.top()),
+                    Vec2::new(row_icon_width(row), rect.height()),
                 );
-                paint_icon(ui.painter(), icon, row, foreground);
-                let mut label =
-                    Rect::from_min_max(Pos2::new(icon.right() + 7.0, rect.top()), rect.max);
+                paint_row_icons(ui.painter(), icon, row, foreground);
+                let mut label = Rect::from_min_max(
+                    Pos2::new(icon.right() + CRUMB_ICON_GAP, rect.top()),
+                    rect.max,
+                );
                 let is_pinned = pinned.contains(&row.target);
                 if is_pinned {
                     paint_pin(
@@ -418,7 +423,12 @@ pub fn contents(
     if search.agents_only
         && let Some(results) = &mut results
     {
-        results.retain(|result| result.path.last().is_some_and(|row| row.has_agent));
+        results.retain(|result| {
+            result
+                .path
+                .last()
+                .is_some_and(|row| row.agent_state.is_some())
+        });
     }
     let searching = search.agents_only || search.open && !search.query.trim().is_empty();
     let result_groups = if search.agents_only {
@@ -632,16 +642,13 @@ pub fn contents(
                     );
                     left + width + 10.0
                 } else {
-                    paint_icon(
+                    paint_row_icons(
                         ui.painter(),
-                        Rect::from_center_size(
-                            Pos2::new(left + ICON_SIZE / 2.0, rect.center().y),
-                            Vec2::splat(ICON_SIZE),
-                        ),
+                        Rect::from_min_max(Pos2::new(left, rect.top()), rect.max),
                         row,
                         foreground,
                     );
-                    left + ICON_SIZE + 7.0
+                    left + row_icon_width(row) + CRUMB_ICON_GAP
                 };
                 let pinned =
                     matches!(row.target, Target::Pane { pane, .. } if pinned_panes.contains(&pane));
@@ -663,19 +670,6 @@ pub fn contents(
                     label_rect.max.x -= 20.0;
                 }
                 label_rect.min.x = text_left.min(label_rect.right());
-                if let Some((state, _)) = &row.program_status {
-                    use rustty::vt::agent::State;
-                    let color = match state {
-                        State::NeedsInput => Some(Color32::from_rgb(255, 149, 0)),
-                        State::Error => Some(Color32::from_rgb(255, 59, 48)),
-                        State::Done => Some(Color32::from_rgb(52, 199, 89)),
-                        _ => None,
-                    };
-                    if let Some(color) = color {
-                        ui.painter().circle_filled(Pos2::new(label_rect.right() - 7.0, rect.center().y), 3.0, color);
-                        label_rect.max.x = (label_rect.right() - 18.0).max(label_rect.left());
-                    }
-                }
                 let label_rect = paint_working(ui.painter(), label_rect, row.working, if row.focused {
                     foreground
                 } else {
@@ -1276,22 +1270,26 @@ fn breadcrumb_with_panels(
                 .layout_no_wrap(label.clone(), FontId::proportional(13.0), foreground)
                 .size()
                 .x
-                + if row.tab_index.is_some() {
-                    9.0
-                } else if label.is_empty() {
-                    ICON_SIZE + 6.0
-                } else {
-                    ICON_SIZE + 10.0
-                }
-                + if index + 1 == rows.len() {
-                    panels.len().saturating_sub(1) as f32 * (ICON_SIZE + 4.0)
-                        + if panels.len() > 1 { 3.0 } else { 0.0 }
+                + 2.0 * CRUMB_PADDING
+                + if index + 1 == rows.len() && panels.len() > 1 {
+                    panels
+                        .iter()
+                        .map(|panel| row_icon_width(panel))
+                        .sum::<f32>()
+                        + panels.len() as f32 * CRUMB_ICON_GAP
+                } else if row.tab_index.is_none() {
+                    row_icon_width(row)
+                        + if label.is_empty() {
+                            0.0
+                        } else {
+                            CRUMB_ICON_GAP
+                        }
                 } else {
                     0.0
                 }
         })
         .collect();
-    let separator = 10.0;
+    let separator = 12.0;
     let width = (widths.iter().sum::<f32>() + separator * (rows.len() - 1) as f32)
         .min(max_width)
         .min(ui.available_width());
@@ -1365,22 +1363,34 @@ fn breadcrumb_with_panels(
             );
         }
         let text_left = if index + 1 == rows.len() && panels.len() > 1 {
-            for (slot, panel) in panels.iter().enumerate() {
+            let icons_width: f32 = panels
+                .iter()
+                .map(|panel| row_icon_width(panel) + CRUMB_ICON_GAP)
+                .sum();
+            let scale = ((width - 2.0 * CRUMB_PADDING).max(0.0) / icons_width).min(1.0);
+            let mut left = x + CRUMB_PADDING;
+            for panel in panels {
                 let Target::Pane { pane, .. } = panel.target else {
                     continue;
                 };
                 let icon = Rect::from_min_size(
-                    Pos2::new(x + 3.0 + slot as f32 * (ICON_SIZE + 4.0), rect.top()),
-                    Vec2::new(ICON_SIZE + 4.0, rect.height()),
+                    Pos2::new(left, rect.top()),
+                    Vec2::new(
+                        (row_icon_width(panel) + CRUMB_ICON_GAP) * scale,
+                        rect.height(),
+                    ),
                 );
                 let response = ui.interact(
                     icon,
                     egui::Id::new(("outliner-search-result", pane)),
                     Sense::click(),
                 );
-                paint_icon(
-                    &painter,
-                    Rect::from_center_size(icon.center(), Vec2::splat(ICON_SIZE)),
+                paint_row_icons(
+                    &painter.with_clip_rect(icon.intersect(painter.clip_rect())),
+                    Rect::from_min_max(
+                        icon.min,
+                        Pos2::new(icon.right() - CRUMB_ICON_GAP * scale, icon.bottom()),
+                    ),
                     panel,
                     foreground,
                 );
@@ -1408,21 +1418,15 @@ fn breadcrumb_with_panels(
                     output.hovered = Some(panel.target);
                 }
                 response.on_hover_text(description(panel));
+                left = icon.right();
             }
-            x + 3.0 + panels.len() as f32 * (ICON_SIZE + 4.0)
+            left
         } else if row.tab_index.is_some() {
-            x + 3.0
+            x + CRUMB_PADDING
         } else {
-            paint_icon(
-                &painter,
-                Rect::from_center_size(
-                    Pos2::new(x + ICON_SIZE / 2.0 + 3.0, rect.center().y),
-                    Vec2::splat(ICON_SIZE),
-                ),
-                row,
-                foreground,
-            );
-            x + ICON_SIZE + 4.0
+            let icons = Rect::from_min_max(Pos2::new(x + CRUMB_PADDING, rect.top()), rect.max);
+            paint_row_icons(&painter, icons, row, foreground);
+            x + CRUMB_PADDING + row_icon_width(row) + CRUMB_ICON_GAP
         };
         paint_label(
             ui,
@@ -1455,6 +1459,41 @@ fn breadcrumb_with_panels(
         x += width;
     }
     output
+}
+
+fn row_icon_width(row: &Row) -> f32 {
+    ICON_SIZE
+        + if row.agent_state.is_some() {
+            CRUMB_ICON_GAP + AGENT_ICON_SIZE
+        } else {
+            0.0
+        }
+}
+
+fn paint_row_icons(painter: &egui::Painter, rect: Rect, row: &Row, foreground: Color32) {
+    let scale = (rect.width() / row_icon_width(row)).clamp(0.0, 1.0);
+    paint_icon(
+        painter,
+        Rect::from_center_size(
+            Pos2::new(rect.left() + ICON_SIZE * scale / 2.0, rect.center().y),
+            Vec2::splat(ICON_SIZE * scale),
+        ),
+        row,
+        foreground,
+    );
+    if let Some(state) = row.agent_state {
+        crate::deck::paint_state(
+            painter,
+            Rect::from_center_size(
+                Pos2::new(
+                    rect.left() + (ICON_SIZE + CRUMB_ICON_GAP + AGENT_ICON_SIZE / 2.0) * scale,
+                    rect.center().y,
+                ),
+                Vec2::splat(AGENT_ICON_SIZE * scale),
+            ),
+            state,
+        );
+    }
 }
 
 fn paint_label(
@@ -1600,6 +1639,18 @@ fn description(row: &Row) -> String {
     if let Some((_, status)) = &row.program_status {
         description.push('\n');
         description.push_str(status);
+    } else if let Some(state) = row.agent_state {
+        use rustty::vt::agent::State;
+        description.push_str(" · Agent: ");
+        description.push_str(match state {
+            State::Idle => "Idle",
+            State::Working => "Working",
+            State::NeedsInput => "Needs input",
+            State::Done => "Done",
+            State::Error => "Error",
+            State::Paused => "Paused",
+            State::Unknown => "Unknown",
+        });
     }
     if row.working > 0 {
         description.push_str(&format!(" · {} running", row.working));
@@ -1853,7 +1904,7 @@ mod tests {
                 zoom: Zoom::None,
                 tmuxx: None,
                 working: 0,
-                has_agent: false,
+                agent_state: None,
                 program_status: None,
             },
             Row {
@@ -1868,7 +1919,7 @@ mod tests {
                 zoom: Zoom::PaneInQuad,
                 tmuxx: None,
                 working: 0,
-                has_agent: false,
+                agent_state: None,
                 program_status: None,
             },
             Row {
@@ -1887,7 +1938,7 @@ mod tests {
                 zoom: Zoom::Quad,
                 tmuxx: None,
                 working: 0,
-                has_agent: false,
+                agent_state: None,
                 program_status: None,
             },
             Row {
@@ -1907,7 +1958,7 @@ mod tests {
                 zoom: Zoom::PaneInQuad,
                 tmuxx: None,
                 working: 0,
-                has_agent: false,
+                agent_state: None,
                 program_status: None,
             },
         ]
@@ -2308,8 +2359,8 @@ mod tests {
             context.enable_accesskit();
             let mut rows = navigation_rows();
             rows[4].label = rows[3].label.clone();
-            rows[3].has_agent = true;
-            rows[4].has_agent = true;
+            rows[3].agent_state = Some(rustty::vt::agent::State::Working);
+            rows[4].agent_state = Some(rustty::vt::agent::State::Working);
             let pins = if mode == "pins" { vec![3] } else { vec![] };
             let mut search = SearchState {
                 agents_only: mode == "agents",
@@ -2442,7 +2493,7 @@ mod tests {
         let context = egui::Context::default();
         let mut rows = navigation_rows();
         for row in &mut rows[3..5] {
-            row.has_agent = true;
+            row.agent_state = Some(rustty::vt::agent::State::Working);
             row.label = "Same agent".into();
         }
         let mut search = SearchState {
@@ -2481,7 +2532,7 @@ mod tests {
         for query in ["", "No match"] {
             let context = egui::Context::default();
             let mut rows = navigation_rows();
-            rows[3].has_agent = true;
+            rows[3].agent_state = Some(rustty::vt::agent::State::Working);
             let mut search = SearchState {
                 agents_only: true,
                 open: !query.is_empty(),
@@ -2513,8 +2564,8 @@ mod tests {
         let context = egui::Context::default();
         context.enable_accesskit();
         let mut rows = navigation_rows();
-        rows[3].has_agent = true;
-        rows[4].has_agent = true;
+        rows[3].agent_state = Some(rustty::vt::agent::State::Working);
+        rows[4].agent_state = Some(rustty::vt::agent::State::Working);
         let mut search = SearchState {
             agents_only: true,
             ..Default::default()
@@ -2557,7 +2608,7 @@ mod tests {
         search.close();
         assert!(search.agents_only);
         for row in &mut rows {
-            row.has_agent = false;
+            row.agent_state = None;
         }
         let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
         assert!(output.shapes.iter().any(|shape| matches!(
@@ -4508,6 +4559,152 @@ mod tests {
     }
 
     #[test]
+    fn panel_rows_prefix_labels_with_agent_marks_and_leave_space() {
+        use rustty::vt::agent::State;
+        for state in [
+            State::Idle,
+            State::Working,
+            State::NeedsInput,
+            State::Done,
+            State::Error,
+            State::Paused,
+            State::Unknown,
+        ] {
+            for mode in ["window", "pin", "agents", "tree", "tab tree"] {
+                let context = egui::Context::default();
+                context.enable_accesskit();
+                let mut rows = rows();
+                rows[3].agent_state = Some(state);
+                let mut output = if mode == "window" {
+                    frame(&context, &rows[2..], Vec::new(), true).0
+                } else if mode == "tree" {
+                    frame(&context, &rows[3..], Vec::new(), false).0
+                } else if mode == "tab tree" {
+                    context.run_ui(Default::default(), |ui| {
+                        tab_contents(ui, &rows[3..], &[], [210, 110, 70]);
+                    })
+                } else {
+                    search_frame(
+                        &context,
+                        &rows,
+                        if mode == "pin" { &[3] } else { &[] },
+                        &mut SearchState {
+                            agents_only: mode == "agents",
+                            ..Default::default()
+                        },
+                        Default::default(),
+                    )
+                    .0
+                };
+                output.textures_delta.clear();
+                let color = rgb(crate::deck::state_color(Some(state)));
+                let mark = output
+                    .shapes
+                    .iter()
+                    .filter_map(|shape| {
+                        let matches = match &shape.shape {
+                            egui::Shape::LineSegment { stroke, .. } => stroke.color == color,
+                            egui::Shape::Circle(circle) => {
+                                circle.fill == color || circle.stroke.color == color
+                            }
+                            _ => false,
+                        };
+                        matches.then(|| {
+                            shape
+                                .shape
+                                .visual_bounding_rect()
+                                .intersect(shape.clip_rect)
+                        })
+                    })
+                    .reduce(|left, right| left.union(right))
+                    .expect("agent state is painted");
+                let label = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == "Tests" => Some(text),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert!(
+                    label.pos.x - mark.right() >= CRUMB_ICON_GAP - 0.5,
+                    "{mode}: {state:?}"
+                );
+                assert!(
+                    (mark.center().y - (label.pos.y + label.galley.size().y / 2.0)).abs() < 2.0
+                );
+                assert!(description(&rows[3]).contains("Agent:"));
+            }
+        }
+    }
+
+    #[test]
+    fn grouped_search_keeps_each_agents_mark_with_its_own_click_target() {
+        use rustty::vt::agent::State;
+        for count in [2, 8] {
+            let context = egui::Context::default();
+            let mut rows = rows();
+            let panel = rows.pop().unwrap();
+            for index in 0..count {
+                rows.push(Row {
+                    target: Target::Pane {
+                        tab: 1,
+                        pane: 3 + index,
+                    },
+                    label: "Same".into(),
+                    agent_state: Some(if index % 2 == 0 {
+                        State::Working
+                    } else {
+                        State::NeedsInput
+                    }),
+                    ..panel.clone()
+                });
+            }
+            let mut search = SearchState {
+                open: true,
+                query: "Same".into(),
+                ..Default::default()
+            };
+            search_frame(&context, &rows, &[], &mut search, Default::default());
+            let (output, _, _) =
+                search_frame(&context, &rows, &[], &mut search, Default::default());
+            for row in &rows[3..] {
+                let Target::Pane { pane, .. } = row.target else {
+                    unreachable!()
+                };
+                let rect = context
+                    .read_response(egui::Id::new(("outliner-search-result", pane)))
+                    .unwrap()
+                    .rect;
+                let color = rgb(crate::deck::state_color(row.agent_state));
+                let marks: Vec<_> = output.shapes.iter().filter(|shape| {
+                    matches!(&shape.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == color)
+                        && rect.contains(shape.shape.visual_bounding_rect().center())
+                }).collect();
+                assert_eq!(
+                    marks.len(),
+                    if row.agent_state == Some(State::Working) {
+                        3
+                    } else {
+                        1
+                    }
+                );
+                for mark in marks {
+                    assert!(rect.contains_rect(mark.shape.visual_bounding_rect()));
+                    assert!(
+                        mark.clip_rect
+                            .contains_rect(mark.shape.visual_bounding_rect())
+                    );
+                }
+                assert_eq!(
+                    search_click(&context, &rows, &mut search, rect.center()).selected,
+                    Some(row.target)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn narrow_breadcrumb_keeps_both_targets_inside_its_budget() {
         let context = egui::Context::default();
         context.enable_accesskit();
@@ -4521,8 +4718,8 @@ mod tests {
         assert!(first.right() < second.left());
         assert!(second.width() >= ICON_SIZE + 20.0);
         assert!(second.right() - first.left() <= 140.0);
-        assert!((first.width() - ICON_SIZE - 6.0).abs() < 0.1);
-        assert!((second.left() - first.right() - 10.0).abs() < 0.1);
+        assert!((first.width() - ICON_SIZE - 2.0 * CRUMB_PADDING).abs() < 0.1);
+        assert!((second.left() - first.right() - 12.0).abs() < 0.1);
         assert!(!output.shapes.iter().any(|shape| {
             matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == rows[0].label)
         }));

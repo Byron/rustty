@@ -34,7 +34,7 @@ pub struct Row {
     pub tmuxx: Option<String>,
     pub zoom: Zoom,
     pub working: usize,
-    pub has_agent: bool,
+    pub agent_state: Option<rustty::vt::agent::State>,
     pub program_status: Option<(rustty::vt::agent::State, String)>,
 }
 
@@ -175,7 +175,7 @@ pub fn workspace_rows(
                 tmuxx: tmuxx_windows.get(&window.id).cloned(),
                 zoom: Zoom::None,
                 working: 0,
-                has_agent: false,
+                agent_state: None,
                 program_status: None,
             });
         }
@@ -360,7 +360,7 @@ pub fn rows(
                 zoom: zoom(tab),
                 tmuxx: None,
                 working: 0,
-                has_agent: false,
+                agent_state: None,
                 program_status: None,
             });
         }
@@ -458,7 +458,7 @@ fn quad_row(
         color: tab.color,
         tmuxx: None,
         working: 0,
-        has_agent: false,
+        agent_state: None,
         program_status: None,
         zoom: if tab.quadrant_zoom == Some(node.id) {
             Zoom::Quad
@@ -487,7 +487,7 @@ fn pane_row(
         color: tab.color,
         tmuxx: None,
         working: 0,
-        has_agent: false,
+        agent_state: None,
         program_status: None,
         zoom: if tab.zoom == Some(pane) && tab.zoom != tab.quadrant_zoom {
             zoom(tab)
@@ -989,7 +989,7 @@ mod tests {
         );
         let working = [2, 22, 23];
         count_working(&mut rows, |pane| working.contains(&pane));
-        assert!(rows.iter().all(|row| !row.has_agent));
+        assert!(rows.iter().all(|row| row.agent_state.is_none()));
         assert!(
             rows.iter()
                 .any(|row| { matches!(row.target, Target::Quad { .. }) && row.depth > 2 })

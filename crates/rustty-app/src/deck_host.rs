@@ -270,10 +270,20 @@ impl App {
             })
             .and_then(|host| self.focused(host.id))
             .or_else(|| self.deck_focused());
-        if let Some(pane) = focused.and_then(|id| self.panes.get_mut(&id)) {
+        if let Some(id) = focused
+            && let Some(pane) = self.panes.get_mut(&id)
+        {
+            let previous = pane.agent_state(id);
             pane.agent.acknowledge();
             pane.deck_progress.acknowledge();
             pane.deck_command.acknowledge();
+            if previous != pane.agent_state(id) {
+                self.repaint_pane(id, true);
+                self.repaint_outliner();
+                if let Some(host) = host {
+                    host.repaint();
+                }
+            }
         }
         let reports = self
             .workspace
@@ -784,6 +794,10 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
         3,
         false,
     );
+    assert!(app.outline_rows().iter().any(|row| {
+        matches!(row.target, outliner::Target::Pane { pane, .. } if pane == hidden)
+            && row.agent_state == Some(State::Done)
+    }));
     app.reveal_pane(hidden);
     assert_eq!(
         app.panes[&hidden]
@@ -793,6 +807,13 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
             .state,
         State::Idle
     );
+    let mut breadcrumb = outliner::breadcrumb(app.tab(one).unwrap(), &app.directory_labels);
+    app.annotate_outline_rows(&mut breadcrumb);
+    assert_eq!(breadcrumb.last().unwrap().agent_state, Some(State::Idle));
+    assert!(app.outline_rows().iter().any(|row| {
+        matches!(row.target, outliner::Target::Pane { pane, .. } if pane == hidden)
+            && row.agent_state == Some(State::Idle)
+    }));
     app.workspace.close_pane(hidden);
     app.reconcile(event_loop);
     app.sync_deck();
@@ -1267,6 +1288,12 @@ printf '\033]133;D;0\007'; exec sleep 120"#
             app.drain(event_loop, second);
             app.sync_deck();
             let state = tile(app).state;
+            if app.panes[&second].has_agent() {
+                assert!(app.outline_rows().iter().any(|row| {
+                    matches!(row.target, outliner::Target::Pane { pane, .. } if pane == second)
+                        && row.agent_state == state
+                }));
+            }
             saw_review_working |= state == Some(State::Working);
             if state == Some(State::Done) {
                 saw_review_done = true;
@@ -1467,7 +1494,7 @@ exec sleep 120"#.into(),
     assert!(app.pane_tab_label(pane).unwrap().0.contains('●'));
     assert!(app.outline_rows().iter().any(|row| {
         matches!(row.target, outliner::Target::Pane { pane: id, .. } if id == pane)
-            && row.has_agent
+            && row.agent_state == Some(State::NeedsInput)
             && row.program_status.as_ref().is_some_and(|(state, text)| {
                 *state == State::NeedsInput && text.contains("Review changes")
             })
@@ -1497,6 +1524,26 @@ exec sleep 120"#.into(),
             event_loop,
             Some(&directory.join("program-status-outliner.png")),
         )?;
+        let mut pins = vec![pane];
+        if let Some(other) = app.outline_rows().iter().find_map(|row| match row.target {
+            outliner::Target::Pane { pane, .. } if row.agent_state.is_none() => Some(pane),
+            _ => None,
+        }) {
+            pins.push(other);
+        }
+        let previous_pins = std::mem::replace(&mut app.workspace.pinned_panes, pins);
+        let agents_only =
+            std::mem::replace(&mut app.outliner.as_mut().unwrap().search.agents_only, true);
+        let capture = (|| {
+            app.draw_outliner(event_loop, None)?;
+            app.draw_outliner(
+                event_loop,
+                Some(&directory.join("program-status-breadcrumbs.png")),
+            )
+        })();
+        app.workspace.pinned_panes = previous_pins;
+        app.outliner.as_mut().unwrap().search.agents_only = agents_only;
+        capture?;
         if !visible {
             app.hide_outliner();
         }
@@ -1517,6 +1564,11 @@ exec sleep 120"#.into(),
         app.panes[&pane].deck_view(pane, "build").unwrap().state,
         State::Working
     );
+    assert!(app.outline_rows().iter().any(|row| {
+        matches!(row.target, outliner::Target::Pane { pane: id, .. } if id == pane)
+            && row.agent_state == Some(State::Working)
+            && row.program_status.is_none()
+    }));
     app.panes.get_mut(&pane).unwrap().agent.clear();
     {
         let mut terminal = app.panes[&pane].session.terminal()?;
@@ -1529,6 +1581,7 @@ exec sleep 120"#.into(),
     let target = app.panes[&pane].deck_view(pane, "build").unwrap().target;
     assert!(app.live_deck_target(target));
     assert_eq!(app.panes[&pane].program.state(), Some(State::Done));
+    assert_eq!(app.panes[&pane].agent_state(pane), Some(State::Done));
     assert!(app.panes[&pane].has_unseen());
     app.panes[&pane].session.terminal()?.program_status_seen();
     app.drain(event_loop, pane);
@@ -1536,6 +1589,7 @@ exec sleep 120"#.into(),
     assert!(!app.panes[&pane].has_deck_report());
     assert!(!app.live_deck_target(target));
     assert!(app.panes[&pane].program_tooltip().is_none());
+    assert!(app.panes[&pane].agent_state(pane).is_none());
     app.panes.get_mut(&pane).unwrap().exited = false;
     if let Some(directory) = std::env::var_os("RUSTTY_SMOKE_DIR").map(PathBuf::from) {
         std::fs::write(
@@ -1543,7 +1597,7 @@ exec sleep 120"#.into(),
             serde_json::to_vec_pretty(&serde_json::json!({
                 "passed": true,
                 "checks": ["single-drain-command-suppression", "unchanged-record-command-suppression", "cleared-record-command-suppression", "retained-state-without-effects", "tab-attention", "outliner-status", "progress", "tooltip", "osc777-precedence", "retained-exit", "owner-acknowledgment"],
-                "captures": ["program-status.png", "program-status-outliner.png"]
+                "captures": ["program-status.png", "program-status-outliner.png", "program-status-breadcrumbs.png"]
             }))?,
         )?;
     }

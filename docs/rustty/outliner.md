@@ -83,6 +83,11 @@ Breadcrumbs represent quads with just their position icon and zoom indicator;
 quad names remain visible in the tree. Tab breadcrumbs show just the tab name;
 their `Cmd+N` shortcuts remain in the tree and tooltips. Other repeated names
 appear only at their deepest level, keeping each ancestor's icon available for navigation.
+Panel rows in the Outliner tree, tab previews, and breadcrumbs also prefix the
+name with the agent's current Stream Deck status symbol and color when present.
+The position icon, status symbol, and name have separate spacing; tooltips name
+the agent state. Visiting a completed agent changes its symbol to idle, matching
+the Stream Deck.
 
 Every panel has its own row in the tree, even when names match. In search results,
 panels with the same name under the same quad or tab share one breadcrumb. Each
@@ -136,10 +141,10 @@ is brought forward, including minimized windows and the hidden Quick Terminal.
 The Outliner keeps the last terminal's focus trail while you interact with it.
 Closing it leaves all terminal windows and panels intact.
 
-When multiple tabs are present, a monochrome breadcrumb appears at the right end
-of the tab bar. It shows the focused quad (if present) and panel using the same
-compact icons and panel names. It omits the tab name and supports the same
-selection rules.
+The window header shows a breadcrumb beside the window controls, before the tabs
+when multiple tabs are present. It shows the focused quad (if present) and panel
+using the same compact icons and panel names. It omits the tab name and supports
+the same selection rules.
 Tabs scroll horizontally when space is tight; the new-tab button stays accessible.
 
 For a disposable native check with screenshots, run:
