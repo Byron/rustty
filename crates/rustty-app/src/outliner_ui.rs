@@ -243,8 +243,8 @@ fn header(ui: &mut egui::Ui, pinned: bool, agents_only: &mut bool) -> bool {
                 )
             });
             response.on_hover_text("Show only panels with agents");
-            let modifier = if cfg!(target_os = "macos") { "Option" } else { "Alt" };
-            let active = ui.input(|input| input.modifiers.alt);
+            let modifier = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+            let active = ui.input(|input| input.modifiers.command);
             let label = if active { "preview" } else { "hover" };
             ui.label(egui::RichText::new(format!("{modifier}: {label}")).small().color(
                 if active { ui.visuals().selection.stroke.color } else { ui.visuals().weak_text_color() },
@@ -665,7 +665,7 @@ pub fn contents(
                     paint_label(ui, &row.label, label_rect, text_left, foreground, &[]);
                 }
                 if (changed || selection_changed) && focus == Some(index)
-                    && !ui.input(|input| input.modifiers.alt)
+                    && !ui.input(|input| input.modifiers.command)
                 {
                     response.scroll_to_me(None);
                 }
@@ -2233,14 +2233,18 @@ mod tests {
                 };
                 (target, context.read_response(id).unwrap().rect.center())
             };
-            for modifiers in [egui::Modifiers::NONE, egui::Modifiers::ALT] {
-                let (_, output, _) = search_frame(
+            for modifiers in [
+                egui::Modifiers::NONE,
+                egui::Modifiers::ALT,
+                egui::Modifiers::COMMAND,
+            ] {
+                let (paint, output, _) = search_frame(
                     &context,
                     &rows,
                     &pins,
                     &mut search,
                     egui::RawInput {
-                        events: if modifiers.alt {
+                        events: if modifiers != egui::Modifiers::NONE {
                             vec![egui::Event::ModifiersChanged(modifiers)]
                         } else {
                             vec![
@@ -2258,6 +2262,20 @@ mod tests {
                 );
                 assert_eq!(output.selected, None);
                 assert_eq!(output.preview, None);
+                let modifier = if cfg!(target_os = "macos") {
+                    "Cmd"
+                } else {
+                    "Ctrl"
+                };
+                let label = if modifiers.command {
+                    "preview"
+                } else {
+                    "hover"
+                };
+                let hint = format!("{modifier}: {label}");
+                assert!(paint.shapes.iter().any(|shape| matches!(
+                    &shape.shape, egui::Shape::Text(text) if text.galley.text() == hint
+                )));
             }
             let (_, output, _) = search_frame(
                 &context,
@@ -2274,7 +2292,7 @@ mod tests {
     }
 
     #[test]
-    fn option_hover_focus_does_not_scroll_the_tree_under_the_pointer() {
+    fn command_hover_focus_does_not_scroll_the_tree_under_the_pointer() {
         let context = egui::Context::default();
         let template = rows().pop().unwrap();
         let mut rows: Vec<_> = (0..30)
@@ -2289,7 +2307,7 @@ mod tests {
         let (_, _, id) = search_frame(&context, &rows, &[], &mut search, Default::default());
         rows[0].focused = false;
         rows[29].focused = true;
-        for modifiers in [egui::Modifiers::ALT, egui::Modifiers::NONE] {
+        for modifiers in [egui::Modifiers::COMMAND, egui::Modifiers::NONE] {
             search_frame(
                 &context,
                 &rows,

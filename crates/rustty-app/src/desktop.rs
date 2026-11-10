@@ -3458,11 +3458,11 @@ impl App {
             self.commit_outliner_hover();
             self.select_outline_target_with_activation(target, false);
         } else {
-            let alt = self
+            let command = self
                 .outliner
                 .as_ref()
-                .is_some_and(|host| host.modifiers.state().alt_key());
-            self.update_outliner_hover(result.hovered, alt);
+                .is_some_and(|host| outliner_host::hover_modifier(host.modifiers.state()));
+            self.update_outliner_hover(result.hovered, command);
         }
         Ok(())
     }
@@ -9331,7 +9331,7 @@ impl ApplicationHandler<Event> for App {
                 host.repaint();
                 host.hovered
             });
-            self.update_outliner_hover(hovered, modifiers.state().alt_key());
+            self.update_outliner_hover(hovered, outliner_host::hover_modifier(modifiers.state()));
         } else if matches!(event, WindowEvent::Focused(false))
             && let Some(host) = &mut self.outliner
         {

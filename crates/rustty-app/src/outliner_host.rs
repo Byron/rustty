@@ -191,12 +191,16 @@ impl App {
         }
     }
 
-    pub(super) fn update_outliner_hover(&mut self, hovered: Option<outliner::Target>, alt: bool) {
+    pub(super) fn update_outliner_hover(
+        &mut self,
+        hovered: Option<outliner::Target>,
+        command: bool,
+    ) {
         let Some(mut host) = self.outliner.take() else {
             return;
         };
         host.hovered = hovered;
-        if !alt {
+        if !command {
             self.outliner = Some(host);
             self.finish_outliner_hover(true);
             return;
@@ -458,6 +462,14 @@ impl OutlinerHost {
     }
 }
 
+pub(super) fn hover_modifier(modifiers: winit::keyboard::ModifiersState) -> bool {
+    if cfg!(target_os = "macos") {
+        modifiers.super_key()
+    } else {
+        modifiers.control_key()
+    }
+}
+
 pub(super) fn opens_search(
     key: &winit::keyboard::Key,
     modifiers: winit::keyboard::ModifiersState,
@@ -472,6 +484,20 @@ pub(super) fn opens_search(
 mod tests {
     use super::*;
     use winit::keyboard::{Key, ModifiersState, NamedKey};
+
+    #[test]
+    fn hover_uses_command_on_macos_and_control_on_windows_without_option() {
+        assert!(!hover_modifier(ModifiersState::empty()));
+        assert!(!hover_modifier(ModifiersState::ALT));
+        assert_eq!(
+            hover_modifier(ModifiersState::SUPER),
+            cfg!(target_os = "macos")
+        );
+        assert_eq!(
+            hover_modifier(ModifiersState::CONTROL),
+            !cfg!(target_os = "macos")
+        );
+    }
 
     #[test]
     fn hover_snapshot_restores_navigation_without_reverting_content_changes() {

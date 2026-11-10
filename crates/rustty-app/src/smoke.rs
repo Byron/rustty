@@ -140,7 +140,7 @@ impl Smoke {
             "outliner.png",
             "outliner-collapsed.png",
             "outliner-agents.png",
-            "outliner-option-preview.png",
+            "outliner-command-preview.png",
             "outliner-tab-hover.png",
             "outliner-tab-hover-panels.png",
             "outliner-terminal.png",
@@ -7106,13 +7106,17 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         state,
         button: MouseButton::Left,
     };
-    let set_option = |app: &mut App, enabled: bool| -> Result<()> {
+    let set_command = |app: &mut App, enabled: bool| -> Result<()> {
         app.window_event(
             event_loop,
             key,
             WindowEvent::ModifiersChanged(
                 if enabled {
-                    winit::keyboard::ModifiersState::ALT
+                    if cfg!(target_os = "macos") {
+                        winit::keyboard::ModifiersState::SUPER
+                    } else {
+                        winit::keyboard::ModifiersState::CONTROL
+                    }
                 } else {
                     winit::keyboard::ModifiersState::empty()
                 }
@@ -7123,7 +7127,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     };
     let pin_point = |app: &App, pane| -> Result<Pos2> {
         let bounds = widget_bounds(app, egui::Id::new(("outliner-pin-drop", pane)))
-            .ok_or("missing pin for Option-hover smoke")?;
+            .ok_or("missing pin for Command-hover smoke")?;
         Ok(Pos2::new(bounds.right() - 12.0, bounds.center().y))
     };
     let original = (serde_json::to_vec(&app.workspace.windows)?, app.active);
@@ -7138,15 +7142,24 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
             },
         )),
     )
-    .ok_or("missing expanded sibling for Option-hover smoke")?
+    .ok_or("missing expanded sibling for Command-hover smoke")?
     .center();
     app.window_event(event_loop, utility_key, pointer_move(sibling_point));
     app.draw_outliner(event_loop, None)?;
     if app.focused(window) != Some(first) {
         return Err("plain Outliner hover changed panel focus".into());
     }
-    // A nonactivating utility window can receive pointer motion while the terminal gets Option.
-    set_option(app, true)?;
+    app.window_event(
+        event_loop,
+        key,
+        WindowEvent::ModifiersChanged(winit::keyboard::ModifiersState::ALT.into()),
+    );
+    app.draw_outliner(event_loop, None)?;
+    if app.focused(window) != Some(first) || app.outliner_hover_active() {
+        return Err("Option alone still activated Outliner hover preview".into());
+    }
+    // A nonactivating utility window can receive pointer motion while the terminal gets Command.
+    set_command(app, true)?;
     if app.focused(window) != Some(sibling)
         || !app
             .tab(window)
@@ -7156,7 +7169,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
             .any(|(pane, _)| *pane == sibling)
     {
         return Err(format!(
-            "Option pressed over a stationary Outliner row did not reveal it: focused={:?}, expected={sibling}, zoom={:?}, hovered={:?}, modifiers={:?}, point={sibling_point:?}",
+            "Command pressed over a stationary Outliner row did not reveal it: focused={:?}, expected={sibling}, zoom={:?}, hovered={:?}, modifiers={:?}, point={sibling_point:?}",
             app.focused(window), app.tab(window).unwrap().zoom,
             app.outliner.as_ref().unwrap().hovered,
             app.outliner.as_ref().unwrap().modifiers.state(),
@@ -7166,19 +7179,19 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     app.window_event(event_loop, utility_key, pointer_move(point));
     app.draw_outliner(
         event_loop,
-        Some(&directory.join("outliner-option-preview.png")),
+        Some(&directory.join("outliner-command-preview.png")),
     )?;
     if app.focused(window) != Some(second) {
-        return Err("Option-hover did not follow a pin into another tab".into());
+        return Err("Command-hover did not follow a pin into another tab".into());
     }
     if serde_json::to_vec(&app.saved_workspace().windows)? != saved_original {
         return Err("temporary Outliner preview entered the saved workspace".into());
     }
-    set_option(app, false)?;
+    set_command(app, false)?;
     if (serde_json::to_vec(&app.workspace.windows)?, app.active) != original {
-        return Err("Option release did not restore original Outliner focus and zoom".into());
+        return Err("Command release did not restore original Outliner focus and zoom".into());
     }
-    set_option(app, true)?;
+    set_command(app, true)?;
     app.window_event(
         event_loop,
         utility_key,
@@ -7197,7 +7210,7 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     app.check_outliner_hover_focus();
     if app.focused(window) != Some(second)
         || !app.outliner_hover_active()
-        || !app.outliner.as_ref().unwrap().modifiers.state().alt_key()
+        || !outliner_host::hover_modifier(app.outliner.as_ref().unwrap().modifiers.state())
     {
         return Err(
             "native resign-key modifier reset cancelled the clicked Outliner preview".into(),
@@ -7212,11 +7225,11 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     app.window_event(event_loop, key, WindowEvent::Focused(true));
     app.window_event(event_loop, utility_key, WindowEvent::Focused(false));
     app.check_outliner_hover_focus();
-    set_option(app, false)?;
+    set_command(app, false)?;
     if app.focused(window) != Some(second) {
-        return Err("Option release undid an explicitly clicked Outliner entry".into());
+        return Err("Command release undid an explicitly clicked Outliner entry".into());
     }
-    set_option(app, true)?;
+    set_command(app, true)?;
     let point = pin_point(app, first)?;
     app.window_event(event_loop, utility_key, pointer_move(point));
     app.draw_outliner(event_loop, None)?;
@@ -7229,15 +7242,15 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     );
     app.draw_outliner(event_loop, None)?;
     if app.focused(window) != Some(first) {
-        return Err("leaving Outliner ended Option preview before releasing the modifier".into());
+        return Err("leaving Outliner ended Command preview before releasing the modifier".into());
     }
-    set_option(app, false)?;
+    set_command(app, false)?;
     if app.focused(window) != Some(second) {
         return Err(
-            "Option release outside Outliner did not restore the last clicked panel".into(),
+            "Command release outside Outliner did not restore the last clicked panel".into(),
         );
     }
-    set_option(app, true)?;
+    set_command(app, true)?;
     let point = pin_point(app, first)?;
     app.window_event(event_loop, utility_key, pointer_move(point));
     app.draw_outliner(event_loop, None)?;
@@ -7246,14 +7259,14 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     if !app.outliner_hover_active() || app.workspace.pinned_panes.contains(&first) {
         return Err("changing a pin committed temporary Outliner focus".into());
     }
-    set_option(app, false)?;
+    set_command(app, false)?;
     if app.focused(window) != Some(second) || app.workspace.pinned_panes.contains(&first) {
-        return Err("Option release reverted the pin edit or retained its temporary focus".into());
+        return Err("Command release reverted the pin edit or retained its temporary focus".into());
     }
     app.workspace.pinned_panes = pins_before;
     app.draw_outliner(event_loop, None)?;
 
-    set_option(app, true)?;
+    set_command(app, true)?;
     app.window_event(
         event_loop,
         utility_key,
@@ -7267,11 +7280,11 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         || app.outliner_hover_active()
         || !app.outliner.as_ref().unwrap().modifiers.state().is_empty()
     {
-        return Err("application deactivation left Outliner preview or Option latched".into());
+        return Err("application deactivation left Outliner preview or Command latched".into());
     }
     app.window_event(event_loop, key, WindowEvent::Focused(true));
 
-    set_option(app, true)?;
+    set_command(app, true)?;
     app.window_event(
         event_loop,
         utility_key,
@@ -7282,9 +7295,9 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         tab: second_tab,
         pane: second_last,
     });
-    set_option(app, false)?;
+    set_command(app, false)?;
     if app.focused(window) != Some(second_last) {
-        return Err("Option release undid a subsequent explicit panel selection".into());
+        return Err("Command release undid a subsequent explicit panel selection".into());
     }
     let before = (serde_json::to_vec(&app.workspace.windows)?, app.active);
     for event in [
@@ -7895,8 +7908,8 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
             "native_search_focus_checked": native_focus_available,
             "native_minimization_checked": native_focus_available,
             "background": app.background_smoke,
-            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-working-counts", "outliner-disclosure", "outliner-agent-filter", "outliner-agent-compact-rows", "outliner-option-stationary-hover", "outliner-option-restore-focus-zoom", "outliner-option-click-commits", "outliner-option-release-outside", "outliner-option-official-selection", "outliner-option-focus-transfer", "outliner-option-preserves-pin-edits", "outliner-option-deactivation", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-tab-hover", "outliner-tab-hover-pins", "outliner-tab-hover-zoom", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
-            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-agents.png", "outliner-option-preview.png", "outliner-tab-hover.png", "outliner-tab-hover-panels.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
+            "checks": ["outliner-native-window", "outliner-hierarchy", "outliner-working-counts", "outliner-disclosure", "outliner-agent-filter", "outliner-agent-compact-rows", "outliner-command-stationary-hover", "outliner-command-restore-focus-zoom", "outliner-command-click-commits", "outliner-command-release-outside", "outliner-command-official-selection", "outliner-command-focus-transfer", "outliner-command-preserves-pin-edits", "outliner-command-deactivation", "outliner-navigation", "outliner-zoom", "outliner-single-tab-bar", "outliner-narrow-tab-bar", "outliner-tab-hover", "outliner-tab-hover-pins", "outliner-tab-hover-zoom", "outliner-pins", "outliner-pin-drag", "outliner-search", "outliner-search-navigation", "outliner-terminal-input", "outliner-quick-terminal", "outliner-close"],
+            "captures": ["outliner.png", "outliner-collapsed.png", "outliner-agents.png", "outliner-command-preview.png", "outliner-tab-hover.png", "outliner-tab-hover-panels.png", "outliner-terminal.png", "outliner-quad.png", "outliner-quad-terminal.png", "outliner-nested.png", "outliner-nested-terminal.png", "outliner-pane.png", "outliner-pane-terminal.png", "outliner-narrow-terminal.png", "outliner-pinned.png", "outliner-pinned-terminal.png", "outliner-search.png", "outliner-search-empty.png", "outliner-search-navigation.png", "outliner-windows.png", "outliner-other-window.png", "outliner-quick.png", "outliner-flat.png"]
         }))?,
     )?;
     eprintln!("Native Outliner smoke passed: {}", directory.display());

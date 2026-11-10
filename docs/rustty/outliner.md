@@ -70,13 +70,13 @@ The funnel button filters for panels with agents and combines with text search.
 The Pinned section keeps all pinned panels visible, regardless of this filter.
 Ancestors stay on each matching panel's row instead of adding separate tree levels.
 
-Hold **Option** (**Alt** on Windows) while hovering an Outliner row or a pin's
-breadcrumb to preview it immediately. Pressing Option after the pointer is
+Hold **Command** (**Control** on Windows) while hovering an Outliner row or a pin's
+breadcrumb to preview it immediately. Pressing the modifier after the pointer is
 already over an entry works too. Release it to return to the last selected
 panel, restoring its tab and zoom. Moving outside the Outliner keeps the current
 preview until release. Clicking or selecting an entry makes that selection
-permanent. The header's **Option: hover** hint changes to **Option: preview**
-while the key is held, with a tooltip explaining the controls.
+permanent. The header's **Cmd: hover** hint (**Ctrl** on Windows) changes to
+**Cmd: preview** while the key is held, with a tooltip explaining the controls.
 
 Breadcrumbs represent quads with just their position icon and zoom indicator;
 quad names remain visible in the tree. Tab breadcrumbs show just the tab name;
