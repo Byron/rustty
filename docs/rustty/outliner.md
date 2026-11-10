@@ -66,6 +66,7 @@ Search ignores case and permits gaps between letters; matched characters in pane
 names are highlighted. Pinned entries remain above the results.
 
 The funnel button filters for panels with agents and combines with text search.
+The Pinned section keeps all pinned panels visible, regardless of this filter.
 Each matching agent gets one compact breadcrumb row, like a pin, even when
 several agents share the same name. Ancestors stay on that row instead of adding
 separate tree levels.

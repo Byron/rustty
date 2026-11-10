@@ -411,11 +411,8 @@ pub fn contents(
 ) -> Output {
     ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
     let (accept, query_changed, navigation) = search.footer(ui);
-    let mut paths = pinned_paths(rows, pinned_panes);
-    let has_pins = paths
-        .iter()
-        .any(|path| !search.agents_only || path.last().is_some_and(|row| row.has_agent));
-    let filter_changed = header(ui, has_pins, &mut search.agents_only);
+    let paths = pinned_paths(rows, pinned_panes);
+    let filter_changed = header(ui, !paths.is_empty(), &mut search.agents_only);
     let mut results =
         (search.open || search.agents_only).then(|| crate::outliner::search(rows, &search.query));
     if search.agents_only
@@ -472,9 +469,6 @@ pub fn contents(
         .iter()
         .find(|(pane, _)| Some(*pane) == search.selected_pane)
         .map(|(_, target)| *target);
-    if search.agents_only {
-        paths.retain(|path| path.last().is_some_and(|row| row.has_agent));
-    }
     let mut output = pins(ui, &paths, pinned_panes, platform_accent);
     if selection_changed && !accept {
         output.preview = selected_target;
@@ -2480,6 +2474,38 @@ mod tests {
             search_click(&context, &rows, &mut search, rects[1].center()).selected,
             Some(Target::Pane { tab: 1, pane: 4 }),
         );
+    }
+
+    #[test]
+    fn agent_filter_keeps_all_pins_visible_even_without_matches() {
+        for query in ["", "No match"] {
+            let context = egui::Context::default();
+            let mut rows = navigation_rows();
+            rows[3].has_agent = true;
+            let mut search = SearchState {
+                agents_only: true,
+                open: !query.is_empty(),
+                query: query.into(),
+                ..Default::default()
+            };
+            let (output, _, _) =
+                search_frame(&context, &rows, &[5, 3], &mut search, Default::default());
+            assert!(output.shapes.iter().any(|shape| matches!(
+                &shape.shape, egui::Shape::Text(text) if text.galley.text() == "Pinned"
+            )));
+            let pins = [5_u64, 3].map(|pane| {
+                context
+                    .read_response(egui::Id::new(("outliner-pin-number", pane)))
+                    .expect("agent filtering keeps every pin")
+                    .rect
+            });
+            assert!(pins[0].top() < pins[1].top(), "pin order stays unchanged");
+            assert!(
+                context
+                    .read_response(egui::Id::new(("outliner-search-result", 5_u64)))
+                    .is_none()
+            );
+        }
     }
 
     #[test]

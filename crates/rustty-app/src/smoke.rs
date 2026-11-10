@@ -6837,9 +6837,9 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
                 }
             }
             if widget_bounds(app, egui::Id::new(("outliner-pin", first))).is_none()
-                || widget_bounds(app, egui::Id::new(("outliner-pin", sibling))).is_some()
+                || widget_bounds(app, egui::Id::new(("outliner-pin", sibling))).is_none()
             {
-                return Err("Outliner agent filter did not filter pinned panels".into());
+                return Err("Outliner agent filter hid a pinned panel".into());
             }
             let compact_rows = [first, second, second_last]
                 .map(|pane| widget_bounds(app, egui::Id::new(("outliner-search-result", pane))));
