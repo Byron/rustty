@@ -7408,17 +7408,25 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
         });
         begin_search(app)?;
         if !app.outliner.as_ref().unwrap().search.query.is_empty()
-            || widget_bounds(app, egui::Id::new(("outliner-row", Target::Tab(first_tab)))).is_none()
+            || app.outline_rows().iter().any(|row| match row.target {
+                Target::Pane { pane, .. } => {
+                    widget_bounds(app, egui::Id::new(("outliner-search-result", pane))).is_none()
+                }
+                _ => false,
+            })
         {
-            return Err("empty Outliner search did not retain the tree".into());
+            return Err("empty Outliner search did not show every panel breadcrumb".into());
         }
         let field = widget_bounds(app, egui::Id::new("outliner-search-query"))
             .ok_or("missing Outliner search field")?;
-        if app.outline_rows().iter().any(|row| {
-            widget_bounds(app, egui::Id::new(("outliner-row", row.target)))
-                .is_some_and(|rect| rect.is_positive() && rect.bottom() > field.top())
+        if app.outline_rows().iter().any(|row| match row.target {
+            Target::Pane { pane, .. } => {
+                widget_bounds(app, egui::Id::new(("outliner-search-result", pane)))
+                    .is_some_and(|rect| rect.is_positive() && rect.bottom() > field.top())
+            }
+            _ => false,
         }) {
-            return Err("Outliner tree extended behind the search field".into());
+            return Err("Outliner results extended behind the search field".into());
         }
         type_query(app, "nts")?;
         if app.focused(window) != Some(first) {

@@ -430,14 +430,7 @@ pub fn contents(
                 .is_some_and(|row| row.agent_state.is_some())
         });
     }
-    let searching = search.agents_only || search.open && !search.query.trim().is_empty();
-    let result_groups = if search.agents_only {
-        (0..results.as_ref().map_or(0, Vec::len))
-            .map(|index| vec![index])
-            .collect()
-    } else {
-        search_groups(results.as_deref().unwrap_or_default())
-    };
+    let searching = search.open || search.agents_only;
     let panes: Vec<_> = results
         .as_deref()
         .unwrap_or_default()
@@ -446,11 +439,6 @@ pub fn contents(
             target @ Target::Pane { pane, .. } => Some((pane, target)),
             _ => None,
         })
-        .collect();
-    let panes: Vec<_> = result_groups
-        .iter()
-        .flatten()
-        .map(|index| panes[*index])
         .collect();
     let previous = search.selected_pane;
     if search
@@ -491,10 +479,8 @@ pub fn contents(
         let results = search_results(
             ui,
             results.as_deref().unwrap_or_default(),
-            &result_groups,
             search.selected_pane,
             query_changed || selection_changed || filter_changed,
-            search.agents_only,
         );
         if let Some(Target::Pane { pane, .. }) = results.selected {
             search.selected_pane = Some(pane);
@@ -698,9 +684,6 @@ pub fn contents(
                 if response.clicked() {
                     response.surrender_focus();
                     output.selected = Some(row.target);
-                    if search.open && let Target::Pane { pane, .. } = row.target {
-                        search.selected_pane = Some(pane);
-                    }
                 }
                 if response.hovered() {
                     output.hovered = Some(row.target);
@@ -726,47 +709,11 @@ pub fn contents(
     output
 }
 
-fn search_groups(results: &[crate::outliner::SearchResult]) -> Vec<Vec<usize>> {
-    let mut groups: Vec<Vec<usize>> = Vec::new();
-    let mut names = std::collections::HashMap::new();
-    let mut order = std::collections::HashMap::new();
-    for (index, result) in results.iter().enumerate() {
-        for row in &result.path {
-            order.entry(row.target).or_insert(index);
-        }
-        let Some(row) = result.path.last() else {
-            continue;
-        };
-        let Target::Pane { tab, .. } = row.target else {
-            continue;
-        };
-        let parent = result.path.iter().rev().nth(1).map(|row| row.target);
-        let group = *names
-            .entry((parent, tab, row.label.as_str()))
-            .or_insert_with(|| {
-                groups.push(Vec::new());
-                groups.len() - 1
-            });
-        groups[group].push(index);
-    }
-    // Rank branches by their best match, keeping each branch's descendants together.
-    groups.sort_by_cached_key(|group| {
-        results[group[0]]
-            .path
-            .iter()
-            .map(|row| order[&row.target])
-            .collect::<Vec<_>>()
-    });
-    groups
-}
-
 fn search_results(
     ui: &mut egui::Ui,
     results: &[crate::outliner::SearchResult],
-    groups: &[Vec<usize>],
     selected_pane: Option<Id>,
     changed: bool,
-    compact: bool,
 ) -> Output {
     let scroll = egui::ScrollArea::vertical()
         .id_salt("outliner-search-results")
@@ -781,62 +728,23 @@ fn search_results(
     let mut output = Output::default();
     scroll.show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
-        let mut ancestors = Vec::new();
         if results.is_empty() {
             ui.weak("No matching panels");
         }
-        for group in groups {
-            let result = &results[group[0]];
+        for result in results {
             let Some(row) = result.path.last() else {
                 continue;
             };
             let Target::Pane { pane, .. } = row.target else {
                 continue;
             };
-            let path = if compact { &[][..] } else { &result.path[..result.path.len() - 1] };
-            let shared = ancestors
-                .iter()
-                .zip(path)
-                .take_while(|(target, row)| **target == row.target)
-                .count();
-            for (depth, ancestor) in path.iter().enumerate().skip(shared) {
-                let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
-                let left = rect.left() + 7.0 + depth as f32 * INDENT;
-                paint_icon(
-                    ui.painter(),
-                    Rect::from_center_size(
-                        Pos2::new(left + ICON_SIZE / 2.0, rect.center().y),
-                        Vec2::splat(ICON_SIZE),
-                    ),
-                    ancestor,
-                    ui.visuals().weak_text_color(),
-                );
-                paint_label(
-                    ui,
-                    &ancestor.label,
-                    paint_working(ui.painter(), Rect::from_min_max(
-                        Pos2::new((left + ICON_SIZE + 6.0).min(rect.right()), rect.top()),
-                        rect.max,
-                    ), ancestor.working, ui.visuals().weak_text_color()),
-                    left + ICON_SIZE + 6.0,
-                    ui.visuals().weak_text_color(),
-                    &[],
-                );
-                ui.interact(rect, ui.id().with(("search-ancestor", ancestor.target)), Sense::hover())
-                    .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, description(ancestor)));
-            }
-            ancestors = path.iter().map(|row| row.target).collect();
             let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ROW_HEIGHT));
-            let rect = Rect::from_min_max(
-                Pos2::new((rect.left() + path.len() as f32 * INDENT).min(rect.right()), rect.top()),
-                rect.max,
-            );
             let response = ui.interact(
                 rect,
-                if group.len() > 1 { egui::Id::new(("outliner-search-group", pane)) } else { egui::Id::new(("outliner-search-result", pane)) },
+                egui::Id::new(("outliner-search-result", pane)),
                 Sense::click(),
             );
-            let active = group.iter().any(|index| matches!(results[*index].path.last().unwrap().target, Target::Pane { pane, .. } if selected_pane == Some(pane)));
+            let active = selected_pane == Some(pane);
             if active {
                 let color = ui.visuals().text_color();
                 ui.painter()
@@ -851,29 +759,26 @@ fn search_results(
                 ui.painter()
                     .rect_filled(rect, 3, ui.visuals().widgets.hovered.bg_fill);
             }
-            let working = group.iter().map(|index| results[*index].path.last().unwrap().working).sum();
-            let label_rect = paint_working(ui.painter(), rect, working, ui.visuals().weak_text_color());
+            let label_rect = paint_working(
+                ui.painter(),
+                rect,
+                row.working,
+                ui.visuals().weak_text_color(),
+            );
             let mut child = ui.new_child(
                 egui::UiBuilder::new()
                     .id_salt(("search-path", pane))
                     .max_rect(label_rect.shrink2(Vec2::new(3.0, 2.0))),
             );
-            let panels: Vec<_> = group.iter().map(|index| results[*index].path.last().unwrap()).collect();
-            let breadcrumb = if compact {
-                match result.path.first().map(|row| row.target) {
-                    Some(Target::Window(_)) => &result.path[1..],
-                    _ => &result.path,
-                }
-            } else {
-                &result.path[result.path.len() - 1..]
+            let breadcrumb = match result.path.first().map(|row| row.target) {
+                Some(Target::Window(_)) => &result.path[1..],
+                _ => &result.path,
             };
-            let interaction = breadcrumb_with_panels(
+            let interaction = breadcrumb_path(
                 &mut child,
                 breadcrumb,
                 label_rect.width() - 6.0,
                 Some(&result.highlights),
-                &panels,
-                selected_pane,
                 None,
                 None,
             );
@@ -885,22 +790,20 @@ fn search_results(
                     egui::WidgetType::SelectableLabel,
                     true,
                     active,
-                    if working > 0 {
-                        format!("Search result: {} · {working} running", row.label)
+                    if row.working > 0 {
+                        format!("Search result: {} · {} running", row.label, row.working)
                     } else {
                         format!("Search result: {}", row.label)
                     },
                 )
             });
-            if let Some(target) = interaction.selected {
-                output.selected = Some(target);
-            } else if response.clicked() {
+            if response.clicked() {
                 response.surrender_focus();
                 output.selected = Some(row.target);
             }
             if response.hovered() || interaction.hovered.is_some() {
                 // A search breadcrumb represents its panel, including its non-clickable ancestors.
-                output.hovered = interaction.hovered.filter(|_| group.len() > 1).or(Some(row.target));
+                output.hovered = Some(row.target);
             }
         }
     });
@@ -1197,8 +1100,7 @@ pub fn breadcrumb(ui: &mut egui::Ui, rows: &[Row], max_width: f32) -> Option<Tar
     ui.scope(|ui| {
         let accent = ui.visuals().selection.bg_fill;
         let background = ui.painter().add(egui::Shape::Noop);
-        let selected =
-            breadcrumb_with_panels(ui, rows, max_width, None, &[], None, None, Some(accent));
+        let selected = breadcrumb_path(ui, rows, max_width, None, None, Some(accent));
         ui.painter().set(
             background,
             egui::Shape::rect_filled(ui.min_rect(), 4, accent.gamma_multiply(0.15)),
@@ -1214,17 +1116,14 @@ fn breadcrumb_with_pin_highlight(
     max_width: f32,
     pin_highlight: Option<(Rect, TabAccent, egui::layers::ShapeIdx)>,
 ) -> Output {
-    breadcrumb_with_panels(ui, rows, max_width, None, &[], None, pin_highlight, None)
+    breadcrumb_path(ui, rows, max_width, None, pin_highlight, None)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn breadcrumb_with_panels(
+fn breadcrumb_path(
     ui: &mut egui::Ui,
     rows: &[Row],
     max_width: f32,
     highlights: Option<&[Range<usize>]>,
-    panels: &[&Row],
-    selected_pane: Option<Id>,
     pin_highlight: Option<(Rect, TabAccent, egui::layers::ShapeIdx)>,
     label_color: Option<Color32>,
 ) -> Output {
@@ -1264,20 +1163,13 @@ fn breadcrumb_with_panels(
     let mut widths: Vec<f32> = rows
         .iter()
         .zip(&labels)
-        .enumerate()
-        .map(|(index, (row, label))| {
+        .map(|(row, label)| {
             ui.painter()
                 .layout_no_wrap(label.clone(), FontId::proportional(13.0), foreground)
                 .size()
                 .x
                 + 2.0 * CRUMB_PADDING
-                + if index + 1 == rows.len() && panels.len() > 1 {
-                    panels
-                        .iter()
-                        .map(|panel| row_icon_width(panel))
-                        .sum::<f32>()
-                        + panels.len() as f32 * CRUMB_ICON_GAP
-                } else if row.tab_index.is_none() {
+                + if row.tab_index.is_none() {
                     row_icon_width(row)
                         + if label.is_empty() {
                             0.0
@@ -1362,66 +1254,7 @@ fn breadcrumb_with_panels(
                 egui::StrokeKind::Inside,
             );
         }
-        let text_left = if index + 1 == rows.len() && panels.len() > 1 {
-            let icons_width: f32 = panels
-                .iter()
-                .map(|panel| row_icon_width(panel) + CRUMB_ICON_GAP)
-                .sum();
-            let scale = ((width - 2.0 * CRUMB_PADDING).max(0.0) / icons_width).min(1.0);
-            let mut left = x + CRUMB_PADDING;
-            for panel in panels {
-                let Target::Pane { pane, .. } = panel.target else {
-                    continue;
-                };
-                let icon = Rect::from_min_size(
-                    Pos2::new(left, rect.top()),
-                    Vec2::new(
-                        (row_icon_width(panel) + CRUMB_ICON_GAP) * scale,
-                        rect.height(),
-                    ),
-                );
-                let response = ui.interact(
-                    icon,
-                    egui::Id::new(("outliner-search-result", pane)),
-                    Sense::click(),
-                );
-                paint_row_icons(
-                    &painter.with_clip_rect(icon.intersect(painter.clip_rect())),
-                    Rect::from_min_max(
-                        icon.min,
-                        Pos2::new(icon.right() - CRUMB_ICON_GAP * scale, icon.bottom()),
-                    ),
-                    panel,
-                    foreground,
-                );
-                if panel.focused || selected_pane == Some(pane) {
-                    painter.rect_stroke(
-                        icon.shrink(0.5),
-                        3,
-                        Stroke::new(1.0, foreground),
-                        egui::StrokeKind::Inside,
-                    );
-                }
-                response.widget_info(|| {
-                    egui::WidgetInfo::selected(
-                        egui::WidgetType::SelectableLabel,
-                        ui.is_enabled(),
-                        selected_pane == Some(pane),
-                        description(panel),
-                    )
-                });
-                if response.clicked() {
-                    response.surrender_focus();
-                    output.selected = Some(panel.target);
-                }
-                if response.hovered() {
-                    output.hovered = Some(panel.target);
-                }
-                response.on_hover_text(description(panel));
-                left = icon.right();
-            }
-            left
-        } else if row.tab_index.is_some() {
+        let text_left = if row.tab_index.is_some() {
             x + CRUMB_PADDING
         } else {
             let icons = Rect::from_min_max(Pos2::new(x + CRUMB_PADDING, rect.top()), rect.max);
@@ -2131,7 +1964,7 @@ mod tests {
     }
 
     #[test]
-    fn working_counts_follow_search_groups_and_pinned_panes() {
+    fn working_counts_follow_individual_search_results_and_pinned_panes() {
         let context = egui::Context::default();
         let mut rows = rows();
         for row in &mut rows {
@@ -2155,10 +1988,10 @@ mod tests {
                 .shapes
                 .iter()
                 .filter(|shape| matches!(
-                    &shape.shape, egui::Shape::Text(text) if text.galley.text() == "▶ 2"
+                    &shape.shape, egui::Shape::Text(text) if text.galley.text() == "▶ 1"
                 ))
                 .count(),
-            4
+            2
         );
         let mut output = context.run_ui(egui::RawInput::default(), |ui| {
             pins(ui, &pinned_paths(&rows, &[3]), &[3], [210, 110, 70]);
@@ -2280,7 +2113,7 @@ mod tests {
             egui::CentralPanel::default().show(root, |ui| {
                 result = contents(ui, rows, pins, search, [210, 110, 70]);
                 scroll_id = ui.make_persistent_id(egui::IdSalt::new(
-                    if search.agents_only || search.open && !search.query.trim().is_empty() {
+                    if search.open || search.agents_only {
                         "outliner-search-results"
                     } else {
                         "outliner-rows"
@@ -2489,42 +2322,52 @@ mod tests {
     }
 
     #[test]
-    fn agent_filter_gives_each_panel_one_compact_breadcrumb_row() {
-        let context = egui::Context::default();
-        let mut rows = navigation_rows();
-        for row in &mut rows[3..5] {
-            row.agent_state = Some(rustty::vt::agent::State::Working);
-            row.label = "Same agent".into();
+    fn search_and_agent_filter_give_each_panel_one_full_breadcrumb_row() {
+        for agents_only in [false, true] {
+            for query in ["", "Same"] {
+                let context = egui::Context::default();
+                let mut rows = navigation_rows();
+                rows.truncate(5);
+                for row in &mut rows[3..] {
+                    row.agent_state = agents_only.then_some(rustty::vt::agent::State::Working);
+                    row.label = "Same panel".into();
+                }
+                let mut search = SearchState {
+                    open: !agents_only || !query.is_empty(),
+                    agents_only,
+                    query: query.into(),
+                    ..Default::default()
+                };
+                let (output, interaction, _) =
+                    search_frame(&context, &rows, &[], &mut search, Default::default());
+                assert_eq!(interaction, Output::default());
+                assert_eq!(search.selected_pane, None);
+                let rects = [3_u64, 4].map(|pane| {
+                    context
+                        .read_response(egui::Id::new(("outliner-search-result", pane)))
+                        .expect("every matching panel has its own row")
+                        .rect
+                });
+                assert_eq!(rects[0].height(), ROW_HEIGHT);
+                assert_eq!(rects[1].top() - rects[0].top(), ROW_HEIGHT + 2.0);
+                assert_eq!(rects[0].left(), rects[1].left());
+                assert_eq!(
+                    output
+                        .shapes
+                        .iter()
+                        .filter(|shape| matches!(
+                            &shape.shape, egui::Shape::Text(text) if text.galley.text() == "Work"
+                        ))
+                        .count(),
+                    2,
+                    "each panel includes its tab breadcrumb on the same line"
+                );
+                assert_eq!(
+                    search_click(&context, &rows, &mut search, rects[1].center()).selected,
+                    Some(Target::Pane { tab: 1, pane: 4 }),
+                );
+            }
         }
-        let mut search = SearchState {
-            agents_only: true,
-            ..Default::default()
-        };
-        let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
-        let rects = [3_u64, 4].map(|pane| {
-            context
-                .read_response(egui::Id::new(("outliner-search-result", pane)))
-                .expect("every matching agent has its own row")
-                .rect
-        });
-        assert_eq!(rects[0].height(), ROW_HEIGHT);
-        assert_eq!(rects[1].top() - rects[0].top(), ROW_HEIGHT + 2.0);
-        assert_eq!(rects[0].left(), rects[1].left());
-        assert_eq!(
-            output
-                .shapes
-                .iter()
-                .filter(|shape| matches!(
-                    &shape.shape, egui::Shape::Text(text) if text.galley.text() == "Work"
-                ))
-                .count(),
-            2,
-            "each agent includes its tab breadcrumb on the same line"
-        );
-        assert_eq!(
-            search_click(&context, &rows, &mut search, rects[1].center()).selected,
-            Some(Target::Pane { tab: 1, pane: 4 }),
-        );
     }
 
     #[test]
@@ -2640,7 +2483,7 @@ mod tests {
     }
 
     #[test]
-    fn search_groups_shared_ancestors_once_and_navigates_in_display_order() {
+    fn search_repeats_ancestor_paths_and_navigates_in_fuzzy_rank_order() {
         let context = egui::Context::default();
         let mut rows = navigation_rows();
         rows[3].label = "Panel".into();
@@ -2666,11 +2509,6 @@ mod tests {
             })
             .collect();
         rows.extend(other);
-        let results = crate::outliner::search(&rows, "panel");
-        assert_eq!(
-            search_groups(&results),
-            [vec![0], vec![2], vec![3], vec![1]]
-        );
         let mut search = SearchState::default();
         search.start();
         search.query = "panel".into();
@@ -2678,20 +2516,20 @@ mod tests {
             search_frame(&context, &rows, &[], &mut search, Default::default());
         }
         let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
-        assert_eq!(output.shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Work")).count(), 2);
+        assert_eq!(output.shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Work")).count(), 4);
         let result = |pane| {
             context
                 .read_response(egui::Id::new(("outliner-search-result", pane)))
                 .unwrap()
                 .rect
         };
-        let rects = [3_u64, 4, 5, 23].map(result);
+        let rects = [3_u64, 23, 4, 5].map(result);
         assert!(
             rects
                 .windows(2)
                 .all(|pair| pair[0].bottom() < pair[1].top())
         );
-        for pane in [3, 4, 5, 23, 3] {
+        for pane in [3, 23, 4, 5, 3] {
             let (_, output, _) = search_frame(
                 &context,
                 &rows,
@@ -3107,8 +2945,8 @@ mod tests {
                     matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Tests")
                 })
                 .count(),
-            3,
-            "pin, quad heading, and search result each draw the name once"
+            2,
+            "pin and search result each draw the name once"
         );
         let mut matched = Vec::new();
         for shape in &output.shapes {
@@ -3332,7 +3170,7 @@ mod tests {
     }
 
     #[test]
-    fn search_footer_clips_long_trees_and_results_even_at_minimum_window_height() {
+    fn search_footer_clips_empty_and_filtered_results_even_at_minimum_window_height() {
         let template = rows().pop().unwrap();
         let rows: Vec<_> = (0..30)
             .map(|index| Row {
@@ -3369,14 +3207,10 @@ mod tests {
                     .unwrap()
                     .rect;
                 for row in &rows {
-                    let id = if query.is_empty() {
-                        egui::Id::new(("outliner-row", row.target))
-                    } else {
-                        let Target::Pane { pane, .. } = row.target else {
-                            unreachable!()
-                        };
-                        egui::Id::new(("outliner-search-result", pane))
+                    let Target::Pane { pane, .. } = row.target else {
+                        unreachable!()
                     };
+                    let id = egui::Id::new(("outliner-search-result", pane));
                     let rect = context.read_response(id).unwrap().interact_rect;
                     if rect.is_positive() {
                         assert!(
@@ -4019,7 +3853,7 @@ mod tests {
     }
 
     #[test]
-    fn sibling_panels_have_separate_tree_rows_and_share_only_search_breadcrumbs() {
+    fn sibling_panels_have_separate_rows_in_tree_and_search() {
         let context = egui::Context::default();
         context.enable_accesskit();
         let mut rows = rows();
@@ -4070,7 +3904,7 @@ mod tests {
             search_frame(&context, &rows, &[], &mut search, Default::default());
         }
         let (output, _, _) = search_frame(&context, &rows, &[], &mut search, Default::default());
-        assert_eq!(output.shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Tests")).count(), 1);
+        assert_eq!(output.shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Tests")).count(), 2);
         let second = context
             .read_response(egui::Id::new(("outliner-search-result", 4_u64)))
             .unwrap()
@@ -4080,16 +3914,17 @@ mod tests {
             Some(rows[4].target)
         );
         assert!(search.open);
-        let group = context
-            .read_response(egui::Id::new(("outliner-search-group", 3_u64)))
+        let first = context
+            .read_response(egui::Id::new(("outliner-search-result", 3_u64)))
             .unwrap()
             .rect;
+        assert!(first.bottom() < second.top());
         assert_eq!(
             search_click(
                 &context,
                 &rows,
                 &mut search,
-                group.right_center() - Vec2::new(10.0, 0.0)
+                first.right_center() - Vec2::new(10.0, 0.0)
             )
             .selected,
             Some(rows[3].target)
@@ -4639,7 +4474,7 @@ mod tests {
     }
 
     #[test]
-    fn grouped_search_keeps_each_agents_mark_with_its_own_click_target() {
+    fn search_keeps_each_agents_mark_with_its_own_click_target() {
         use rustty::vt::agent::State;
         for count in [2, 8] {
             let context = egui::Context::default();

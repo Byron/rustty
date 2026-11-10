@@ -61,15 +61,14 @@ Clicking the pin icon or toggling an existing pin removes it. Pins and their ord
 are saved with the workspace, and closing a panel removes its pin.
 
 With the Outliner focused, press `/` to open a search field at the bottom. The tree
-stays visible until you type, then becomes a list of matching panel breadcrumbs.
+immediately becomes a list with one full breadcrumb row per panel, like pins.
+Typing filters those rows in fuzzy-match order, with the closest matches first.
 Search ignores case and permits gaps between letters; matched characters in panel
 names are highlighted. Pinned entries remain above the results.
 
 The funnel button filters for panels with agents and combines with text search.
 The Pinned section keeps all pinned panels visible, regardless of this filter.
-Each matching agent gets one compact breadcrumb row, like a pin, even when
-several agents share the same name. Ancestors stay on that row instead of adding
-separate tree levels.
+Ancestors stay on each matching panel's row instead of adding separate tree levels.
 
 Hold **Option** (**Alt** on Windows) while hovering an Outliner row or a pin's
 breadcrumb to preview it immediately. Pressing Option after the pointer is
@@ -89,20 +88,18 @@ The position icon, status symbol, and name have separate spacing; tooltips name
 the agent state. Visiting a completed agent changes its symbol to idle, matching
 the Stream Deck.
 
-Every panel has its own row in the tree, even when names match. In search results,
-panels with the same name under the same quad or tab share one breadcrumb. Each
-keeps its own clickable position icon; clicking the shared name selects the first
-icon's panel. Matching names in different parent groups remain separate. Pins
-retain their individual entries and order.
+Every panel has its own row in the tree and search results, even when names match.
+Clicking anywhere in a result's breadcrumb selects that panel. Pins retain their
+individual entries and order.
 
 `Ctrl+N` and `Ctrl+P` select the next or previous match, wrapping at either end.
 The terminal follows selection changes while keyboard input stays in the Outliner.
-Editing the query selects the first match; clicking a result selects and focuses it
-while keeping search open.
+Opening search or editing the query does not select a result or change terminal
+focus; clicking a result selects and focuses it while keeping search open.
 
-Enter, Escape, and `Ctrl+[` focus the selected result and exit search, using the
-first result until you select another. With no matches, they exit without changing
-focus. The `×` button closes search without changing panel focus.
+Enter, Escape, and `Ctrl+[` focus the selected result and exit search. With no
+selection, they exit without changing focus. The `×` button closes search without
+changing panel focus.
 
 A square icon maps each panel's position within its parent using a filled shape.
 Quad icons use the same geometry with an outlined position shape and map the quad's
