@@ -798,7 +798,7 @@ impl Tab {
         }
     }
     pub fn begin_peek(&mut self, chord: Modifiers) -> Option<Peek> {
-        if chord == Modifiers::default() {
+        if chord == Modifiers::default() || self.peek_targets(Rect::UNIT, [0.0; 2]).is_empty() {
             return None;
         }
         if let Some(quadrant) = self.quadrant_zoom
@@ -2628,10 +2628,43 @@ mod tests {
         }
         let mut tab = quadrants();
         assert!(tab.begin_peek(Modifiers::default()).is_none());
-        let mut single = Tab::new(1, 2, "/tmp".into());
-        let peek = single.begin_peek(chord).unwrap();
-        assert_eq!(single.finish_peek(peek), single.focused);
-        assert_eq!((single.zoom, single.quadrant_zoom), (None, None));
+    }
+
+    #[test]
+    fn peek_requires_targets_before_changing_zoom() {
+        let chord = Modifiers {
+            super_key: true,
+            ..Modifiers::default()
+        };
+        let mut tab = Tab::new(1, 2, "/tmp".into());
+        for panels in 1..=3 {
+            if panels > 1 {
+                tab.split(
+                    panels * 2 + 1,
+                    panels * 2 + 2,
+                    Direction::Right,
+                    "/tmp".into(),
+                );
+            }
+            assert!(tab.peek_targets(Rect::UNIT, [0.0; 2]).is_empty());
+            for zoomed in [false, true] {
+                tab.zoom = zoomed.then_some(tab.focused);
+                let before = (tab.focused, tab.zoom, tab.quadrant_zoom);
+                assert!(tab.begin_peek(chord).is_none());
+                assert_eq!((tab.focused, tab.zoom, tab.quadrant_zoom), before);
+            }
+        }
+        tab.quad_roots.insert(tab.root.id);
+        let peek = tab.begin_peek(chord).expect("designated root permits peek");
+        assert_eq!(tab.finish_peek(peek), tab.focused);
+        assert_eq!(tab.zoom, Some(tab.focused));
+
+        let mut tab = Tab::new(1, 2, "/tmp".into());
+        tab.split(3, 4, Direction::Right, "/tmp".into());
+        tab.split(5, 6, Direction::Down, "/tmp".into());
+        tab.focus(2);
+        assert!(tab.root.quadrant(tab.focused).is_none());
+        assert!(tab.begin_peek(chord).is_some());
     }
 
     #[test]

@@ -314,6 +314,13 @@ impl App {
         config: &Config,
         now: Instant,
     ) -> bool {
+        if host.peek.is_some()
+            && self
+                .tab(host.id)
+                .is_none_or(|tab| tab.peek_targets(Rect::UNIT, [0.0; 2]).is_empty())
+        {
+            self.cancel_peek(host);
+        }
         if host.peek.is_none() {
             host.agent_peek = Overlay::default();
             return false;

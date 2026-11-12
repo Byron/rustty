@@ -24,6 +24,7 @@ impl Timing {
         let native = *app.windows.keys().next().ok_or("missing timing window")?;
         let window = app.windows[&native].id;
         let source = app.focused(window).unwrap();
+        app.tab_mut(window).unwrap().quad_roots.insert(source);
         let target_tab = app.workspace.id();
         let target = app.workspace.id();
         let neighbor = app.workspace.id();
@@ -278,6 +279,7 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
     ids.push(hidden);
     app.reconcile(event_loop);
     app.loaded.config.window_animations = Some(true);
+    app.loaded.config.split_animation_duration = Duration::ZERO;
     app.loaded.config.quad_peek_animation_duration = Duration::ZERO;
     app.loaded.config.agent_peek_animation_duration = Duration::ZERO;
     app.panes[&hidden].session.resize(48, 36, 0, 0)?;
@@ -315,11 +317,71 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
         super_key: true,
         ..Default::default()
     };
-    host.modifiers = winit::event::Modifiers::from(winit::keyboard::ModifiersState::SUPER);
+    app.loaded.config.keybinds.push(config::KeyBinding::parse(
+        "super+h=goto_split:quadrant_left",
+    )?);
+    app.windows.insert(native, host);
+    app.window_event(
+        event_loop,
+        native,
+        WindowEvent::ModifiersChanged(winit::keyboard::ModifiersState::SUPER.into()),
+    );
+    host = app.windows.remove(&native).unwrap();
+    assert!(!app.action(
+        event_loop,
+        &mut host,
+        Action::GotoSplit(Direction::QuadrantLeft),
+        true,
+    ));
+    host.navigation_warning = None;
+    assert!(host.peek.is_none(), "single-pane tabs have no quads");
+    assert_eq!(app.agent_peek_reports().len(), 7);
+    smoke::capture_window(
+        app,
+        event_loop,
+        &mut host,
+        &directory.join("single-pane-prefix.png"),
+    )?;
+    assert!(host.agent_peek.footer.is_empty());
+    assert!(!host.agent_peek.state.active());
+    assert!(host.presented_peek.is_none());
+    let neighbor = app.workspace.id();
+    let split = app.workspace.id();
+    let tab = app.tab_mut(one).unwrap();
+    tab.split(neighbor, split, Direction::Right, fixture_directory());
+    tab.focus(first);
+    app.spawn_pane(neighbor, fixture_directory(), None, None)?;
+    app.windows.insert(native, host);
+    app.window_event(
+        event_loop,
+        native,
+        WindowEvent::ModifiersChanged(winit::keyboard::ModifiersState::SUPER.into()),
+    );
+    host = app.windows.remove(&native).unwrap();
+    assert!(!app.action(
+        event_loop,
+        &mut host,
+        Action::GotoSplit(Direction::QuadrantLeft),
+        true,
+    ));
+    host.navigation_warning = None;
+    assert!(host.peek.is_none(), "two-pane tabs have no quads");
+    smoke::capture_window(
+        app,
+        event_loop,
+        &mut host,
+        &directory.join("two-pane-prefix.png"),
+    )?;
+    assert_eq!(host.rects.len(), 2);
+    assert!(host.agent_peek.footer.is_empty());
+    assert!(!host.agent_peek.state.active());
+    assert!(host.presented_peek.is_none());
+    app.loaded.config.keybinds.pop();
+    app.tab_mut(one).unwrap().quad_roots.insert(split);
     host.peek = app.tab_mut(one).unwrap().begin_peek(chord);
     assert!(
         host.peek.is_some(),
-        "single-pane tabs must offer agent peek"
+        "designated quad roots offer agent peek"
     );
     smoke::capture_window(app, event_loop, &mut host, &directory.join("selectors.png"))?;
     assert_eq!(host.agent_peek.footer.len(), 8);
@@ -351,6 +413,47 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
         Some(vt::MouseButton::Left),
     );
     smoke::capture_window(app, event_loop, &mut host, &directory.join("all.png"))?;
+    assert_eq!(host.agent_peek.state.cards.len(), 7);
+    app.tab_mut(one).unwrap().quad_roots.remove(&split);
+    smoke::capture_window(
+        app,
+        event_loop,
+        &mut host,
+        &directory.join("last-quad-removed.png"),
+    )?;
+    assert!(host.peek.is_none());
+    assert!(host.agent_peek.footer.is_empty());
+    assert!(!host.agent_peek.state.active());
+    assert!(
+        host.agent_peek
+            .composed
+            .as_ref()
+            .unwrap()
+            .frame
+            .quads
+            .is_empty()
+    );
+    assert!(host.presented_peek.is_none());
+    app.tab_mut(one).unwrap().quad_roots.insert(split);
+    host.peek = app.tab_mut(one).unwrap().begin_peek(chord);
+    smoke::capture_window(
+        app,
+        event_loop,
+        &mut host,
+        &directory.join("quad-restored-selectors.png"),
+    )?;
+    host.mouse = all;
+    app.mouse(
+        &mut host,
+        vt::MouseAction::Press,
+        Some(vt::MouseButton::Left),
+    );
+    smoke::capture_window(
+        app,
+        event_loop,
+        &mut host,
+        &directory.join("quad-restored-agents.png"),
+    )?;
     assert_eq!(host.agent_peek.state.cards.len(), 7);
     for card in &host.agent_peek.state.cards {
         let (outer, content) = host.agent_peek.geometry(card).unwrap();
@@ -864,7 +967,7 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
         directory.join("result.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
             "passed": true, "native_focus_checked": false,
-            "checks": ["all-stream-deck-states", "single-pane-peek", "zero-count-hidden", "filter-toggles", "shared-panels-retained", "hover-keeps-geometry", "source-aspect-ratios", "tight-preview-hit-targets", "prefix-release-ends-overlay", "prefix-release-cancels-landing", "pty-grids-unchanged", "hidden-pane-live-update", "state-changes-retain-numbers", "no-input-or-preview-acknowledgement", "same-window-continuous-motion", "same-window-background", "same-window-frozen-texture", "same-window-opaque-float", "same-window-uniform-glyph-scale", "native-pixel-handoff", "same-tab-parent-quad-landing", "cross-tab-selection", "cross-window-selection", "parent-quad-zoom", "selection-acknowledgement"],
+            "checks": ["all-stream-deck-states", "no-quads-no-peek-overlays", "designated-root-peek", "zero-count-hidden", "filter-toggles", "shared-panels-retained", "hover-keeps-geometry", "source-aspect-ratios", "tight-preview-hit-targets", "prefix-release-ends-overlay", "prefix-release-cancels-landing", "pty-grids-unchanged", "hidden-pane-live-update", "state-changes-retain-numbers", "no-input-or-preview-acknowledgement", "same-window-continuous-motion", "same-window-background", "same-window-frozen-texture", "same-window-opaque-float", "same-window-uniform-glyph-scale", "native-pixel-handoff", "same-tab-parent-quad-landing", "cross-tab-selection", "cross-window-selection", "parent-quad-zoom", "selection-acknowledgement"],
         }))?,
     )?;
     eprintln!("Native agent peek passed: {}", directory.display());

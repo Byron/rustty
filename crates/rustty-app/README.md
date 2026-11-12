@@ -436,7 +436,8 @@ quad or panel when Peek started zoomed. Losing native window focus cancels an
 explicit selection; an untouched Peek restores its starting zoom.
 
 **Agent Peek** projects live panels from all tabs and windows over the dimmed Quad
-Peek view. It is also available in tabs without quads. The bottom selector bar
+Peek view. Tabs without inferred quads or designated quad roots show no Peek
+overlays, even while the Peek chord is held. The bottom selector bar
 shows the same status icons as filled Stream Deck slots, with panel counts and
 shortcut letters; empty states are hidden. No Stream Deck device is required.
 
