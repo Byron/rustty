@@ -281,8 +281,7 @@ pub fn card_rect(bounds: Rect, index: usize, count: usize) -> Rect {
         cell,
     )
     .shrink(8.0);
-    let width = cell.width().min(cell.height() * 1.6);
-    let size = Vec2::new(width, width / 1.6) * if count == 1 { 0.8 } else { 1.0 };
+    let size = cell.size() * if count == 1 { 0.8 } else { 1.0 };
     Rect::from_center_size(cell.center(), size)
 }
 
@@ -407,10 +406,19 @@ mod tests {
             for index in 0..count {
                 let card = card_rect(bounds, index, count);
                 assert!(bounds.contains_rect(card));
-                assert!((card.width() / card.height() - 1.6).abs() < 0.001);
             }
         }
         assert!(card_rect(bounds, 0, 1).width() < bounds.width());
+    }
+
+    #[test]
+    fn preview_slots_fill_square_cells_with_small_gutters() {
+        let bounds = Rect::from_min_size(Pos2::new(20.0, 40.0), Vec2::splat(1500.0));
+        let first = card_rect(bounds, 0, 8);
+        assert_eq!(first.size(), Vec2::splat(484.0));
+        assert_eq!(card_rect(bounds, 1, 8).left() - first.right(), 16.0);
+        assert_eq!(card_rect(bounds, 3, 8).top() - first.bottom(), 16.0);
+        assert!(bounds.contains_rect(card_rect(bounds, 7, 8)));
     }
 
     #[test]
