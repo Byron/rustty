@@ -826,6 +826,10 @@ impl Tab {
         if self.zoom.is_some() || self.quadrant_zoom.is_some() || !self.root.contains(peek.target) {
             return self.focused;
         }
+        if !peek.navigation_used && peek.quadrant.is_none() {
+            self.zoom = peek.full_zoom.filter(|pane| self.root.contains(*pane));
+            return peek.target;
+        }
         if let Some(quad) = peek
             .selected_quad
             .filter(|quad| self.quad_path(peek.target).contains(quad))
@@ -2591,7 +2595,7 @@ mod tests {
         }
     }
     #[test]
-    fn peek_without_quad_zoom_enters_the_current_or_numbered_quad() {
+    fn peek_without_quad_zoom_preserves_zoom_unless_numbered() {
         let chord = Modifiers {
             super_key: true,
             ..Modifiers::default()
@@ -2607,23 +2611,19 @@ mod tests {
                 let mut peek = tab.begin_peek(chord).expect("peek without quad zoom");
                 assert_eq!((tab.zoom, tab.quadrant_zoom), (None, None));
                 assert_eq!(tab.visible_panes(true).len(), 5);
-                let (target, quad) = if numbered {
+                let (target, zoom, quadrant_zoom) = if numbered {
                     let targets = tab.peek_targets(Rect::UNIT, [0.0; 2]);
                     let index = targets.iter().position(|target| target.root == 5).unwrap();
                     assert_eq!(
                         tab.select_peek_target(&mut peek, index, Rect::UNIT, [0.0; 2]),
                         Some(5)
                     );
-                    (5, 5)
+                    (5, Some(5), Some(5))
                 } else {
-                    (9, 10)
+                    (9, pane_zoom.then_some(9), None)
                 };
                 assert_eq!(tab.finish_peek(peek), target);
-                assert_eq!(tab.quadrant_zoom, Some(quad));
-                assert_eq!(
-                    tab.zoom,
-                    Some(if pane_zoom && !numbered { target } else { quad })
-                );
+                assert_eq!((tab.zoom, tab.quadrant_zoom), (zoom, quadrant_zoom));
             }
         }
         let mut tab = quadrants();
@@ -2665,7 +2665,7 @@ mod tests {
         tab.toggle_zoom();
         let peek = tab.begin_peek(chord).unwrap();
         assert_eq!(tab.finish_peek(peek), 5);
-        assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(5), Some(5)));
+        assert_eq!((tab.zoom, tab.quadrant_zoom), (Some(5), None));
         assert!(tab.unzoom_after_blocked_navigation());
         tab.focus(2);
         tab.toggle_quadrant_zoom();

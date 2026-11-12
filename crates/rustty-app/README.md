@@ -430,9 +430,10 @@ quad roots, ordered top-to-bottom then left-to-right. Roots have a double outlin
 labels sharing a corner are offset so both remain readable. While holding the
 Peek chord, press **1–9** (or the numeric keypad) to select that target, then
 release the chord to enter it. Arrow and click navigation remains available.
-The chord also starts Peek from an unzoomed view; releasing it enters the selected
-quad even if you kept the current selection. If the native window has already lost
-focus when the chord is released, Peek is cancelled without zooming in.
+The chord also starts Peek from an unzoomed view. Releasing it without a number,
+arrow, or click selection preserves the starting zoom, returning to the original
+quad or panel when Peek started zoomed. Losing native window focus cancels an
+explicit selection; an untouched Peek restores its starting zoom.
 
 **Agent Peek** projects live panels from all tabs and windows over the dimmed Quad
 Peek view. It is also available in tabs without quads. The bottom selector bar

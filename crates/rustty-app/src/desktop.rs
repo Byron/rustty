@@ -6097,13 +6097,22 @@ impl App {
         host.repaint();
     }
 
+    fn cancel_peek(&mut self, host: &mut Host) {
+        if let Some(peek) = host.peek.take()
+            && !peek.navigation_used
+            && let Some(tab) = self.tab_mut(host.id)
+        {
+            tab.finish_peek(peek);
+        }
+        host.agent_peek = desktop_agent_peek::Overlay::default();
+        host.repaint();
+    }
+
     fn release_peek(&mut self, host: &mut Host) {
         if host.window.has_focus() {
             self.finish_peek(host);
         } else {
-            host.peek = None;
-            host.agent_peek = desktop_agent_peek::Overlay::default();
-            host.repaint();
+            self.cancel_peek(host);
         }
     }
 
@@ -9631,8 +9640,7 @@ impl ApplicationHandler<Event> for App {
                     }
                 } else {
                     self.cancel_selection_drag(&mut host);
-                    host.peek = None;
-                    host.agent_peek = desktop_agent_peek::Overlay::default();
+                    self.cancel_peek(&mut host);
                     host.modifiers = Modifiers::default();
                     host.consumed_keys.clear();
                     host.divider_drag = None;

@@ -1458,32 +1458,48 @@ fn check_quad_peek_prefix(
     let window = app.windows[&key].id;
     let original = app.tab(window).unwrap().clone();
     let modifiers = app.windows[&key].modifiers;
+    let focused = app.windows[&key].focused;
     app.loaded.config.keybinds.push(config::KeyBinding::parse(
         "super+ctrl+h=goto_split:quadrant_left",
     )?);
     let result = (|| -> Result<()> {
-        let tab = app.tab_mut(window).unwrap();
-        tab.zoom = None;
-        tab.quadrant_zoom = None;
-        app.window_event(
-            event_loop,
-            key,
-            WindowEvent::ModifiersChanged((ModifiersState::CONTROL | ModifiersState::SUPER).into()),
-        );
-        if app.windows[&key].peek.is_none() {
-            return Err("Quad Peek prefix did not activate from an unzoomed view".into());
-        }
-        let focused = app.windows[&key].window.has_focus();
-        app.window_event(
-            event_loop,
-            key,
-            WindowEvent::ModifiersChanged(ModifiersState::empty().into()),
-        );
-        let tab = app.tab(window).unwrap();
-        let expected = focused.then(|| tab.root.quadrant(tab.focused)).flatten();
-        if app.windows[&key].peek.is_some() || (tab.zoom, tab.quadrant_zoom) != (expected, expected)
-        {
-            return Err("Quad Peek release did not respect native window focus".into());
+        let quad = original.root.quadrant(original.focused);
+        for expected in [
+            (None, None),
+            (Some(original.focused), None),
+            (quad, quad),
+            (Some(original.focused), quad),
+        ] {
+            for lose_focus in [false, true] {
+                let tab = app.tab_mut(window).unwrap();
+                (tab.zoom, tab.quadrant_zoom) = expected;
+                app.window_event(
+                    event_loop,
+                    key,
+                    WindowEvent::ModifiersChanged(
+                        (ModifiersState::CONTROL | ModifiersState::SUPER).into(),
+                    ),
+                );
+                if app.windows[&key].peek.is_none() {
+                    return Err("Quad Peek prefix did not activate".into());
+                }
+                app.window_event(
+                    event_loop,
+                    key,
+                    if lose_focus {
+                        WindowEvent::Focused(false)
+                    } else {
+                        WindowEvent::ModifiersChanged(ModifiersState::empty().into())
+                    },
+                );
+                let tab = app.tab(window).unwrap();
+                if app.windows[&key].peek.is_some()
+                    || (tab.zoom, tab.quadrant_zoom) != expected
+                    || tab.focused != original.focused
+                {
+                    return Err(format!("untouched Quad Peek changed focus or zoom: expected {expected:?}, lose_focus={lose_focus}").into());
+                }
+            }
         }
         Ok(())
     })();
@@ -1491,10 +1507,13 @@ fn check_quad_peek_prefix(
     *app.tab_mut(window).unwrap() = original;
     let host = app.windows.get_mut(&key).unwrap();
     host.modifiers = modifiers;
+    host.focused = focused;
     host.peek = None;
     host.repaint();
     result?;
-    eprintln!("Native smoke: unzoomed Quad Peek prefix and native-focus release check passed");
+    eprintln!(
+        "Native smoke: untouched Quad Peek restores starting zoom on prefix release and focus loss"
+    );
     Ok(())
 }
 
