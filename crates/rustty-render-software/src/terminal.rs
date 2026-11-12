@@ -129,7 +129,13 @@ pub(crate) fn paint(
     let sx = (viewport.0[2] - viewport.0[0]) as f32 / frame.size[0] as f32;
     let sy = (viewport.0[3] - viewport.0[1]) as f32 / frame.size[1] as f32;
     for quad in &frame.quads {
-        if !quad.rect.iter().chain(&quad.uv).copied().all(coordinate)
+        if !quad
+            .rect
+            .iter()
+            .chain(&quad.offset)
+            .chain(&quad.uv)
+            .copied()
+            .all(coordinate)
             || quad
                 .color
                 .0
@@ -139,6 +145,7 @@ pub(crate) fn paint(
             return Err(RenderError("invalid terminal quad"));
         }
         let [x, y, w, h] = quad.rect;
+        let [x, y] = [x + quad.offset[0], y + quad.offset[1]];
         if w <= 0.0 || h <= 0.0 {
             continue;
         }

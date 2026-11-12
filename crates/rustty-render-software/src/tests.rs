@@ -328,12 +328,53 @@ fn upload(revision: u64, page_size: u32, pixels: Vec<u8>) -> AtlasUpload {
 }
 fn terminal_quad(paint: Paint, rect: [f32; 4], uv: [f32; 4], color: Color) -> Quad {
     Quad {
+        offset: [0.0; 2],
         paint,
         rect,
         uv,
         color,
         atlas: 0,
     }
+}
+
+#[test]
+fn terminal_offsets_move_only_marked_quads() {
+    let mut renderer = Renderer::default();
+    let mut delta = TexturesDelta::default();
+    let mut frame = Frame::empty([8, 4]);
+    frame
+        .quads
+        .push(Quad::solid([1.0, 1.0, 2.0, 2.0], Color::rgb([255, 0, 0])));
+    frame
+        .quads
+        .push(Quad::solid([6.0, 1.0, 2.0, 2.0], Color::rgb([0, 255, 0])));
+    let viewport = rect(0.0, 0.0, 8.0, 4.0);
+    for offset in [[0.0; 2], [2.0, -1.0]] {
+        frame.quads[0].offset = offset;
+        let primitive = callback(frame.clone(), 1, viewport, viewport);
+        let pixels = render(&mut renderer, frame.size, 1.0, &[primitive], &mut delta);
+        for y in 0..4 {
+            for x in 0..8 {
+                let expected = if (1.0 + offset[0]..3.0 + offset[0]).contains(&(x as f32))
+                    && (1.0 + offset[1]..3.0 + offset[1]).contains(&(y as f32))
+                {
+                    [255, 0, 0, 255]
+                } else if (6..8).contains(&x) && (1..3).contains(&y) {
+                    [0, 255, 0, 255]
+                } else {
+                    [0; 4]
+                };
+                assert_eq!(pixel(&pixels, 8, x, y), expected, "pixel ({x}, {y})");
+            }
+        }
+    }
+    frame.quads[0].offset[0] = f32::NAN;
+    let primitive = callback(frame.clone(), 1, viewport, viewport);
+    assert!(
+        renderer
+            .render(frame.size, 1.0, &[primitive], &delta)
+            .is_err()
+    );
 }
 
 #[test]

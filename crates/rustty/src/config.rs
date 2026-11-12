@@ -103,6 +103,16 @@ config_enum!(ShellIntegration { None => "none", Detect => "detect", Bash => "bas
 config_enum!(QuickTerminalPosition { Top => "top", Bottom => "bottom", Left => "left", Right => "right", Center => "center" });
 config_enum!(QuickTerminalScreen { Main => "main", Mouse => "mouse", MacosMenuBar => "macos-menu-bar" });
 config_enum!(QuickTerminalSpaceBehavior { Move => "move", Remain => "remain" });
+config_enum!(BellShader { None => "none", ScreenShake => "screen-shake" });
+config_enum!(ScreenShakeType {
+    Random => "random",
+    RandomDiminishing => "random-diminishing",
+    HorizontalSine => "horizontal-sine",
+    HorizontalSineDiminishing => "horizontal-sine-diminishing",
+    HorizontalSquare => "horizontal-square",
+    HorizontalSquareDiminishing => "horizontal-square-diminishing",
+    SineOffset => "sine-offset",
+});
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Padding {
@@ -401,6 +411,9 @@ pub struct Config {
     pub undo_timeout: Duration,
     pub quit_after_last_window_closed: bool,
     pub bell_features: BellFeatures,
+    pub bell_shader: BellShader,
+    pub screen_shake_type: ScreenShakeType,
+    pub screen_shake_duration: Duration,
     pub progress_style: bool,
     pub notify_on_command_finish: NotifyOnCommandFinish,
     pub notify_on_command_finish_action: NotifyActions,
@@ -517,6 +530,9 @@ impl Default for Config {
             undo_timeout: Duration::from_secs(5),
             quit_after_last_window_closed: cfg!(windows),
             bell_features: BellFeatures::default(),
+            bell_shader: BellShader::None,
+            screen_shake_type: ScreenShakeType::HorizontalSineDiminishing,
+            screen_shake_duration: Duration::from_millis(180),
             progress_style: true,
             notify_on_command_finish: NotifyOnCommandFinish::Never,
             notify_on_command_finish_action: NotifyActions::default(),
@@ -917,6 +933,16 @@ impl Config {
                 set!(quit_after_last_window_closed, parse_bool(value)?)
             }
             "bell-features" => set!(bell_features, parse_bell_features(value)?),
+            "bell-shader" => set!(bell_shader, {
+                BellShader::parse(value)
+                    .map_err(|_| "invalid bell shader; expected none or screen-shake")?
+            }),
+            "screen-shake-type" => set!(screen_shake_type, {
+                ScreenShakeType::parse(value).map_err(|_| {
+                    "invalid screen shake type; expected random, random-diminishing, horizontal-sine, horizontal-sine-diminishing, horizontal-square, horizontal-square-diminishing, or sine-offset"
+                })?
+            }),
+            "screen-shake-duration" => set!(screen_shake_duration, parse_duration(value)?),
             "progress-style" => set!(progress_style, parse_bool(value)?),
             "notify-on-command-finish" => set!(
                 notify_on_command_finish,

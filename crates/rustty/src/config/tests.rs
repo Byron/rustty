@@ -269,6 +269,112 @@ fn animation_durations_support_independent_overrides_zero_and_reset() {
 }
 
 #[test]
+fn bell_shader_and_screen_shake_settings_validate_and_reset() {
+    let home = TestHome::new();
+    let settings = |config: &Config| {
+        (
+            config.bell_shader,
+            config.screen_shake_type,
+            config.screen_shake_duration,
+        )
+    };
+    let defaults = (
+        BellShader::None,
+        ScreenShakeType::HorizontalSineDiminishing,
+        Duration::from_millis(180),
+    );
+    assert_eq!(settings(&home.loader.load().config), defaults);
+    home.own("bell-shader=screen-shake\nscreen-shake-type=random\nscreen-shake-duration=1s 25ms\n");
+    let configured = (
+        BellShader::ScreenShake,
+        ScreenShakeType::Random,
+        Duration::from_millis(1_025),
+    );
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(settings(&loaded.config), configured);
+
+    for (value, expected, diagnostics) in [
+        ("none", BellShader::None, 0),
+        ("", BellShader::None, 0),
+        ("unknown", BellShader::ScreenShake, 1),
+    ] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--bell-shader={value}")]));
+        assert_eq!(loaded.diagnostics.len(), diagnostics, "{value}");
+        assert_eq!(loaded.config.bell_shader, expected);
+        if diagnostics != 0 {
+            assert!(
+                loaded.diagnostics[0]
+                    .to_string()
+                    .contains("none or screen-shake")
+            );
+        }
+    }
+    for (value, expected, diagnostics) in [
+        ("0", Duration::ZERO, 0),
+        ("25ms", Duration::from_millis(25), 0),
+        ("1m 5s", Duration::from_secs(65), 0),
+        ("", defaults.2, 0),
+        ("250", configured.2, 1),
+        ("-1ms", configured.2, 1),
+        ("1.5ms", configured.2, 1),
+    ] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--screen-shake-duration={value}")]));
+        assert_eq!(loaded.diagnostics.len(), diagnostics, "{value}");
+        assert_eq!(loaded.config.screen_shake_duration, expected);
+    }
+    let loaded = home.loader.load_with_args(&args(&[
+        "--bell-shader=",
+        "--screen-shake-type=",
+        "--screen-shake-duration=",
+    ]));
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(settings(&loaded.config), defaults);
+    assert_eq!(loaded.config.bell_features, BellFeatures::default());
+}
+
+#[test]
+fn screen_shake_types_accept_the_reference_selection_and_reject_unknown_values() {
+    let home = TestHome::new();
+    home.own("screen-shake-type=random\n");
+    for (value, expected) in [
+        ("random", ScreenShakeType::Random),
+        ("random-diminishing", ScreenShakeType::RandomDiminishing),
+        ("horizontal-sine", ScreenShakeType::HorizontalSine),
+        (
+            "horizontal-sine-diminishing",
+            ScreenShakeType::HorizontalSineDiminishing,
+        ),
+        ("horizontal-square", ScreenShakeType::HorizontalSquare),
+        (
+            "horizontal-square-diminishing",
+            ScreenShakeType::HorizontalSquareDiminishing,
+        ),
+        ("sine-offset", ScreenShakeType::SineOffset),
+    ] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--screen-shake-type={value}")]));
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.screen_shake_type, expected);
+    }
+    let loaded = home
+        .loader
+        .load_with_args(&args(&["--screen-shake-type=unknown"]));
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert!(
+        loaded.diagnostics[0]
+            .to_string()
+            .contains("horizontal-sine-diminishing")
+    );
+    assert_eq!(loaded.config.screen_shake_type, ScreenShakeType::Random);
+}
+
+#[test]
 fn agent_peek_dimming_validates_percentages_and_resets() {
     let home = TestHome::new();
     home.own("agent-peek-background-dim=25%\n");

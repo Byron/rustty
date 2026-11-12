@@ -811,6 +811,7 @@ impl Renderer {
                 }
                 let cached = self.sprite(cp, cell.width())?;
                 frame.quads.push(Quad {
+                    offset: [0.0; 2],
                     rect: [
                         options.padding[0] + col as f32 * metrics.cell_width as f32,
                         top,
@@ -910,6 +911,7 @@ impl Renderer {
                     + cached.bearing[0] as f32;
                 let y = top + metrics.baseline - glyph.y - cached.bearing[1] as f32;
                 let quad = Quad {
+                    offset: [0.0; 2],
                     rect: [x, y, cached.size[0] as f32, cached.size[1] as f32],
                     uv: cached.uv,
                     color,
@@ -1871,6 +1873,7 @@ mod tests {
                     continue;
                 }
                 natural.quads.push(Quad {
+                    offset: [0.0; 2],
                     rect: [
                         glyph.x + cached.bearing[0] as f32,
                         metrics.baseline - glyph.y - cached.bearing[1] as f32,
@@ -2047,6 +2050,7 @@ mod tests {
     #[test]
     fn explicit_width_clipping_adjusts_texture_coordinates() {
         let quad = Quad {
+            offset: [0.0; 2],
             rect: [-1.0, -2.0, 8.0, 12.0],
             uv: [0.125, 0.25, 0.625, 0.75],
             color: Color::rgb([255; 3]),

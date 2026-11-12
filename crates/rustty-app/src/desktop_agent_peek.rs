@@ -573,6 +573,7 @@ impl App {
             };
             for clip in host.agent_peek.clips(card, rect.intersect(clip)) {
                 panes.push(ComposedPane {
+                    offset: [0.0; 2],
                     rect: [
                         rect.left() * scale,
                         rect.top() * scale,
@@ -613,6 +614,7 @@ impl App {
             let factor = pane.rect[2] / scaled.size[0].max(1) as f32;
             for quad in &mut scaled.quads {
                 quad.rect = quad.rect.map(|value| value * factor);
+                quad.offset = quad.offset.map(|value| value * factor);
                 quad.color = quad.color.opacity(pane.transition.unwrap().opacity);
             }
             if let Some(background) = scaled.quads.first_mut() {

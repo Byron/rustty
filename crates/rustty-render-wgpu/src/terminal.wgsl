@@ -14,10 +14,11 @@ struct VertexOut {
     @location(1) texture_bounds: vec4<f32>,
     @location(2) color: vec4<f32>,
     @location(3) mode: u32,
+    @location(4) offset: vec2<f32>,
 ) -> VertexOut {
     // TR, BR, TL, BL keeps the original two triangles and their diagonal.
     let corner = vec2<bool>(vertex < 2u, (vertex & 1u) != 0u);
-    let position = select(bounds.xy, bounds.zw, corner);
+    let position = select(bounds.xy, bounds.zw, corner) + offset;
     let uv = select(texture_bounds.xy, texture_bounds.zw, corner);
     return VertexOut(vec4<f32>(position, 0.0, 1.0), uv, color, mode);
 }

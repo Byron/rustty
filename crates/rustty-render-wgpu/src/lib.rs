@@ -27,6 +27,7 @@ struct Instance {
     uv: [f32; 4],
     color: [f32; 4],
     mode: u32,
+    offset: [f32; 2],
 }
 
 struct Atlas {
@@ -101,7 +102,7 @@ impl Renderer {
             vertex: wgpu::VertexState { module: &shader,entry_point: Some("vertex_main"),
                 compilation_options: Default::default(),buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: size_of::<Instance>() as u64,step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x4,2=>Float32x4,3=>Uint32],
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x4,2=>Float32x4,3=>Uint32,4=>Float32x2],
                 })] },
             fragment: Some(wgpu::FragmentState { module: &shader,entry_point: Some("fragment_main"),
                 compilation_options: Default::default(),targets: &[Some(wgpu::ColorTargetState {
@@ -284,6 +285,7 @@ impl Renderer {
             if quad
                 .rect
                 .iter()
+                .chain(quad.offset.iter())
                 .chain(quad.uv.iter())
                 .chain(quad.color.0.iter())
                 .any(|v| !v.is_finite())
@@ -318,6 +320,10 @@ impl Renderer {
                 uv: quad.uv,
                 color: quad.color.0,
                 mode,
+                offset: [
+                    quad.offset[0] * 2.0 / frame.size[0] as f32,
+                    -quad.offset[1] * 2.0 / frame.size[1] as f32,
+                ],
             });
             if let Some(batch) = self.batches.last_mut().filter(|batch| batch.atlas == page) {
                 batch.instances.end += 1;
@@ -520,6 +526,7 @@ mod tests {
     fn upload_frame(size: [u32; 2]) -> Frame {
         let mut frame = Frame::empty(size);
         frame.quads.push(Quad {
+            offset: [0.0; 2],
             rect: [0.0, 0.0, size[0] as f32, size[1] as f32],
             uv: [0.0, 0.0, size[0] as f32 / 512.0, size[1] as f32 / 512.0],
             color: Color::rgb([255; 3]),
@@ -551,6 +558,36 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn shader_offsets_move_only_marked_quads() {
+        let (device, queue) = gpu();
+        let mut renderer = Renderer::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let mut frame = Frame::empty([8, 4]);
+        frame
+            .quads
+            .push(Quad::solid([1.0, 1.0, 2.0, 2.0], Color::rgb([255, 0, 0])));
+        frame
+            .quads
+            .push(Quad::solid([6.0, 1.0, 2.0, 2.0], Color::rgb([0, 255, 0])));
+        for offset in [[0.0; 2], [2.0, -1.0]] {
+            frame.quads[0].offset = offset;
+            let pixels = render_frame(&mut renderer, &device, &queue, &frame);
+            assert_pixels(&frame, &pixels, |x, y| {
+                if (1.0 + offset[0]..3.0 + offset[0]).contains(&(x as f32))
+                    && (1.0 + offset[1]..3.0 + offset[1]).contains(&(y as f32))
+                {
+                    [255, 0, 0, 255]
+                } else if (6..8).contains(&x) && (1..3).contains(&y) {
+                    [0, 255, 0, 255]
+                } else {
+                    [0; 4]
+                }
+            });
+        }
+        frame.quads[0].offset[0] = f32::NAN;
+        assert!(renderer.prepare(&device, &queue, &frame).is_err());
     }
 
     #[test]
@@ -726,6 +763,7 @@ mod tests {
                 pixels: Arc::from([255; 4]),
             });
             game.quads.push(Quad {
+                offset: [0.0; 2],
                 rect: [0.0, 0.0, 1.0, 1.0],
                 uv: [0.0, 0.0, 1.0, 1.0],
                 color: Color::rgb([255; 3]),
@@ -779,6 +817,7 @@ mod tests {
             Color::rgb([255, 255, 255]),
         ));
         frame.quads.push(Quad {
+            offset: [0.0; 2],
             rect: [0.0, 0.0, 8.0, 8.0],
             uv: [0.25, 0.25, 0.25, 0.25],
             color: Color::rgb([0, 0, 255]),
@@ -786,6 +825,7 @@ mod tests {
             atlas: 0,
         });
         frame.quads.push(Quad {
+            offset: [0.0; 2],
             rect: [16.0, 0.0, 8.0, 8.0],
             uv: [0.75, 0.25, 0.75, 0.25],
             color: Color::rgb([255, 0, 0]),
@@ -794,6 +834,7 @@ mod tests {
         });
         // Scaled RGBA content still interpolates between texels.
         frame.quads.push(Quad {
+            offset: [0.0; 2],
             rect: [0.0, 8.0, 8.0, 4.0],
             uv: [0.0, 0.25, 1.0, 0.25],
             color: Color::rgb([255; 3]),
@@ -814,6 +855,7 @@ mod tests {
             for row in 0..2 {
                 for col in 0..6 {
                     frame.quads.push(Quad {
+                        offset: [0.0; 2],
                         rect: [
                             2.0 + col as f32 * 4.0 + fraction,
                             16.0 + index as f32 * 8.0 + row as f32 * 4.0 + fraction,
@@ -831,6 +873,7 @@ mod tests {
         // Returning to the first atlas must start at the next instance, even
         // when a zero-area quad was skipped between batches.
         frame.quads.push(Quad {
+            offset: [0.0; 2],
             rect: [26.0, 48.0, 0.0, 4.0],
             uv: [0.0; 4],
             color: Color::rgb([255; 3]),
@@ -838,6 +881,7 @@ mod tests {
             atlas: usize::MAX,
         });
         frame.quads.push(Quad {
+            offset: [0.0; 2],
             rect: [26.0, 48.0, 4.0, 4.0],
             uv: [0.75, 0.25, 0.75, 0.25],
             color: Color::rgb([255; 3]),

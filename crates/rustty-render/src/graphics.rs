@@ -184,6 +184,7 @@ impl Renderer {
                                     / cached.size[1] as f32
                             };
                             layers[layer].push(Quad {
+                                offset: [0.0; 2],
                                 rect: [
                                     if sw == 0.0 {
                                         x

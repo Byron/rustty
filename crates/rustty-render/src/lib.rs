@@ -95,6 +95,8 @@ pub enum Paint {
 pub struct Quad {
     /// Left, top, width and height in physical pixels, relative to this frame.
     pub rect: [f32; 4],
+    /// Translation in physical pixels, applied after composition clipping.
+    pub offset: [f32; 2],
     /// Normalized atlas coordinates: left, top, right, bottom.
     pub uv: [f32; 4],
     pub color: Color,
@@ -106,6 +108,7 @@ impl Quad {
     pub fn solid(rect: [f32; 4], color: Color) -> Self {
         Self {
             rect,
+            offset: [0.0; 2],
             uv: [0.0; 4],
             color,
             paint: Paint::Solid,
@@ -278,6 +281,7 @@ mod tests {
         let mut pane = Frame::empty([10, 10]);
         pane.generation = 7;
         pane.quads.push(Quad {
+            offset: [1.0, -2.0],
             rect: [0.0, 0.0, 10.0, 10.0],
             uv: [0.0, 0.0, 1.0, 1.0],
             color: Color::rgb([255; 3]),
@@ -297,6 +301,7 @@ mod tests {
             .append_clipped(&pane, [5.0, 7.0], [8.0, 9.0, 4.0, 6.0])
             .unwrap();
         assert_eq!(window.quads[0].rect, [8.0, 9.0, 4.0, 6.0]);
+        assert_eq!(window.quads[0].offset, [1.0, -2.0]);
         for (actual, expected) in window.quads[0].uv.into_iter().zip([0.3, 0.2, 0.7, 0.8]) {
             assert!((actual - expected).abs() < 0.00001);
         }

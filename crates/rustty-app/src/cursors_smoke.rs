@@ -180,7 +180,7 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
         app.draw(event_loop, &mut host)?;
         #[cfg(target_os = "macos")]
         assert!(
-            host.cursor_candidate(active).is_none(),
+            host.cursor_candidate(active, false).is_none(),
             "extra cursors disable the single-cursor native patch"
         );
         app.panes[&active].session.terminal()?.feed(b"\x1b[>0;4 q");
@@ -188,9 +188,11 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
         assert!(!host.prepared[&active].screen.has_extra_cursors());
         #[cfg(target_os = "macos")]
         assert!(
-            host.cursor_candidate(active).is_some(),
+            host.cursor_candidate(active, false).is_some(),
             "clearing extras restores ordinary cursor eligibility"
         );
+        #[cfg(target_os = "macos")]
+        assert!(host.cursor_candidate(active, true).is_none());
         app.panes[&active]
             .session
             .terminal()?

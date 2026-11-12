@@ -20,6 +20,8 @@ mod notification_smoke;
 mod output_smoke;
 #[path = "rows_smoke.rs"]
 mod rows_smoke;
+#[path = "screen_shake_smoke.rs"]
+mod screen_shake_smoke;
 #[path = "width_smoke.rs"]
 mod width_smoke;
 #[path = "../../../test/rustty/frame_workloads.rs"]
@@ -77,6 +79,7 @@ fn hover_measurement_restarts_for_motion_and_leaving_but_not_duplicate_events() 
         events: BTreeMap::new(),
         timing: None,
         agent_peek_timing: None,
+        screen_shake: None,
         #[cfg(target_os = "macos")]
         cursor_benchmark: None,
         report: None,
@@ -120,6 +123,7 @@ pub(super) struct Smoke {
     events: BTreeMap<&'static str, u64>,
     timing: Option<Replay>,
     agent_peek_timing: Option<agent_peek_smoke::Timing>,
+    screen_shake: Option<screen_shake_smoke::Check>,
     #[cfg(target_os = "macos")]
     cursor_benchmark: Option<CursorBenchmark>,
     report: Option<serde_json::Value>,
@@ -137,6 +141,9 @@ impl Smoke {
             "cursor-ordinary-capture.png",
             "cursor-hidden-capture.png",
             "cursor-synchronized-popup.png",
+            "shake-before.png",
+            "shake-active.png",
+            "shake-after.png",
             "find-focused.png",
             "find-unfocused.png",
             "theme-picker.png",
@@ -225,6 +232,7 @@ impl Smoke {
             events: BTreeMap::new(),
             timing,
             agent_peek_timing: None,
+            screen_shake: None,
             #[cfg(target_os = "macos")]
             cursor_benchmark,
             report: None,
@@ -246,6 +254,7 @@ impl Smoke {
         let drag_only = std::env::var_os("RUSTTY_SMOKE_DND").is_some();
         let notifications_only = std::env::var_os("RUSTTY_SMOKE_NOTIFICATIONS").is_some();
         let mouse_leave_only = std::env::var_os("RUSTTY_SMOKE_MOUSE_LEAVE").is_some();
+        let screen_shake = std::env::var_os("RUSTTY_SMOKE_SCREEN_SHAKE").is_some();
         let outliner = std::env::var_os("RUSTTY_SMOKE_OUTLINER").is_some();
         if timing || cursor_benchmark {
             let renderer = loaded.config.renderer;
@@ -260,7 +269,13 @@ impl Smoke {
             loaded.config.font_size = 13.0;
         }
         #[cfg(not(target_os = "windows"))]
-        let command = if timing
+        let command = if screen_shake {
+            config::Command::Direct(vec![
+                "/bin/sh".into(),
+                "-c".into(),
+                screen_shake_smoke::COMMAND.into(),
+            ])
+        } else if timing
             || cursor_benchmark
             || deck_only
             || hints_only
@@ -293,7 +308,15 @@ impl Smoke {
                     )
                     .join("Git/bin/bash.exe")
                 });
-            if timing
+            if screen_shake {
+                config::Command::Direct(vec![
+                    shell.to_string_lossy().into_owned(),
+                    "--noprofile".into(),
+                    "--norc".into(),
+                    "-c".into(),
+                    screen_shake_smoke::COMMAND.into(),
+                ])
+            } else if timing
                 || deck_only
                 || hints_only
                 || output_only
@@ -331,6 +354,14 @@ impl Smoke {
         loaded.config.progress_style = true;
         loaded.config.undo_timeout = Duration::from_secs(5);
         loaded.config.keybinds.retain(|b| !b.flags.global);
+        if screen_shake {
+            loaded.config.bell_shader = config::BellShader::ScreenShake;
+            loaded.config.screen_shake_type = config::ScreenShakeType::HorizontalSineDiminishing;
+            loaded.config.screen_shake_duration = Duration::from_millis(500);
+            loaded.config.split_animation_duration = Duration::ZERO;
+            loaded.config.window_animations = Some(true);
+            loaded.config.cursor_style_blink = Some(false);
+        }
         if std::env::var_os("RUSTTY_SMOKE_INTERACTIVE_DECK").is_some()
             && let Some(directory) = std::env::var_os("RUSTTY_SMOKE_DIR")
         {
@@ -390,6 +421,16 @@ impl Smoke {
     }
     pub fn step(&mut self, app: &mut App, event_loop: &ActiveEventLoop) -> Result<bool> {
         self.check_background_windows(app)?;
+        if std::env::var_os("RUSTTY_SMOKE_SCREEN_SHAKE").is_some() {
+            if self.screen_shake.is_none() {
+                self.screen_shake = Some(screen_shake_smoke::Check::new(app, event_loop)?);
+            }
+            return self
+                .screen_shake
+                .as_mut()
+                .unwrap()
+                .step(app, event_loop, &self.directory);
+        }
         if std::env::var("RUSTTY_SMOKE_AGENT_PEEK").as_deref() == Ok("timing") {
             if self.agent_peek_timing.is_none() {
                 self.agent_peek_timing = Some(agent_peek_smoke::Timing::new(app, event_loop)?);

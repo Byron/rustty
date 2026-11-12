@@ -68,6 +68,7 @@ impl Renderer {
                 continue;
             }
             overlay.quads.push(Quad {
+                offset: [0.0; 2],
                 rect: [
                     text_x + glyph.x + cached.bearing[0] as f32,
                     top + metrics.baseline - glyph.y - cached.bearing[1] as f32,

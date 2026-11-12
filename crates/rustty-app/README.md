@@ -550,6 +550,49 @@ colors) to `100%` (the full window frame color). The `%` suffix is optional;
 `50` also means 50%. An empty value restores the 50% default. Changes take
 effect when configuration is reloaded.
 
+### Shaders and bell feedback
+
+Rustty supports a built-in screen-shake vertex shader on macOS through Metal,
+with the same effect available in the software renderer. Enable it for terminal
+bells with:
+
+```ini
+bell-shader = screen-shake
+screen-shake-type = horizontal-sine-diminishing
+screen-shake-duration = 180ms
+```
+
+`bell-shader` defaults to `none`. Each bell starts the effect on the reporting
+panel; another bell restarts its duration. The effect removes itself when its
+duration ends, including in an idle terminal. `screen-shake-duration = 0`
+disables shaking, and empty values restore the defaults. Effects follow
+`window-animations` and the platform's default motion preference.
+
+The available types follow this selection from
+[Dave's screenshake examples](https://www.davetech.co.uk/gamedevscreenshake):
+
+| `screen-shake-type` | Movement |
+| --- | --- |
+| `random` | Random horizontal and vertical jitter |
+| `random-diminishing` | Random jitter that fades out |
+| `horizontal-sine` | Smooth horizontal oscillation |
+| `horizontal-sine-diminishing` | Smooth horizontal oscillation that fades out; the default |
+| `horizontal-square` | Abrupt horizontal oscillation |
+| `horizontal-square-diminishing` | Abrupt horizontal oscillation that fades out |
+| `sine-offset` | Horizontal and vertical oscillation with different phases |
+
+Movement is four logical pixels per axis. Shaking leaves panel layout and PTY
+dimensions fixed; pixels can briefly cross panel borders. This initial support
+provides the built-in effect above; loading custom shader files is not available.
+
+Run the disposable hidden-window check for real PTY bells, panel isolation,
+automatic retirement and return to idle:
+
+```sh
+RUSTTY_SMOKE_DIR=/tmp/rustty-shake-check RUSTTY_SMOKE_OFFSCREEN=1 \
+  RUSTTY_SMOKE_SCREEN_SHAKE=1 target/debug/rustty --config-default-files=false
+```
+
 Global shortcuts such as `keybind = global:ctrl+super+backquote=toggle_quick_terminal`
 use native macOS hotkey registration without Accessibility or Input Monitoring
 permission. Registered shortcuts take priority over local bindings in both the

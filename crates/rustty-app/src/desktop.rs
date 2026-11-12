@@ -49,7 +49,7 @@ use rustty_app::{
         Activity, CompletionFlash, DirectoryLabel, FocusHint, Progress, TabAccent, common_label,
         cursor_blink_phase, directory_labels, paint_zoom_icon, zoom_label,
     },
-    resize_animation,
+    resize_animation, screen_shake,
     search::{self, Search},
     workspace::{self, Axis, Id, Peek, Rect, SavedPane, Tab, WindowState, Workspace},
     zoom_animation,
@@ -141,6 +141,7 @@ struct Pane {
     mouse_cell: Option<[u16; 2]>,
     scroll: input::ScrollAccumulator,
     sync_output: SynchronizedOutput,
+    screen_shake: Option<screen_shake::State>,
     search: Option<Search>,
 }
 
@@ -725,6 +726,7 @@ impl PreparedPane {
         self.dim = dim;
         let clip = visual.rect.intersect(content);
         ComposedPane {
+            offset: [0.0; 2],
             transition: animated.then(|| ZoomPaint {
                 background: rustty_render::Color::rgb(self.key.options.background)
                     .opacity(config.background_opacity),
@@ -831,6 +833,7 @@ struct ZoomPaint {
 
 struct ComposedPane {
     frame: Arc<Frame>,
+    offset: [f32; 2],
     rect: [f32; 4],
     clip: [f32; 4],
     dim: Option<rustty_render::Color>,
@@ -848,6 +851,7 @@ impl ComposedFrame {
             && self.panes.len() == panes.len()
             && self.panes.iter().zip(panes).all(|(old, new)| {
                 Arc::ptr_eq(&old.frame, &new.frame)
+                    && old.offset == new.offset
                     && old.rect == new.rect
                     && old.clip == new.clip
                     && old.dim == new.dim
@@ -908,6 +912,9 @@ impl ComposedFrame {
                                 .opacity(1.0 - transition.background_opacity),
                         ));
                     }
+                }
+                for quad in &mut frame.quads[start..] {
+                    quad.offset = pane.offset;
                 }
             }
         }
@@ -990,12 +997,13 @@ struct Host {
 }
 impl Host {
     #[cfg(target_os = "macos")]
-    fn cursor_candidate(&self, focused: Id) -> Option<CursorCandidate> {
+    fn cursor_candidate(&self, focused: Id, shaking: bool) -> Option<CursorCandidate> {
         // shortcut: opaque cursor pane without images; extend after validating transparent and image-backed patches.
         if !self.focused
             || self.composing
             || !self.preedit.is_empty()
             || self.peek.is_some()
+            || shaking
             || self.zoom_animation.is_running()
             || self.modal_input()
         {
@@ -2468,6 +2476,7 @@ impl App {
                 mouse_cell: None,
                 scroll: input::ScrollAccumulator::default(),
                 sync_output: SynchronizedOutput::default(),
+                screen_shake: None,
                 search: None,
             },
         );
@@ -3736,7 +3745,20 @@ impl App {
         let mut stopped = false;
         let mut clipboard = Vec::new();
         let mut notifications = Vec::new();
+        let mut shader_triggered = false;
         let focused = self.notification_focused(id, None);
+        let shake_config = self
+            .workspace
+            .windows
+            .iter()
+            .find(|window| window.tabs.iter().any(|tab| tab.panes.contains_key(&id)))
+            .map(|window| self.window_config(window.id))
+            .unwrap_or(&self.loaded.config);
+        let shake_config = (
+            shake_config.bell_shader,
+            shake_config.screen_shake_type,
+            shake_config.screen_shake_duration,
+        );
         let config = &self.loaded.config;
         let mut deck_panes = self
             .workspace
@@ -3973,6 +3995,17 @@ impl App {
                 }
                 SessionEvent::Effect(vt::Effect::Bell) => {
                     pane.unseen |= !focused;
+                    if live && !pane.exited && shake_config.0 == config::BellShader::ScreenShake {
+                        pane.screen_shake = (!shake_config.2.is_zero()).then(|| {
+                            screen_shake::State::new(
+                                shake_config.1,
+                                shake_config.2,
+                                id,
+                                Instant::now(),
+                            )
+                        });
+                        shader_triggered = true;
+                    }
                 }
                 SessionEvent::Effect(
                     effect @ (vt::Effect::ClipboardRead(_) | vt::Effect::ClipboardWrite(_)),
@@ -4021,6 +4054,7 @@ impl App {
         }
         // The child waiter can report exit before the reader delivers its final effects.
         if pane.exited {
+            pane.screen_shake = None;
             pane.agent.clear();
             pane.deck_progress.clear();
             pane.deck_command.clear();
@@ -4087,7 +4121,10 @@ impl App {
         }
         for host in self.windows.values() {
             if host.peek.is_some()
-                && (agent_changed || program_changed || host.agent_peek.state.contains(id))
+                && (agent_changed
+                    || program_changed
+                    || shader_triggered
+                    || host.agent_peek.state.contains(id))
             {
                 host.repaint();
             }
@@ -4134,6 +4171,7 @@ impl App {
             // Empty reader/writer wakes use the same check as title-only output.
             // All effects and saved metadata have already been processed above.
             if indicators_changed
+                || shader_triggered && tab == window.active_tab
                 || self.errors.len() != previous_errors
                 || title_in_ui
                 || terminal_changed
@@ -6472,6 +6510,28 @@ impl App {
         }
         let active = &state.tabs[state.active_tab];
         let focused = active.focused;
+        for pane in self.panes.values_mut() {
+            if pane
+                .screen_shake
+                .is_some_and(|shake| shake.offset(now).is_none())
+            {
+                pane.screen_shake = None;
+            }
+        }
+        let mut shake_offsets = BTreeMap::new();
+        for id in active.visible_panes(peek_layout) {
+            if let Some(pane) = self.panes.get_mut(&id)
+                && let Some(shake) = pane.screen_shake
+            {
+                if animations_enabled {
+                    if let Some(offset) = shake.offset(now) {
+                        shake_offsets.insert(id, offset);
+                    }
+                } else {
+                    pane.screen_shake = None;
+                }
+            }
+        }
         let tmuxx_tag = self
             .tmuxx_window(host.id)
             .map(|entry| entry.window_tag(host.id, &self.config().tmuxx_connections));
@@ -6608,7 +6668,7 @@ impl App {
             && !host.modal_input();
         let mut output = context.run_ui(raw, |root_ui| {
             // Request inside every pass so the viewport and repaint generation are current.
-            if agent_peek_moving {
+            if agent_peek_moving || !shake_offsets.is_empty() {
                 root_ui.ctx().request_repaint();
             }
             host.messages_focused = messages_input(&context) || messages_keyboard_input;
@@ -7181,6 +7241,7 @@ impl App {
                             } else if let Some(frame) = host.resize_frames.get(&id) {
                                 frame.retain(&mut composed_pane);
                             }
+                            composed_pane.offset = shake_offsets.get(&id).copied().unwrap_or([0.0; 2]).map(|value| value * scale);
                             composition.push(composed_pane);
                             accessible.push((id, visual.rect.intersect(content)));
                             if id == focused && accepts_input {
@@ -8169,7 +8230,7 @@ impl App {
         if host.cursor.enabled {
             if !host.cursor.active {
                 let candidate = (cursor_eligible && painted && needs_blink)
-                    .then(|| host.cursor_candidate(focused))
+                    .then(|| host.cursor_candidate(focused, shake_offsets.contains_key(&focused)))
                     .flatten();
                 host.update_cursor(&self.painter, candidate, &primitives, blink_deadline);
             }
@@ -11741,6 +11802,7 @@ mod tests {
         let composed = ComposedFrame::new(
             [100, 110],
             vec![ComposedPane {
+                offset: [0.0; 2],
                 transition: None,
                 frame: Arc::new(frame),
                 rect: [-5.0, 5.0, 30.0, 30.0],
@@ -12168,6 +12230,7 @@ mod tests {
             .unwrap();
         assert_eq!(interrupted.shown_opacity, 0.25);
         let mut pane = ComposedPane {
+            offset: [0.0; 2],
             frame: source,
             rect: [0.0, 0.0, 8.0, 1.0],
             clip: [0.0, 0.0, 8.0, 1.0],
@@ -12202,6 +12265,7 @@ mod tests {
         frame.quads.push(glyph.clone());
         for opacity in [1.0, 0.5, 0.0] {
             let pane = ComposedPane {
+                offset: [0.0; 2],
                 frame: Arc::new(frame.clone()),
                 rect: [25.0, 30.0, 100.0, 80.0],
                 clip: [25.0, 30.0, 200.0, 160.0],
@@ -12247,6 +12311,7 @@ mod tests {
             let composed = ComposedFrame::new(
                 [2, 1],
                 vec![ComposedPane {
+                    offset: [0.0; 2],
                     frame: Arc::new(frame.clone()),
                     rect: bounds,
                     clip: bounds,
@@ -12292,6 +12357,7 @@ mod tests {
         ));
         let frame = Arc::new(frame);
         let pane = |x, moving| ComposedPane {
+            offset: [0.0; 2],
             frame: Arc::clone(&frame),
             rect: [x, 0.0, 100.0, 80.0],
             clip: [x, 0.0, 100.0, 80.0],
@@ -12593,6 +12659,7 @@ mod tests {
         ));
         let frame = Arc::new(frame);
         let pane = || ComposedPane {
+            offset: [0.0; 2],
             transition: None,
             frame: Arc::clone(&frame),
             rect: [10.0, 15.0, 20.0, 20.0],
@@ -12615,6 +12682,17 @@ mod tests {
         let mut changed = pane();
         changed.frame = Arc::new((*frame).clone());
         assert!(!retained.matches([60, 60], &[changed]));
+
+        let mut changed = pane();
+        changed.offset = [3.0, -4.0];
+        assert!(!retained.matches([60, 60], &[changed]));
+        let mut shaking = pane();
+        shaking.offset = [3.0, -4.0];
+        let composed = ComposedFrame::new([60, 60], vec![shaking, pane()]).unwrap();
+        assert_eq!(composed.frame.quads[0].offset, [3.0, -4.0]);
+        assert_eq!(composed.frame.quads[1].offset, [0.0; 2]);
+        assert_eq!(composed.frame.quads[0].rect, pane().rect);
+        assert_eq!(frame.quads[0].offset, [0.0; 2]);
     }
 
     #[test]
@@ -14485,6 +14563,7 @@ mod tests {
             let on = candidate(true);
             let off = candidate(false);
             let pane = |frame: &Arc<Frame>| ComposedPane {
+                offset: [0.0; 2],
                 frame: Arc::clone(frame),
                 rect: [352.0, 32.0, 320.0, 160.0],
                 clip: [354.0, 32.0, 300.0, 160.0],
@@ -14494,6 +14573,7 @@ mod tests {
             let neighbor = Arc::new((*off.frame).clone());
             let panes = |frame: &Arc<Frame>| {
                 let neighbor = |x| ComposedPane {
+                    offset: [0.0; 2],
                     frame: Arc::clone(&neighbor),
                     rect: [x, 32.0, 320.0, 160.0],
                     clip: [x, 32.0, 320.0, 160.0],
