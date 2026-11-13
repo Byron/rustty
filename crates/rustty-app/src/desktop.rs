@@ -1328,6 +1328,7 @@ struct DirectoryBadge {
     active: bool,
     attention: bool,
     pinned: bool,
+    quad_root: Option<Id>,
     flash: f32,
     accent: TabAccent,
 }
@@ -1342,7 +1343,7 @@ impl DirectoryBadge {
             ui.visuals().strong_text_color()
         };
         let scale = if self.shared { 1.0 } else { 0.7 };
-        let pin_width = if self.pinned { 20.0 } else { 0.0 };
+        let icon_width = 20.0 * (u8::from(self.pinned) + u8::from(self.quad_root.is_some())) as f32;
         let large_padding = Vec2::new(16.0, 10.0) * scale;
         let layout = |large| {
             let mut job = egui::text::LayoutJob::simple(
@@ -1354,11 +1355,11 @@ impl DirectoryBadge {
                 egui::FontId::proportional(if large { 22.0 * scale } else { 12.0 }),
                 color,
                 if self.centered {
-                    (self.bounds.width() * 0.75 - 24.0 * scale - pin_width).max(1.0)
+                    (self.bounds.width() * 0.75 - 24.0 * scale - icon_width).max(1.0)
                 } else if large {
                     f32::INFINITY
                 } else {
-                    (self.bounds.width() - 32.0 - pin_width).max(1.0)
+                    (self.bounds.width() - 32.0 - icon_width).max(1.0)
                 },
             );
             job.wrap.max_rows = 1;
@@ -1374,7 +1375,7 @@ impl DirectoryBadge {
         };
         let mut galley = layout(true);
         let large = self.centered
-            || (galley.size().x + pin_width + 2.0 * large_padding.x + 16.0 <= self.bounds.width()
+            || (galley.size().x + icon_width + 2.0 * large_padding.x + 16.0 <= self.bounds.width()
                 && galley.size().y + 2.0 * large_padding.y + 16.0 <= self.bounds.height());
         if !large {
             galley = layout(false);
@@ -1384,7 +1385,7 @@ impl DirectoryBadge {
         } else {
             Vec2::new(8.0, 4.0)
         };
-        let size = galley.size() + Vec2::new(pin_width, 0.0) + 2.0 * padding;
+        let size = galley.size() + Vec2::new(icon_width, 0.0) + 2.0 * padding;
         let bounds = if self.centered {
             egui::Rect::from_center_size(self.bounds.center(), size)
         } else {
@@ -1423,8 +1424,23 @@ impl DirectoryBadge {
                 color,
             );
         }
+        if let Some(root) = self.quad_root {
+            let rect = egui::Rect::from_center_size(
+                Pos2::new(
+                    bounds.left() + padding.x + if self.pinned { 28.0 } else { 8.0 },
+                    bounds.center().y,
+                ),
+                Vec2::splat(16.0),
+            );
+            outliner_ui::paint_quad_root(&painter, rect, color);
+            let response = ui.interact(rect, ui.id().with(("quad-root", root)), Sense::hover());
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Explicit quad root")
+            });
+            response.on_hover_text("Explicit quad root");
+        }
         painter.galley(
-            bounds.min + padding + Vec2::new(pin_width, 0.0),
+            bounds.min + padding + Vec2::new(icon_width, 0.0),
             galley,
             color,
         );
@@ -7516,6 +7532,7 @@ impl App {
                                     centered: true,
                                     shared: true,
                                     pinned: false,
+                                    quad_root: active.quad_roots.contains(&id).then_some(id),
                                     attention,
                                     accent: panel_accent,
                                     active: members.iter().any(|id| {
@@ -7558,6 +7575,7 @@ impl App {
                                     centered,
                                     shared: active.label_quad(id, peek.is_some()) == Some(id),
                                     pinned,
+                                    quad_root: active.quad_roots.contains(&id).then_some(id),
                                     flash,
                                     accent: panel_accent,
                                     active: pane.is_active(),
@@ -11406,6 +11424,7 @@ mod tests {
                             active: false,
                             attention: false,
                             pinned: false,
+                            quad_root: None,
                             flash: 0.0,
                             accent: TabAccent::new(None, [0; 3]),
                         }
@@ -12574,6 +12593,7 @@ mod tests {
                             active: false,
                             attention: false,
                             pinned: false,
+                            quad_root: None,
                             flash: 0.0,
                             accent: TabAccent::new(None, [200, 80, 20]),
                         }
@@ -13506,24 +13526,48 @@ mod tests {
     #[test]
     fn unshared_directory_badges_use_large_type_when_it_fits_and_stay_top_right() {
         let context = egui::Context::default();
+        context.enable_accesskit();
         configure_ui_fonts(&context);
-        for (name, size, font_size, pinned) in [
-            ("gitime", Vec2::new(740.0, 330.0), 22.0 * 0.7, false),
-            ("timesheets", Vec2::new(370.0, 330.0), 22.0 * 0.7, false),
+        for (name, size, font_size, pinned, quad_root) in [
+            ("gitime", Vec2::new(740.0, 330.0), 22.0 * 0.7, false, None),
+            (
+                "timesheets",
+                Vec2::new(370.0, 330.0),
+                22.0 * 0.7,
+                false,
+                None,
+            ),
             // Exceed the available width with both Segoe UI and San Francisco.
             (
                 "gitoxide.stable-gix-with-a-long-directory-name",
                 Vec2::new(180.0, 200.0),
                 12.0,
                 false,
+                None,
             ),
-            ("gitime", Vec2::new(740.0, 38.0), 12.0, false),
-            ("gitime", Vec2::new(180.0, 200.0), 22.0 * 0.7, true),
+            ("gitime", Vec2::new(740.0, 38.0), 12.0, false, None),
+            ("gitime", Vec2::new(180.0, 200.0), 22.0 * 0.7, true, None),
             (
                 "gitoxide.stable-gix-with-a-long-directory-name",
                 Vec2::new(180.0, 200.0),
                 12.0,
                 true,
+                None,
+            ),
+            (
+                "gitime",
+                Vec2::new(180.0, 200.0),
+                22.0 * 0.7,
+                false,
+                Some(1),
+            ),
+            ("gitime", Vec2::new(180.0, 200.0), 22.0 * 0.7, true, Some(1)),
+            (
+                "gitoxide.stable-gix-with-a-long-directory-name",
+                Vec2::new(180.0, 200.0),
+                12.0,
+                true,
+                Some(1),
             ),
         ] {
             let bounds = egui::Rect::from_min_size(Pos2::new(100.0, 50.0), size);
@@ -13541,6 +13585,7 @@ mod tests {
                         active: true,
                         attention: true,
                         pinned,
+                        quad_root,
                         flash: 0.0,
                         accent: TabAccent::new(None, [230, 185, 60]),
                     }
@@ -13578,8 +13623,30 @@ mod tests {
             } else {
                 Vec2::new(8.0, 4.0)
             };
-            let pin_offset = Vec2::new(if pinned { 20.0 } else { 0.0 }, 0.0);
-            assert!((text.pos - badge.min - padding - pin_offset).length() < 0.01);
+            let icon_offset = Vec2::new(
+                20.0 * (u8::from(pinned) + u8::from(quad_root.is_some())) as f32,
+                0.0,
+            );
+            assert!((text.pos - badge.min - padding - icon_offset).length() < 0.01);
+            if quad_root.is_some() {
+                let marker = output
+                    .platform_output
+                    .accesskit_update
+                    .as_ref()
+                    .unwrap()
+                    .nodes
+                    .iter()
+                    .find_map(|(_, node)| {
+                        (node.value() == Some("Explicit quad root")).then_some(node)
+                    })
+                    .expect("accessible quad root indicator");
+                let rect = marker.bounds().unwrap();
+                assert!(rect.x0 >= f64::from(badge.left() + padding.x));
+                assert!(rect.x1 < f64::from(text.pos.x));
+                assert!(rect.y0 >= f64::from(badge.top()));
+                assert!(rect.y1 <= f64::from(badge.bottom()));
+                assert!(!marker.supports_action(egui::accesskit::Action::Focus));
+            }
         }
     }
 
@@ -13589,13 +13656,16 @@ mod tests {
         configure_ui_fonts(&context);
         let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 240.0));
         let accent = TabAccent::new(Some([230, 185, 60]), [0; 3]);
-        for (selected, window_focused, shared) in [
-            (false, true, true),
-            (true, true, true),
-            (true, false, true),
-            (true, true, false),
-            (true, false, false),
-            (false, true, false),
+        for (selected, window_focused, shared, quad_root) in [
+            (false, true, true, None),
+            (true, true, true, None),
+            (true, false, true, None),
+            (true, true, false, None),
+            (true, false, false, None),
+            (false, true, false, None),
+            (false, true, true, Some(1)),
+            (true, true, true, Some(1)),
+            (true, false, false, Some(1)),
         ] {
             for theme in [egui::ThemePreference::Dark, egui::ThemePreference::Light] {
                 context.set_theme(theme);
@@ -13620,6 +13690,7 @@ mod tests {
                             active: false,
                             attention: false,
                             pinned: false,
+                            quad_root,
                             flash: 0.0,
                             accent,
                         }
@@ -13635,7 +13706,11 @@ mod tests {
                         _ => None,
                     })
                     .unwrap();
-                assert!((text.pos + text.galley.size() / 2.0 - bounds.center()).length() < 1.0);
+                let icon_offset = Vec2::new(if quad_root.is_some() { 10.0 } else { 0.0 }, 0.0);
+                assert!(
+                    (text.pos + text.galley.size() / 2.0 - bounds.center() - icon_offset).length()
+                        < 1.0
+                );
                 assert_eq!(
                     text.galley.job.sections[0].format.font_id.size,
                     if shared { 22.0 } else { 22.0 * 0.7 }
@@ -13696,6 +13771,7 @@ mod tests {
                         active: false,
                         attention: false,
                         pinned: false,
+                        quad_root: None,
                         flash: 0.0,
                         accent: TabAccent::new(Some([230, 185, 60]), [0; 3]),
                     }

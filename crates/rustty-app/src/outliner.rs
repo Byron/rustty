@@ -33,6 +33,7 @@ pub struct Row {
     pub color: Option<[u8; 3]>,
     pub tmuxx: Option<String>,
     pub zoom: Zoom,
+    pub explicit_quad_root: bool,
     pub working: usize,
     pub agent_state: Option<rustty::vt::agent::State>,
     pub program_status: Option<(rustty::vt::agent::State, String)>,
@@ -177,6 +178,7 @@ pub fn workspace_rows(
                 working: 0,
                 agent_state: None,
                 program_status: None,
+                explicit_quad_root: false,
             });
         }
         outline.extend(rows(window, labels, tab_labels).into_iter().map(|mut row| {
@@ -362,6 +364,7 @@ pub fn rows(
                 working: 0,
                 agent_state: None,
                 program_status: None,
+                explicit_quad_root: false,
             });
         }
         rows.extend(tab_rows(tab, labels, usize::from(has_tabs), active));
@@ -460,6 +463,7 @@ fn quad_row(
         working: 0,
         agent_state: None,
         program_status: None,
+        explicit_quad_root: tab.quad_roots.contains(&node.id),
         zoom: if tab.quadrant_zoom == Some(node.id) {
             Zoom::Quad
         } else {
@@ -489,6 +493,7 @@ fn pane_row(
         working: 0,
         agent_state: None,
         program_status: None,
+        explicit_quad_root: false,
         zoom: if tab.zoom == Some(pane) && tab.zoom != tab.quadrant_zoom {
             zoom(tab)
         } else {
@@ -909,12 +914,16 @@ mod tests {
             path.iter().map(|row| row.depth).collect::<Vec<_>>(),
             [0, 1, 2, 3]
         );
+        assert_eq!(
+            path.iter()
+                .map(|row| row.explicit_quad_root)
+                .collect::<Vec<_>>(),
+            [false, true, true, false]
+        );
         let outline = rows(&window, &labels, &HashMap::new());
         let pins = pinned_paths(&outline, &[2]);
-        assert_eq!(
-            pins[0].iter().map(|row| row.target).collect::<Vec<_>>(),
-            path.iter().map(|row| row.target).collect::<Vec<_>>()
-        );
+        assert_eq!(pins[0], path);
+        assert_eq!(search(&outline, "panel 2")[0].path, path);
         let mut expansion = Expansion::default();
         expansion.sync(&outline);
         expansion.toggle(&outline, 0, true);
@@ -935,6 +944,8 @@ mod tests {
         let path = breadcrumb(&window.tabs[0], &HashMap::new());
         assert_eq!(path.len(), 2);
         assert_eq!(path[0].target, Target::Quad { tab: 1, node: 2 });
+        assert!(path[0].explicit_quad_root);
+        assert!(!path[1].explicit_quad_root);
         assert_eq!(path[1].depth, 1);
         window.tabs[0].toggle_quadrant_zoom();
         assert!(window.tabs[0].toggle_quad_root());

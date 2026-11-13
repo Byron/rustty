@@ -419,8 +419,10 @@ There is no fixed nesting limit beyond the existing layout limits.
 Quad Zoom toggles between a designated child and its parent. If the focused branch
 has a designated child, Quad Zoom enters it instead of leaving the parent; selecting
 an ancestor in the breadcrumb returns directly to that level. The outliner,
-breadcrumbs, and pinned paths show the extra levels. Quad navigation uses the
-visible hierarchy, while holding the configured Quad Peek chord still shows the
+breadcrumbs, and pinned paths show the extra levels. Explicit roots have a double
+outline on their hierarchy icons and an icon beside their directory labels.
+Quad navigation uses the visible hierarchy, while holding the configured Quad Peek
+chord still shows the
 original inferred quads; releasing it restores the nested zoom when staying in that
 root. Designations survive undo, saved state, and layout imports, and follow surviving
 subtrees when panels close. They are unavailable in server-owned tmuxx tabs.
