@@ -375,6 +375,38 @@ fn screen_shake_types_accept_the_reference_selection_and_reject_unknown_values()
 }
 
 #[test]
+fn quad_root_dimming_defaults_validates_and_resets() {
+    let home = TestHome::new();
+    assert_eq!(home.loader.load().config.quad_root_dim, 0.15);
+    home.own("quad-root-dim=25%\n");
+    let loaded = home.loader.load();
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+    assert_eq!(loaded.config.quad_root_dim, 0.25);
+    for (value, expected) in [
+        ("0", 0.0),
+        ("0%", 0.0),
+        ("37.5", 0.375),
+        ("37.5%", 0.375),
+        ("100", 1.0),
+        ("100%", 1.0),
+        ("", 0.15),
+    ] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--quad-root-dim={value}")]));
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.quad_root_dim, expected, "{value}");
+    }
+    for value in ["-1%", "101", "100.1%", "NaN", "inf%", "-inf", "50%%", "%"] {
+        let loaded = home
+            .loader
+            .load_with_args(&args(&[&format!("--quad-root-dim={value}")]));
+        assert_eq!(loaded.diagnostics.len(), 1, "{value}");
+        assert_eq!(loaded.config.quad_root_dim, 0.25, "{value}");
+    }
+}
+
+#[test]
 fn agent_peek_dimming_validates_percentages_and_resets() {
     let home = TestHome::new();
     home.own("agent-peek-background-dim=25%\n");

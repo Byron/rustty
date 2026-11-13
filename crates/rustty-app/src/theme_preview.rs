@@ -89,6 +89,7 @@ pub(super) fn appearance(original: &Config, theme: Config) -> Config {
     config.unfocused_split_fill = theme.unfocused_split_fill;
     config.split_divider_color = theme.split_divider_color;
     config.quadrant_peek_opacity = theme.quadrant_peek_opacity;
+    config.quad_root_dim = theme.quad_root_dim;
     config.window_padding_x = theme.window_padding_x;
     config.window_padding_y = theme.window_padding_y;
     config.window_theme = theme.window_theme;
@@ -190,6 +191,7 @@ mod tests {
         expected.cursor_color = Some(TerminalColor::CellForeground);
         expected.selection_background = Some(TerminalColor::CellBackground);
         expected.background_opacity = 0.8;
+        expected.quad_root_dim = 0.25;
         expected.split_divider_color = Some(Rgb::new(10, 11, 12));
         expected.window_padding_x = Padding {
             start: 8.0,

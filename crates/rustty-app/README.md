@@ -419,11 +419,19 @@ There is no fixed nesting limit beyond the existing layout limits.
 Quad Zoom toggles between a designated child and its parent. If the focused branch
 has a designated child, Quad Zoom enters it instead of leaving the parent; selecting
 an ancestor in the breadcrumb returns directly to that level. The outliner,
-breadcrumbs, and pinned paths show the extra levels. Quad navigation uses the
-visible hierarchy, while holding the configured Quad Peek chord still shows the
-original inferred quads; releasing it restores the nested zoom when staying in that
-root. Designations survive undo, saved state, and layout imports, and follow surviving
-subtrees when panels close. They are unavailable in server-owned tmuxx tabs.
+breadcrumbs, and pinned paths show the extra levels. Explicit roots have a double
+outline on their hierarchy icons. Unsplit roots show the icon beside their directory
+label. Split roots have a top-right root marker and are dimmed as a group when
+unfocused. Focusing a panel inside a root inverts the effect: that root stays bright
+and the surrounding area is dimmed. The innermost visible root containing focus
+wins, and nested dimming never stacks. This is independent of per-panel dimming.
+`quad-root-dim = 15%` sets the strength (the default); `0` disables it and `100%`
+fully darkens the affected area. Nested markers leave room for pane pins and labels.
+Quad navigation uses the visible hierarchy, while holding the configured Quad Peek
+chord still shows the original inferred quads; releasing it restores the nested
+zoom when staying in that root. Designations survive undo, saved state, and layout
+imports, and follow surviving subtrees when panels close. They are unavailable in
+server-owned tmuxx tabs.
 
 Quad Peek shows numbered keycaps at the top-left of the first nine quads and
 quad roots, ordered top-to-bottom then left-to-right. Roots have a double outline;

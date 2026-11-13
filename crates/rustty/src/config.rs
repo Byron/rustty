@@ -358,6 +358,8 @@ pub struct Config {
     /// Fraction of tab and window accent saturation retained when unfocused.
     pub unfocused_tab_saturation: f32,
     pub quadrant_peek_opacity: f32,
+    /// Fraction of brightness removed when separating split quad roots.
+    pub quad_root_dim: f32,
     pub window_padding_x: Padding,
     pub window_padding_y: Padding,
     /// Initial dimensions in terminal cells; zero means use the app default.
@@ -483,6 +485,7 @@ impl Default for Config {
             tab_frame_color_mix: 0.09,
             unfocused_tab_saturation: 0.05,
             quadrant_peek_opacity: 0.5,
+            quad_root_dim: 0.15,
             window_padding_x: Padding {
                 start: 2.0,
                 end: 2.0,
@@ -710,6 +713,14 @@ impl Config {
                 percentage / 100.0
             }),
             "quadrant-peek-opacity" => set!(quadrant_peek_opacity, parse_opacity(value)?),
+            "quad-root-dim" => set!(quad_root_dim, {
+                let percentage =
+                    parse_nonnegative(value.strip_suffix('%').unwrap_or(value).trim())?;
+                if percentage > 100.0 {
+                    return Err("quad root dim must be between 0% and 100%");
+                }
+                percentage / 100.0
+            }),
             "window-padding-x" => set!(window_padding_x, Padding::parse(value)?),
             "window-padding-y" => set!(window_padding_y, Padding::parse(value)?),
             "window-width" => set!(

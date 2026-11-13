@@ -1391,6 +1391,16 @@ fn paint_label(
         );
 }
 
+pub fn paint_quad_root(painter: &egui::Painter, rect: Rect, color: Color32) {
+    if !rect.is_positive() {
+        return;
+    }
+    let inset = 2.5_f32.min(rect.width() / 4.0).min(rect.height() / 4.0);
+    for bounds in [rect, rect.shrink(inset)] {
+        painter.rect_stroke(bounds, 1, Stroke::new(1.0, color), egui::StrokeKind::Inside);
+    }
+}
+
 fn paint_icon(painter: &egui::Painter, rect: Rect, row: &Row, color: Color32) {
     if matches!(row.target, Target::Window(_)) {
         let bounds = rect.shrink2(Vec2::new(1.5, 3.0));
@@ -1405,7 +1415,11 @@ fn paint_icon(painter: &egui::Painter, rect: Rect, row: &Row, color: Color32) {
     let zoomed = row.zoom != Zoom::None;
     let outer = rect.shrink(3.0);
     let quad = matches!(row.target, Target::Quad { .. });
-    painter.rect_stroke(outer, 1, Stroke::new(1.0, color), egui::StrokeKind::Inside);
+    if row.explicit_quad_root {
+        paint_quad_root(painter, rect.shrink(0.5), color);
+    } else {
+        painter.rect_stroke(outer, 1, Stroke::new(1.0, color), egui::StrokeKind::Inside);
+    }
     let inner = outer.shrink(1.5);
     let position = Rect::from_min_size(
         inner.min + Vec2::new(row.rect.x * inner.width(), row.rect.y * inner.height()),
@@ -1469,6 +1483,9 @@ fn description(row: &Row) -> String {
         Target::Pane { .. } => "Panel",
     };
     let mut description = format!("{kind}: {}", row.label);
+    if row.explicit_quad_root {
+        description.push_str(" · Explicit quad root");
+    }
     if let Some((_, status)) = &row.program_status {
         description.push('\n');
         description.push_str(status);
@@ -1521,6 +1538,7 @@ mod tests {
         let context = egui::Context::default();
         context.enable_accesskit();
         let mut rows = rows()[2..].to_vec();
+        rows[0].explicit_quad_root = true;
         for row in &mut rows {
             row.depth -= 2;
         }
@@ -1567,6 +1585,7 @@ mod tests {
         draw(Vec::new());
         let (output, _) = draw(Vec::new());
         let pinned_group = format!("{} · Contains pinned panels", description(&rows[1]));
+        assert!(pinned_group.contains("Explicit quad root"));
         assert!(
             node(&output, &pinned_group).unwrap().bounds().unwrap().y0
                 < node(&output, &description(&rows[0]))
@@ -1651,6 +1670,44 @@ mod tests {
     }
 
     #[test]
+    fn quad_root_icons_keep_small_bounds_positive_and_skip_empty_bounds() {
+        let context = egui::Context::default();
+        for size in [
+            Vec2::splat(16.0),
+            Vec2::splat(1.0),
+            Vec2::new(5.5, 20.0),
+            Vec2::new(20.0, 5.5),
+            Vec2::ZERO,
+            Vec2::new(0.0, 20.0),
+            Vec2::new(20.0, 0.0),
+            Vec2::splat(-1.0),
+        ] {
+            let rect = Rect::from_min_size(Pos2::new(10.0, 10.0), size);
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                paint_quad_root(ui.painter(), rect, Color32::WHITE);
+            });
+            output.textures_delta.clear();
+            let rectangles: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect.rect),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(rectangles.len(), if rect.is_positive() { 2 } else { 0 });
+            assert!(
+                rectangles
+                    .iter()
+                    .all(|bounds| { bounds.is_positive() && rect.contains_rect(*bounds) })
+            );
+            if size == Vec2::splat(16.0) {
+                assert_eq!(rectangles[1], rect.shrink(2.5));
+            }
+        }
+    }
+
+    #[test]
     fn quad_icons_match_panel_geometry_without_fills_or_an_extra_square() {
         let context = egui::Context::default();
         let icon = Rect::from_min_size(Pos2::new(10.0, 10.0), Vec2::splat(ICON_SIZE));
@@ -1672,17 +1729,23 @@ mod tests {
             row.rect = position;
             for zoom in [Zoom::None, Zoom::Quad] {
                 row.zoom = zoom;
-                let draw = |target| {
+                let draw = |target, explicit_quad_root| {
                     let mut row = row.clone();
                     row.target = target;
+                    row.explicit_quad_root = explicit_quad_root;
+                    assert_eq!(
+                        description(&row).contains("Explicit quad root"),
+                        explicit_quad_root
+                    );
                     let mut output = context.run_ui(egui::RawInput::default(), |ui| {
                         paint_icon(ui.painter(), icon, &row, Color32::WHITE);
                     });
                     output.textures_delta.clear();
                     output
                 };
-                let quad = draw(Target::Quad { tab: 1, node: 2 });
-                let panel = draw(Target::Pane { tab: 1, pane: 3 });
+                let quad = draw(Target::Quad { tab: 1, node: 2 }, false);
+                let root = draw(Target::Quad { tab: 1, node: 2 }, true);
+                let panel = draw(Target::Pane { tab: 1, pane: 3 }, false);
                 let rectangles = |output: &egui::FullOutput| {
                     output
                         .shapes
@@ -1694,7 +1757,12 @@ mod tests {
                         .collect::<Vec<_>>()
                 };
                 let quad_rects = rectangles(&quad);
+                let root_rects = rectangles(&root);
                 let panel_rects = rectangles(&panel);
+                assert_eq!(root_rects.len(), 3);
+                assert_eq!(root_rects[0].rect, icon.shrink(0.5));
+                assert_eq!(&root_rects[1..], quad_rects.as_slice());
+                assert_eq!(root_rects[0].fill, Color32::TRANSPARENT);
                 assert_eq!(quad_rects.len(), 2);
                 assert_eq!(panel_rects.len(), 2);
                 for (quad, panel) in quad_rects.iter().zip(&panel_rects) {
@@ -1714,6 +1782,7 @@ mod tests {
                         })
                         .collect::<Vec<_>>()
                 };
+                assert_eq!(brackets(&quad), brackets(&root));
                 assert_eq!(brackets(&quad), brackets(&panel));
                 assert_eq!(
                     brackets(&quad).len(),
@@ -1739,6 +1808,7 @@ mod tests {
                 working: 0,
                 agent_state: None,
                 program_status: None,
+                explicit_quad_root: false,
             },
             Row {
                 target: Target::Tab(1),
@@ -1754,6 +1824,7 @@ mod tests {
                 working: 0,
                 agent_state: None,
                 program_status: None,
+                explicit_quad_root: false,
             },
             Row {
                 target: Target::Quad { tab: 1, node: 2 },
@@ -1773,6 +1844,7 @@ mod tests {
                 working: 0,
                 agent_state: None,
                 program_status: None,
+                explicit_quad_root: false,
             },
             Row {
                 target: Target::Pane { tab: 1, pane: 3 },
@@ -1793,6 +1865,7 @@ mod tests {
                 working: 0,
                 agent_state: None,
                 program_status: None,
+                explicit_quad_root: false,
             },
         ]
     }

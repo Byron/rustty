@@ -1328,6 +1328,7 @@ struct DirectoryBadge {
     active: bool,
     attention: bool,
     pinned: bool,
+    quad_root: Option<Id>,
     flash: f32,
     accent: TabAccent,
 }
@@ -1342,7 +1343,7 @@ impl DirectoryBadge {
             ui.visuals().strong_text_color()
         };
         let scale = if self.shared { 1.0 } else { 0.7 };
-        let pin_width = if self.pinned { 20.0 } else { 0.0 };
+        let icon_width = 20.0 * (u8::from(self.pinned) + u8::from(self.quad_root.is_some())) as f32;
         let large_padding = Vec2::new(16.0, 10.0) * scale;
         let layout = |large| {
             let mut job = egui::text::LayoutJob::simple(
@@ -1354,11 +1355,11 @@ impl DirectoryBadge {
                 egui::FontId::proportional(if large { 22.0 * scale } else { 12.0 }),
                 color,
                 if self.centered {
-                    (self.bounds.width() * 0.75 - 24.0 * scale - pin_width).max(1.0)
+                    (self.bounds.width() * 0.75 - 24.0 * scale - icon_width).max(1.0)
                 } else if large {
                     f32::INFINITY
                 } else {
-                    (self.bounds.width() - 32.0 - pin_width).max(1.0)
+                    (self.bounds.width() - 32.0 - icon_width).max(1.0)
                 },
             );
             job.wrap.max_rows = 1;
@@ -1374,7 +1375,7 @@ impl DirectoryBadge {
         };
         let mut galley = layout(true);
         let large = self.centered
-            || (galley.size().x + pin_width + 2.0 * large_padding.x + 16.0 <= self.bounds.width()
+            || (galley.size().x + icon_width + 2.0 * large_padding.x + 16.0 <= self.bounds.width()
                 && galley.size().y + 2.0 * large_padding.y + 16.0 <= self.bounds.height());
         if !large {
             galley = layout(false);
@@ -1384,7 +1385,7 @@ impl DirectoryBadge {
         } else {
             Vec2::new(8.0, 4.0)
         };
-        let size = galley.size() + Vec2::new(pin_width, 0.0) + 2.0 * padding;
+        let size = galley.size() + Vec2::new(icon_width, 0.0) + 2.0 * padding;
         let bounds = if self.centered {
             egui::Rect::from_center_size(self.bounds.center(), size)
         } else {
@@ -1423,8 +1424,23 @@ impl DirectoryBadge {
                 color,
             );
         }
+        if let Some(root) = self.quad_root {
+            let rect = egui::Rect::from_center_size(
+                Pos2::new(
+                    bounds.left() + padding.x + if self.pinned { 28.0 } else { 8.0 },
+                    bounds.center().y,
+                ),
+                Vec2::splat(16.0),
+            );
+            outliner_ui::paint_quad_root(&painter, rect, color);
+            let response = ui.interact(rect, ui.id().with(("quad-root", root)), Sense::hover());
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Explicit quad root")
+            });
+            response.on_hover_text("Explicit quad root");
+        }
         painter.galley(
-            bounds.min + padding + Vec2::new(pin_width, 0.0),
+            bounds.min + padding + Vec2::new(icon_width, 0.0),
             galley,
             color,
         );
@@ -1432,7 +1448,7 @@ impl DirectoryBadge {
     }
 }
 
-fn paint_panel_pin(ui: &egui::Ui, pane: Id, bounds: egui::Rect) {
+fn paint_panel_pin(ui: &egui::Ui, pane: Id, bounds: egui::Rect) -> egui::Rect {
     let rect = egui::Rect::from_min_size(
         bounds.right_top() + Vec2::new(-28.0, 8.0),
         Vec2::splat(20.0),
@@ -1448,6 +1464,147 @@ fn paint_panel_pin(ui: &egui::Ui, pane: Id, bounds: egui::Rect) {
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Pinned panel"));
     response.on_hover_text("Pinned panel");
+    rect
+}
+
+fn paint_split_quad_roots(
+    ui: &mut egui::Ui,
+    tab: &Tab,
+    panes: &[zoom_animation::Pane],
+    peek: Option<Peek>,
+    window_focused: bool,
+    config: &Config,
+    obstacles: &[egui::Rect],
+) {
+    let tree = tab.visible_tree(peek.is_some());
+    let mut roots: Vec<_> = tab
+        .quad_roots
+        .iter()
+        .filter_map(|&id| {
+            let node = tree.node(id)?;
+            if !matches!(node.kind, workspace::Node::Split { .. }) {
+                return None;
+            }
+            let mut members = panes.iter().filter(|pane| node.contains(pane.id));
+            let first = members.next()?;
+            let bounds = members.fold(first.rect, |bounds, pane| bounds.union(pane.rect));
+            bounds.is_positive().then_some((id, node, first.id, bounds))
+        })
+        .collect();
+    // Place inner roots first so shared corners leave room for each level.
+    roots.sort_by_key(|(_, node, ..)| node.panes().len());
+    if config.quad_root_dim > 0.0 {
+        let content = ui.max_rect().intersect(ui.clip_rect());
+        let focused = window_focused.then_some(peek.map_or(tab.focused, |peek| peek.target));
+        let focused_root = roots
+            .iter()
+            .find(|(_, node, ..)| focused.is_some_and(|pane| node.contains(pane)));
+        let mut regions = Vec::new();
+        if let Some((_, _, _, bounds)) = focused_root {
+            regions = uncovered_rects(content, bounds.expand(1.0));
+        } else {
+            // Nested roots share one dim layer, including their internal gutters.
+            for (_, _, _, bounds) in &roots {
+                let rect = bounds.expand(1.0).intersect(content);
+                if !rect.is_positive() {
+                    continue;
+                }
+                let mut clips = vec![rect];
+                for &covered in &regions {
+                    clips = clips
+                        .into_iter()
+                        .flat_map(|clip| uncovered_rects(clip, covered))
+                        .collect();
+                }
+                regions.extend(clips);
+            }
+        }
+        for pane in panes.iter().filter(|pane| pane.moving) {
+            let dimmed = focused_root.map_or_else(
+                || roots.iter().any(|(_, node, ..)| node.contains(pane.id)),
+                |(_, node, ..)| !node.contains(pane.id),
+            );
+            if !dimmed {
+                regions = regions
+                    .into_iter()
+                    .flat_map(|rect| uncovered_rects(rect, pane.rect.expand(1.0)))
+                    .collect();
+            }
+        }
+        let color = Color32::from_black_alpha((config.quad_root_dim * 255.0).round() as u8);
+        for rect in regions {
+            ui.painter()
+                .with_clip_rect(content)
+                .rect_filled(rect, 0, color);
+        }
+    }
+    let mut occupied = obstacles.to_vec();
+    for &(id, _, representative, bounds) in &roots {
+        let margin = 7.0_f32.min(bounds.width() / 4.0).min(bounds.height() / 4.0);
+        let area = bounds.shrink(margin);
+        let mut size = 20.0_f32.min(area.width()).min(area.height());
+        let mut xs = vec![area.right()];
+        let mut ys = vec![area.top()];
+        for rect in &occupied {
+            xs.push(rect.left() - 4.0);
+            ys.push(rect.bottom() + 4.0);
+        }
+        xs.sort_by(|a, b| b.total_cmp(a));
+        ys.sort_by(f32::total_cmp);
+        let marker = loop {
+            let rect = ys
+                .iter()
+                .flat_map(|&y| {
+                    xs.iter().map(move |&x| {
+                        egui::Rect::from_min_size(Pos2::new(x - size, y), Vec2::splat(size))
+                    })
+                })
+                .find(|rect| {
+                    area.contains_rect(*rect)
+                        && occupied
+                            .iter()
+                            .all(|old| !old.expand(2.0).intersects(*rect))
+                });
+            if let Some(rect) = rect {
+                break rect;
+            }
+            if size <= 1.0 {
+                break egui::Rect::from_min_size(
+                    area.right_top() - Vec2::new(size, 0.0),
+                    Vec2::splat(size),
+                );
+            }
+            size = (size - 2.0).max(1.0);
+        };
+        occupied.push(marker);
+        zoom_chrome(
+            ui,
+            panes,
+            representative,
+            bounds,
+            rgb(config.background),
+            |ui| {
+                let painter = ui
+                    .painter()
+                    .with_clip_rect(bounds.intersect(ui.clip_rect()));
+                painter.rect_filled(marker, 4, ui.visuals().widgets.inactive.bg_fill);
+                outliner_ui::paint_quad_root(
+                    &painter,
+                    marker.shrink(marker.width() / 10.0),
+                    ui.visuals().strong_text_color(),
+                );
+                let response = ui.interact(
+                    marker,
+                    ui.id().with(("split-quad-root", id)),
+                    Sense::hover(),
+                );
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Explicit quad root")
+                });
+                response.on_hover_text("Explicit quad root");
+            },
+        );
+    }
 }
 
 fn paint_server_selection(ui: &egui::Ui, pane: Id, bounds: egui::Rect, accent: Color32) {
@@ -7476,6 +7633,7 @@ impl App {
                         }
                     }
                     let mut shared_labels = HashSet::new();
+                    let mut label_bounds = Vec::new();
                     for (id, bounds) in quadrants {
                         let members = active.root.node(id).unwrap().panes();
                         let retained = host.zoom_animation.is_running()
@@ -7510,12 +7668,13 @@ impl App {
                                 let visible = !label.focused || peek.is_some();
                                 shared_labels.extend(members.iter().copied().filter(|pane| label.suppresses_panel_name(*pane == focused, peek.is_some())));
                                 if !visible { return; }
-                                DirectoryBadge {
+                                let badge = DirectoryBadge {
                                     label,
                                     bounds,
                                     centered: true,
                                     shared: true,
                                     pinned: false,
+                                    quad_root: (members.len() == 1 && active.quad_roots.contains(&id)).then_some(id),
                                     attention,
                                     accent: panel_accent,
                                     active: members.iter().any(|id| {
@@ -7526,6 +7685,7 @@ impl App {
                                     flash: self.flash_opacity(id, now, &mut animation_deadline),
                                 }
                                 .paint(ui);
+                                label_bounds.push(badge);
                             }
                         });
                     }
@@ -7558,24 +7718,27 @@ impl App {
                                     centered,
                                     shared: active.label_quad(id, peek.is_some()) == Some(id),
                                     pinned,
+                                    quad_root: active.quad_roots.contains(&id).then_some(id),
                                     flash,
                                     accent: panel_accent,
                                     active: pane.is_active(),
                                     attention: pane.has_unseen(),
                                 }
                                 .paint(ui);
+                                label_bounds.push(badge);
                                 if let Some(tooltip) = pane.program_tooltip() {
                                     ui.interact(badge, egui::Id::new(("program-status", id)), Sense::hover())
                                         .on_hover_text(tooltip);
                                 }
                             } else if pinned {
-                                paint_panel_pin(ui, id, bounds);
+                                label_bounds.push(paint_panel_pin(ui, id, bounds));
                             }
                             if server_selected {
                                 paint_server_selection(ui, id, bounds, accent);
                             }
                         });
                     }
+                    paint_split_quad_roots(ui, active, &zoom_panes, peek, host.focused, &config, &label_bounds);
                 });
             let displayed_peek = host.zoom_animation.display_zoom()
                 .filter(|mode| mode.2)
@@ -11383,6 +11546,288 @@ mod tests {
     }
 
     #[test]
+    fn split_quad_root_markers_survive_different_labels_and_keep_corners_clear() {
+        let mut tab = Tab::new(1, 1, "/tmp".into());
+        tab.root.split(1, 2, 10, Direction::Left);
+        tab.root.split(1, 3, 11, Direction::Down);
+        tab.quad_roots.extend([10, 11, 2, 999]);
+        let mut config = Config::default();
+        config.quad_root_dim = 0.0;
+        for size in [Vec2::new(800.0, 600.0), Vec2::new(48.0, 44.0)] {
+            for (zoom, peek, expected) in [
+                (None, false, 2),
+                (Some(11), false, 1),
+                (Some(1), false, 0),
+                (Some(1), true, 2),
+                (Some(2), false, 0),
+            ] {
+                tab.zoom = zoom;
+                let bounds = egui::Rect::from_min_size(Pos2::new(10.0, 20.0), size);
+                let mut panes: Vec<_> = tab
+                    .layout(
+                        Rect {
+                            x: bounds.left(),
+                            y: bounds.top(),
+                            width: size.x,
+                            height: size.y,
+                        },
+                        peek,
+                        0.0,
+                    )
+                    .into_iter()
+                    .map(|(id, rect)| {
+                        let rect = egui::Rect::from_min_size(
+                            Pos2::new(rect.x, rect.y),
+                            Vec2::new(rect.width, rect.height),
+                        )
+                        .shrink(1.0);
+                        zoom_animation::Pane {
+                            id,
+                            layout: rect,
+                            label_quadrant: None,
+                            rect,
+                            opacity: 1.0,
+                            background_opacity: 1.0,
+                            moving: false,
+                            resize: None,
+                        }
+                    })
+                    .collect();
+                let root_bounds = panes
+                    .iter()
+                    .map(|pane| pane.rect)
+                    .reduce(egui::Rect::union)
+                    .unwrap();
+                // A floating pane must not enlarge its underlying root's bounds.
+                panes.push(zoom_animation::Pane {
+                    id: 99,
+                    rect: bounds.expand(100.0),
+                    ..panes[0]
+                });
+                let context = egui::Context::default();
+                context.enable_accesskit();
+                let mut obstacles = Vec::new();
+                let mut output = context.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(bounds),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        ui.set_clip_rect(bounds);
+                        if size.x > 100.0 {
+                            for pane in &panes {
+                                if pane.id == 99 {
+                                    continue;
+                                }
+                                if pane.id == 1 {
+                                    obstacles.push(paint_panel_pin(ui, pane.id, pane.rect));
+                                } else {
+                                    obstacles.push(
+                                        DirectoryBadge {
+                                            label: DirectoryLabel::new(
+                                                Some(
+                                                    if pane.id == 2 {
+                                                        "fish-shell/fish-shell"
+                                                    } else {
+                                                        "github.com/fish-shell"
+                                                    }
+                                                    .into(),
+                                                ),
+                                                false,
+                                                true,
+                                                false,
+                                            )
+                                            .unwrap(),
+                                            bounds: pane.rect,
+                                            centered: false,
+                                            shared: false,
+                                            active: false,
+                                            attention: false,
+                                            pinned: false,
+                                            quad_root: None,
+                                            flash: 0.0,
+                                            accent: TabAccent::new(None, [230, 185, 60]),
+                                        }
+                                        .paint(ui),
+                                    );
+                                }
+                            }
+                        }
+                        paint_split_quad_roots(
+                            ui,
+                            &tab,
+                            &panes,
+                            peek.then(|| Peek {
+                                chord: config::Modifiers::default(),
+                                target: tab.focused,
+                                full_zoom: tab.zoom,
+                                quadrant: None,
+                                navigation_used: false,
+                                selected_quad: None,
+                            }),
+                            true,
+                            &config,
+                            &obstacles,
+                        );
+                    },
+                );
+                output.textures_delta.clear();
+                assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.stroke.width == 1.5)), "root frames are replaced by dimming");
+                let markers: Vec<_> = output
+                    .platform_output
+                    .accesskit_update
+                    .unwrap()
+                    .nodes
+                    .into_iter()
+                    .filter_map(|(_, node)| {
+                        (node.value() == Some("Explicit quad root")).then_some(node)
+                    })
+                    .collect();
+                assert_eq!(markers.len(), expected);
+                let mut occupied = obstacles;
+                for marker in markers {
+                    assert!(!marker.supports_action(egui::accesskit::Action::Focus));
+                    let rect = marker.bounds().unwrap();
+                    let rect = egui::Rect::from_min_max(
+                        Pos2::new(rect.x0 as f32, rect.y0 as f32),
+                        Pos2::new(rect.x1 as f32, rect.y1 as f32),
+                    );
+                    assert!(root_bounds.contains_rect(rect));
+                    assert!(
+                        occupied.iter().all(|other| !other.intersects(rect)),
+                        "markers leave pins, labels, and each other readable"
+                    );
+                    occupied.push(rect);
+                }
+            }
+        }
+        tab.quad_roots.clear();
+        let context = egui::Context::default();
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+            paint_split_quad_roots(ui, &tab, &[], None, true, &config, &[]);
+        });
+        output.textures_delta.clear();
+        assert!(output.shapes.is_empty());
+    }
+
+    #[test]
+    fn split_quad_root_dimming_inverts_on_focus_without_stacking_nested_roots() {
+        let mut tab = Tab::new(1, 1, "/tmp".into());
+        tab.root.split(1, 2, 20, Direction::Left);
+        tab.root.split(1, 3, 10, Direction::Down);
+        tab.root.split(1, 4, 11, Direction::Right);
+        tab.quad_roots.extend([10, 11, 3, 999]);
+        let content = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+        let panes: Vec<_> = tab
+            .layout(
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0,
+                },
+                false,
+                0.0,
+            )
+            .into_iter()
+            .map(|(id, rect)| {
+                let rect = egui::Rect::from_min_size(
+                    Pos2::new(rect.x, rect.y),
+                    Vec2::new(rect.width, rect.height),
+                )
+                .shrink(1.0);
+                zoom_animation::Pane {
+                    id,
+                    layout: rect,
+                    label_quadrant: None,
+                    rect,
+                    opacity: 1.0,
+                    background_opacity: 1.0,
+                    moving: false,
+                    resize: None,
+                }
+            })
+            .collect();
+        for (focus, window_focused, strength, peek_target, moving, dimmed) in [
+            (2, true, 0.25, None, false, vec![1, 3, 4]),
+            (1, true, 0.25, None, false, vec![2, 3]),
+            (3, true, 0.25, None, false, vec![2]),
+            (1, false, 0.25, None, false, vec![1, 3, 4]),
+            (1, true, 0.0, None, false, vec![]),
+            (1, true, 1.0, None, false, vec![2, 3]),
+            (1, true, 0.25, Some(3), false, vec![2]),
+            (2, true, 0.25, None, true, vec![4]),
+        ] {
+            tab.focused = focus;
+            let mut panes = panes.clone();
+            if moving {
+                let pane = panes.iter_mut().find(|pane| pane.id == focus).unwrap();
+                pane.moving = true;
+                pane.rect = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(650.0, 600.0));
+            }
+            let peek = peek_target.map(|target| {
+                let mut peek = tab
+                    .clone()
+                    .begin_peek(config::Modifiers {
+                        control: true,
+                        ..config::Modifiers::default()
+                    })
+                    .unwrap();
+                peek.target = target;
+                peek
+            });
+            let mut config = Config::default();
+            config.quad_root_dim = strength;
+            let context = egui::Context::default();
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(content),
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.set_clip_rect(content);
+                    paint_split_quad_roots(ui, &tab, &panes, peek, window_focused, &config, &[]);
+                },
+            );
+            output.textures_delta.clear();
+            let shade = Color32::from_black_alpha((strength * 255.0).round() as u8);
+            let regions: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) if rect.fill == shade && rect.stroke.width == 0.0 => {
+                        Some(rect.rect)
+                    }
+                    _ => None,
+                })
+                .collect();
+            for pane in &panes {
+                assert_eq!(
+                    regions
+                        .iter()
+                        .filter(|rect| rect.contains(pane.rect.center()))
+                        .count(),
+                    usize::from(dimmed.contains(&pane.id)),
+                    "pane={}, focus={focus}, window_focused={window_focused}, strength={strength}, peek_target={peek_target:?}",
+                    pane.id
+                );
+            }
+            for (index, rect) in regions.iter().enumerate() {
+                assert!(rect.is_positive() && content.contains_rect(*rect));
+                assert!(
+                    regions[..index]
+                        .iter()
+                        .all(|other| !other.intersect(*rect).is_positive()),
+                    "nested roots must not darken the same pixels twice"
+                );
+            }
+            if strength == 0.0 {
+                assert!(regions.is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn server_selection_marker_is_accessible_and_leaves_room_for_labels() {
         for pinned in [false, true] {
             let context = egui::Context::default();
@@ -11406,6 +11851,7 @@ mod tests {
                             active: false,
                             attention: false,
                             pinned: false,
+                            quad_root: None,
                             flash: 0.0,
                             accent: TabAccent::new(None, [0; 3]),
                         }
@@ -12574,6 +13020,7 @@ mod tests {
                             active: false,
                             attention: false,
                             pinned: false,
+                            quad_root: None,
                             flash: 0.0,
                             accent: TabAccent::new(None, [200, 80, 20]),
                         }
@@ -13506,24 +13953,48 @@ mod tests {
     #[test]
     fn unshared_directory_badges_use_large_type_when_it_fits_and_stay_top_right() {
         let context = egui::Context::default();
+        context.enable_accesskit();
         configure_ui_fonts(&context);
-        for (name, size, font_size, pinned) in [
-            ("gitime", Vec2::new(740.0, 330.0), 22.0 * 0.7, false),
-            ("timesheets", Vec2::new(370.0, 330.0), 22.0 * 0.7, false),
+        for (name, size, font_size, pinned, quad_root) in [
+            ("gitime", Vec2::new(740.0, 330.0), 22.0 * 0.7, false, None),
+            (
+                "timesheets",
+                Vec2::new(370.0, 330.0),
+                22.0 * 0.7,
+                false,
+                None,
+            ),
             // Exceed the available width with both Segoe UI and San Francisco.
             (
                 "gitoxide.stable-gix-with-a-long-directory-name",
                 Vec2::new(180.0, 200.0),
                 12.0,
                 false,
+                None,
             ),
-            ("gitime", Vec2::new(740.0, 38.0), 12.0, false),
-            ("gitime", Vec2::new(180.0, 200.0), 22.0 * 0.7, true),
+            ("gitime", Vec2::new(740.0, 38.0), 12.0, false, None),
+            ("gitime", Vec2::new(180.0, 200.0), 22.0 * 0.7, true, None),
             (
                 "gitoxide.stable-gix-with-a-long-directory-name",
                 Vec2::new(180.0, 200.0),
                 12.0,
                 true,
+                None,
+            ),
+            (
+                "gitime",
+                Vec2::new(180.0, 200.0),
+                22.0 * 0.7,
+                false,
+                Some(1),
+            ),
+            ("gitime", Vec2::new(180.0, 200.0), 22.0 * 0.7, true, Some(1)),
+            (
+                "gitoxide.stable-gix-with-a-long-directory-name",
+                Vec2::new(180.0, 200.0),
+                12.0,
+                true,
+                Some(1),
             ),
         ] {
             let bounds = egui::Rect::from_min_size(Pos2::new(100.0, 50.0), size);
@@ -13541,6 +14012,7 @@ mod tests {
                         active: true,
                         attention: true,
                         pinned,
+                        quad_root,
                         flash: 0.0,
                         accent: TabAccent::new(None, [230, 185, 60]),
                     }
@@ -13578,8 +14050,30 @@ mod tests {
             } else {
                 Vec2::new(8.0, 4.0)
             };
-            let pin_offset = Vec2::new(if pinned { 20.0 } else { 0.0 }, 0.0);
-            assert!((text.pos - badge.min - padding - pin_offset).length() < 0.01);
+            let icon_offset = Vec2::new(
+                20.0 * (u8::from(pinned) + u8::from(quad_root.is_some())) as f32,
+                0.0,
+            );
+            assert!((text.pos - badge.min - padding - icon_offset).length() < 0.01);
+            if quad_root.is_some() {
+                let marker = output
+                    .platform_output
+                    .accesskit_update
+                    .as_ref()
+                    .unwrap()
+                    .nodes
+                    .iter()
+                    .find_map(|(_, node)| {
+                        (node.value() == Some("Explicit quad root")).then_some(node)
+                    })
+                    .expect("accessible quad root indicator");
+                let rect = marker.bounds().unwrap();
+                assert!(rect.x0 >= f64::from(badge.left() + padding.x));
+                assert!(rect.x1 < f64::from(text.pos.x));
+                assert!(rect.y0 >= f64::from(badge.top()));
+                assert!(rect.y1 <= f64::from(badge.bottom()));
+                assert!(!marker.supports_action(egui::accesskit::Action::Focus));
+            }
         }
     }
 
@@ -13589,13 +14083,16 @@ mod tests {
         configure_ui_fonts(&context);
         let bounds = egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 240.0));
         let accent = TabAccent::new(Some([230, 185, 60]), [0; 3]);
-        for (selected, window_focused, shared) in [
-            (false, true, true),
-            (true, true, true),
-            (true, false, true),
-            (true, true, false),
-            (true, false, false),
-            (false, true, false),
+        for (selected, window_focused, shared, quad_root) in [
+            (false, true, true, None),
+            (true, true, true, None),
+            (true, false, true, None),
+            (true, true, false, None),
+            (true, false, false, None),
+            (false, true, false, None),
+            (false, true, true, Some(1)),
+            (true, true, true, Some(1)),
+            (true, false, false, Some(1)),
         ] {
             for theme in [egui::ThemePreference::Dark, egui::ThemePreference::Light] {
                 context.set_theme(theme);
@@ -13620,6 +14117,7 @@ mod tests {
                             active: false,
                             attention: false,
                             pinned: false,
+                            quad_root,
                             flash: 0.0,
                             accent,
                         }
@@ -13635,7 +14133,11 @@ mod tests {
                         _ => None,
                     })
                     .unwrap();
-                assert!((text.pos + text.galley.size() / 2.0 - bounds.center()).length() < 1.0);
+                let icon_offset = Vec2::new(if quad_root.is_some() { 10.0 } else { 0.0 }, 0.0);
+                assert!(
+                    (text.pos + text.galley.size() / 2.0 - bounds.center() - icon_offset).length()
+                        < 1.0
+                );
                 assert_eq!(
                     text.galley.job.sections[0].format.font_id.size,
                     if shared { 22.0 } else { 22.0 * 0.7 }
@@ -13696,6 +14198,7 @@ mod tests {
                         active: false,
                         attention: false,
                         pinned: false,
+                        quad_root: None,
                         flash: 0.0,
                         accent: TabAccent::new(Some([230, 185, 60]), [0; 3]),
                     }
