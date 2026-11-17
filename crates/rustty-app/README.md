@@ -360,6 +360,23 @@ for existing files with an unregistered extension. Light/dark theme pairs follow
 resolved window appearance, and reload keeps the original command-line overrides.
 Terminal appearance and visibility queries reflect that scheme and whether the
 pane is currently shown.
+`background-git = true` gives local terminal panels a subtle, stable tint based
+on the full discovered Git directory, including a linked worktree's private Git
+directory. It is disabled by default. Discovery uses `gix-discover` without
+running Git, and only repeats when the CWD changes outside the cached worktree.
+Unchanged directories, including directories without a repository, are not
+searched again. Nested repositories inside a cached worktree retain its tint.
+Leaving a repository or disabling the setting restores the terminal background.
+SSH tmuxx panels use their existing backgrounds.
+
+Tints interpolate the current theme's ANSI accents over a continuous color range
+and vary their strength. They retain the background's relative luminance, with
+small adjustments at black and white, and preserve readable contrast for the
+default text and already readable ANSI colors. Theme changes and OSC color
+updates adapt the tint without another repository search. Explicit cell colors
+continue to work. Tinting affects rendering; OSC color queries still report the
+underlying terminal colors.
+
 `title-report = true` enables CSI 21 t replies with the terminal title; it is
 disabled by default and follows configuration reloads.
 New terminals default to `grapheme-width-method = unicode`, matching Ghostty's

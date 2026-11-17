@@ -21,6 +21,8 @@ mod native_progress;
 mod outliner_host;
 #[path = "desktop_painter.rs"]
 mod painter;
+#[path = "repository_background.rs"]
+mod repository_background;
 #[path = "smoke.rs"]
 mod smoke;
 #[path = "theme_preview.rs"]
@@ -130,6 +132,7 @@ struct Pane {
     title_override: Option<String>,
     cwd: PathBuf,
     last_directory_report: String,
+    repository_background: repository_background::State,
     running: Option<Instant>,
     activity: Activity,
     unseen: bool,
@@ -2622,6 +2625,7 @@ impl App {
                 title_override,
                 cwd: directory,
                 last_directory_report: directory_report,
+                repository_background: repository_background::State::default(),
                 running: None,
                 activity: Activity::default(),
                 unseen: false,
@@ -7177,9 +7181,13 @@ impl App {
                                 composition.push(composed);
                                 continue;
                             }
+                            let tint = config.background_git && self.tmuxx_pane(id).is_none_or(|entry| {
+                                matches!(entry.source, tmuxx_host::Source::Embedded(_) | tmuxx_host::Source::Local(_))
+                            });
                             let Some(pane) = self.panes.get_mut(&id) else {
                                 continue;
                             };
+                            pane.repository_background.update(tint.then_some(pane.cwd.as_path()));
                             let physical = rect.size() * scale;
                             let padding = [
                                 config.window_padding_x.start * scale,
@@ -7274,6 +7282,9 @@ impl App {
                             } else {
                                 (terminal.foreground, terminal.background)
                             };
+                            let background = pane.repository_background.background(
+                                foreground, background, terminal.palette.as_slice(),
+                            );
                             let cursor_color = terminal.cursor_color.unwrap_or(foreground);
                             let resolve = |color: config::TerminalColor| match color {
                                 config::TerminalColor::Rgb(color) => [color.r, color.g, color.b],

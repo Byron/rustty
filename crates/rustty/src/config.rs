@@ -340,6 +340,8 @@ pub struct Config {
     pub font_thicken_strength: u8,
     pub grapheme_width_method: GraphemeWidthMethod,
     pub background: Rgb,
+    /// Tint local panels by their discovered Git directory.
+    pub background_git: bool,
     pub foreground: Rgb,
     pub palette: [Rgb; 256],
     pub cursor_color: Option<TerminalColor>,
@@ -469,6 +471,7 @@ impl Default for Config {
             font_thicken_strength: 255,
             grapheme_width_method: GraphemeWidthMethod::Unicode,
             background: Rgb::new(0x28, 0x2c, 0x34),
+            background_git: false,
             foreground: Rgb::new(255, 255, 255),
             palette: default_palette(),
             cursor_color: None,
@@ -667,6 +670,7 @@ impl Config {
             }
             "foreground" => set!(foreground, Rgb::parse(value)?),
             "background" => set!(background, Rgb::parse(value)?),
+            "background-git" => set!(background_git, parse_bool(value)?),
             "palette" => {
                 if value.is_empty() {
                     self.palette = default_palette();
