@@ -31,7 +31,7 @@ impl Check {
         let tab = app.tab_mut(window).unwrap();
         tab.split(neighbor, split, Direction::Right, fixture_directory());
         tab.focus(source);
-        app.spawn_pane(neighbor, fixture_directory(), None, None)?;
+        app.spawn_pane(neighbor, fixture_directory(), None)?;
         app.reconcile(event_loop);
         let host = app.windows.get_mut(&native).unwrap();
         host.visible = true;

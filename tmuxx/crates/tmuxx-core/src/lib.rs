@@ -3179,10 +3179,11 @@ mod tests {
     }
 
     #[test]
-    fn split_inherits_target_background_before_spawn_and_preserves_style_and_reset() {
+    fn split_uses_default_background_and_preserves_style_and_reset() {
         let mut e = Engine::default();
         let mut c = ClientContext::default();
         run(&mut e, &mut c, "new-session -d -x 160 -y 80").unwrap();
+        let background = e.panes[&0].terminal.snapshot().background;
         e.feed(0, b"\x1b]11;#010203\x07");
         let result = run(&mut e, &mut c, "split-window -h -t %0").unwrap();
         assert!(
@@ -3191,11 +3192,10 @@ mod tests {
                 .iter()
                 .any(|effect| matches!(effect, Effect::Spawn { pane: 1, .. }))
         );
-        assert_eq!(e.panes[&1].terminal.snapshot().background, [1, 2, 3]);
-        e.feed(1, b"\x1b]11;#070809\x07");
+        assert_eq!(e.panes[&1].terminal.snapshot().background, background);
         run(&mut e, &mut c, "split-window -v -t %0").unwrap();
         let snapshot = e.panes[&2].terminal.snapshot();
-        assert_eq!(snapshot.background, [1, 2, 3]);
+        assert_eq!(snapshot.background, background);
         let mut restored = snapshot.restore().unwrap();
         restored.feed(b"\x1b]11;#040506\x07");
         assert_eq!(restored.snapshot().background, [4, 5, 6]);
@@ -3205,6 +3205,7 @@ mod tests {
         assert_eq!(e.panes[&3].terminal.snapshot().background, [16, 32, 48]);
         run(&mut e, &mut c, "new-window -t 0:1").unwrap();
         assert_eq!(e.panes[&4].terminal.application_color(1), None);
+        assert_eq!(e.panes[&0].terminal.snapshot().background, [1, 2, 3]);
     }
 
     #[test]

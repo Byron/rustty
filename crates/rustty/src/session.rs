@@ -69,7 +69,7 @@ pub struct SessionOptions {
     pub resources: Option<PathBuf>,
     /// Initial host state is installed before the child can issue queries.
     pub color_scheme: Option<query::ColorScheme>,
-    /// Inherited split color; applications can replace it or reset to the theme.
+    /// Initial background override. Applications can replace it or reset to the theme.
     pub background: Option<[u8; 3]>,
     pub visible: bool,
     pub focused: bool,
@@ -1650,7 +1650,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn inherited_background_precedes_child_output_and_keeps_theme_reset() {
+    fn initial_background_override_precedes_child_output_and_keeps_theme_reset() {
         let config = Config::default();
         let session = Session::spawn(
             &config,

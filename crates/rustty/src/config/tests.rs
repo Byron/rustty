@@ -4,6 +4,24 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn git_background_is_opt_in_and_can_be_reset() {
+    let home = TestHome::new();
+    assert!(!home.loader.load().config.background_git);
+    for (value, expected) in [("true", true), ("false", false), ("", false)] {
+        home.own(&format!(
+            "background-git = true\nbackground-git = {value}\n"
+        ));
+        let loaded = home.loader.load();
+        assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+        assert_eq!(loaded.config.background_git, expected);
+    }
+    home.own("background-git = perhaps\n");
+    let loaded = home.loader.load();
+    assert_eq!(loaded.diagnostics.len(), 1);
+    assert!(!loaded.config.background_git);
+}
+
+#[test]
 fn window_theme_actions_accept_session_overrides_and_config_reset() {
     for (value, theme) in [
         ("config", None),

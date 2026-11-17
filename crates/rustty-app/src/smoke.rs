@@ -6526,21 +6526,48 @@ fn check_outliner(app: &mut App, event_loop: &ActiveEventLoop, directory: &Path)
     let window = host.id;
     let first = app.focused(window).ok_or("missing Outliner pane")?;
     let first_tab = app.tab(window).unwrap().id;
-    app.panes[&first]
-        .session
-        .terminal()?
-        .feed(b"\x1b]11;#123456\x07");
-    for direction in [Direction::Right, Direction::Down] {
+    let fixture = directory.canonicalize()?;
+    let worktree = fixture.join("split-background-repository");
+    let outside = fixture.join("split-background-outside");
+    fs::create_dir_all(worktree.join(".git/objects"))?;
+    fs::create_dir_all(worktree.join(".git/refs"))?;
+    fs::write(worktree.join(".git/HEAD"), "ref: refs/heads/main\n")?;
+    fs::create_dir_all(&outside)?;
+    let background_git = app.config().background_git;
+    app.loaded.config.background_git = true;
+    let config = app.window_config(window);
+    let theme = config.background.to_array();
+    let mut repository = repository_background::State::default();
+    repository.update(Some(&worktree));
+    let tint = repository.background(
+        config.foreground.to_array(),
+        theme,
+        &config.palette.map(|color| color.to_array()),
+    );
+    for (direction, cwd, background) in [
+        (Direction::Right, worktree, tint),
+        (Direction::Down, outside, theme),
+    ] {
+        let source = app.focused(window).unwrap();
+        let pane = app.panes.get_mut(&source).unwrap();
+        pane.cwd = cwd;
+        pane.session.terminal()?.feed(b"\x1b]11;#123456\x07");
         app.action(event_loop, &mut host, Action::NewSplit(direction), true);
         let split = app.focused(window).unwrap();
-        if app.panes[&split].session.terminal()?.background != [0x12, 0x34, 0x56] {
-            return Err("split did not inherit the source pane's application background".into());
+        if app.panes[&split]
+            .session
+            .terminal()?
+            .color_override(vt::color::Target::Background)
+            .is_some()
+        {
+            return Err("split inherited the source pane's application background".into());
         }
         app.draw(event_loop, &mut host)?;
-        if host.prepared[&split].key.options.background != [0x12, 0x34, 0x56] {
-            return Err("split rendered the theme background before shell initialization".into());
+        if host.prepared[&split].key.options.background != background {
+            return Err("split rendered the wrong background for its starting directory".into());
         }
     }
+    app.loaded.config.background_git = background_git;
     let bottom_right = app.focused(window).unwrap();
     let right = app.tab(window).unwrap().root.panes()[1];
     app.focus_pane(window, first);

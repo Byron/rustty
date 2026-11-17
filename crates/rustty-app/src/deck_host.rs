@@ -673,7 +673,7 @@ pub(super) fn check_native_deck(app: &mut App, event_loop: &ActiveEventLoop) -> 
         .tabs
         .push(Tab::new(tab, hidden, std::env::temp_dir()));
     // This fixture needs a running hidden pane; ordinary hidden tabs start lazily.
-    app.spawn_pane(hidden, std::env::temp_dir(), None, None)?;
+    app.spawn_pane(hidden, std::env::temp_dir(), None)?;
     app.reconcile(event_loop);
     let snapshot = |state, turn| Snapshot {
         state,

@@ -38,8 +38,8 @@ impl Timing {
         tab.quadrant_zoom = Some(parent);
         let index = app.index(window).unwrap();
         app.workspace.windows[index].tabs.push(tab);
-        app.spawn_pane(target, fixture_directory(), None, None)?;
-        app.spawn_pane(neighbor, fixture_directory(), None, None)?;
+        app.spawn_pane(target, fixture_directory(), None)?;
+        app.spawn_pane(neighbor, fixture_directory(), None)?;
         app.reconcile(event_loop);
         app.loaded.config.window_animations = Some(true);
         app.loaded.config.quad_peek_animation_duration = Duration::ZERO;
@@ -275,7 +275,7 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
     app.workspace.windows[index]
         .tabs
         .push(Tab::new(hidden_tab, hidden, fixture_directory()));
-    app.spawn_pane(hidden, fixture_directory(), None, None)?;
+    app.spawn_pane(hidden, fixture_directory(), None)?;
     ids.push(hidden);
     app.reconcile(event_loop);
     app.loaded.config.window_animations = Some(true);
@@ -350,7 +350,7 @@ pub(super) fn check(app: &mut App, event_loop: &ActiveEventLoop, directory: &Pat
     let tab = app.tab_mut(one).unwrap();
     tab.split(neighbor, split, Direction::Right, fixture_directory());
     tab.focus(first);
-    app.spawn_pane(neighbor, fixture_directory(), None, None)?;
+    app.spawn_pane(neighbor, fixture_directory(), None)?;
     app.windows.insert(native, host);
     app.window_event(
         event_loop,

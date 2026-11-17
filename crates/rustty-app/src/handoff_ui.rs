@@ -364,7 +364,7 @@ impl App {
                 let spawned = (|| {
                     self.draw(event_loop, &mut host)?;
                     for (id, directory) in startup_panes(&window, false) {
-                        self.spawn_pane(id, directory, Some(&host), None)?;
+                        self.spawn_pane(id, directory, Some(&host))?;
                     }
                     Ok::<_, Box<dyn std::error::Error>>(())
                 })();

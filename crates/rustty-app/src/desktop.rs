@@ -21,6 +21,8 @@ mod native_progress;
 mod outliner_host;
 #[path = "desktop_painter.rs"]
 mod painter;
+#[path = "repository_background.rs"]
+mod repository_background;
 #[path = "smoke.rs"]
 mod smoke;
 #[path = "theme_preview.rs"]
@@ -130,6 +132,7 @@ struct Pane {
     title_override: Option<String>,
     cwd: PathBuf,
     last_directory_report: String,
+    repository_background: repository_background::State,
     running: Option<Instant>,
     activity: Activity,
     unseen: bool,
@@ -2349,13 +2352,7 @@ impl App {
         self.changed();
         id
     }
-    fn spawn_pane(
-        &mut self,
-        id: Id,
-        directory: PathBuf,
-        host: Option<&Host>,
-        background: Option<[u8; 3]>,
-    ) -> Result<()> {
+    fn spawn_pane(&mut self, id: Id, directory: PathBuf, host: Option<&Host>) -> Result<()> {
         if self.panes.contains_key(&id)
             || self.failed_panes.contains_key(&id)
             || self.starting_panes.contains_key(&id)
@@ -2363,7 +2360,7 @@ impl App {
             return Ok(());
         }
         let visual = self.pending_visuals.get(&id).cloned();
-        let result = self.spawn_pane_with_visual(id, directory, host, background, visual);
+        let result = self.spawn_pane_with_visual(id, directory, host, visual);
         if let Err(error) = &result {
             self.failed_panes.insert(id, error.to_string());
         }
@@ -2374,7 +2371,6 @@ impl App {
         id: Id,
         directory: PathBuf,
         host: Option<&Host>,
-        background: Option<[u8; 3]>,
         visual: Option<Arc<Vec<u8>>>,
     ) -> Result<()> {
         let directory = if self.tmuxx_pane(id).is_some() {
@@ -2516,7 +2512,7 @@ impl App {
                 command,
                 resources: self.resources.clone(),
                 color_scheme: Some(host_state.2),
-                background,
+                background: None,
                 visible: host_state.0,
                 focused: host_state.1,
             };
@@ -2622,6 +2618,7 @@ impl App {
                 title_override,
                 cwd: directory,
                 last_directory_report: directory_report,
+                repository_background: repository_background::State::default(),
                 running: None,
                 activity: Activity::default(),
                 unseen: false,
@@ -2766,7 +2763,7 @@ impl App {
         }
         if !self.import_selector {
             for (pane, directory) in startup_panes(&state, self.tmuxx_window(state.id).is_some()) {
-                self.spawn_pane(pane, directory, None, None)?;
+                self.spawn_pane(pane, directory, None)?;
             }
         }
         #[cfg(target_os = "macos")]
@@ -2945,7 +2942,7 @@ impl App {
                         .get(&pane)
                         .map(|saved| saved.working_directory.clone())
                 })
-            && let Err(error) = self.spawn_pane(pane, directory, None, None)
+            && let Err(error) = self.spawn_pane(pane, directory, None)
         {
             self.errors.push(error.to_string());
         }
@@ -4797,7 +4794,7 @@ impl App {
                     window.tabs.push(Tab::new(tab, pane, directory.clone()));
                     window.active_tab = window.tabs.len() - 1;
                 }
-                if let Err(error) = self.spawn_pane(pane, directory, Some(host), None) {
+                if let Err(error) = self.spawn_pane(pane, directory, Some(host)) {
                     self.errors.push(error.to_string());
                 }
             }
@@ -4811,19 +4808,13 @@ impl App {
                     return false;
                 }
                 let directory = self.directory(host.id);
-                let background = focused.and_then(|id| self.panes.get(&id)).and_then(|pane| {
-                    pane.session
-                        .terminal()
-                        .ok()?
-                        .color_override(vt::color::Target::Background)
-                });
                 let pane = self.workspace.id();
                 let split = self.workspace.id();
                 self.remember();
                 if let Some(tab) = self.tab_mut(host.id) {
                     tab.split(pane, split, direction, directory.clone());
                 }
-                if let Err(error) = self.spawn_pane(pane, directory, Some(host), background) {
+                if let Err(error) = self.spawn_pane(pane, directory, Some(host)) {
                     self.errors.push(error.to_string());
                 }
             }
@@ -5953,7 +5944,7 @@ impl App {
             .flat_map(|window| startup_panes(window, self.tmuxx_window(window.id).is_some()))
             .collect::<Vec<_>>();
         for (id, directory) in startup {
-            if let Err(error) = self.spawn_pane(id, directory, None, None) {
+            if let Err(error) = self.spawn_pane(id, directory, None) {
                 self.errors.push(error.to_string());
             }
         }
@@ -7177,9 +7168,13 @@ impl App {
                                 composition.push(composed);
                                 continue;
                             }
+                            let tint = config.background_git && self.tmuxx_pane(id).is_none_or(|entry| {
+                                matches!(entry.source, tmuxx_host::Source::Embedded(_) | tmuxx_host::Source::Local(_))
+                            });
                             let Some(pane) = self.panes.get_mut(&id) else {
                                 continue;
                             };
+                            pane.repository_background.update(tint.then_some(pane.cwd.as_path()));
                             let physical = rect.size() * scale;
                             let padding = [
                                 config.window_padding_x.start * scale,
@@ -7274,6 +7269,9 @@ impl App {
                             } else {
                                 (terminal.foreground, terminal.background)
                             };
+                            let background = pane.repository_background.background(
+                                foreground, background, terminal.palette.as_slice(),
+                            );
                             let cursor_color = terminal.cursor_color.unwrap_or(foreground);
                             let resolve = |color: config::TerminalColor| match color {
                                 config::TerminalColor::Rgb(color) => [color.r, color.g, color.b],
