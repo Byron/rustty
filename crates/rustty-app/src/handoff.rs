@@ -187,7 +187,7 @@ impl Store {
             owner,
             gix_lock::acquire::Fail::AfterDurationWithBackoff(Duration::from_secs(1)),
             None,
-            0,
+            Default::default(),
         )
         .map_err(io::Error::other)?;
         output.with_mut(|file| protect_file(file))?;
@@ -206,7 +206,7 @@ impl Store {
             &owner,
             gix_lock::acquire::Fail::AfterDurationWithBackoff(Duration::from_secs(1)),
             None,
-            0,
+            Default::default(),
         )
         .map_err(io::Error::other)?;
         let owns_workspace = match read_json::<String>(&owner) {
@@ -398,7 +398,7 @@ fn lock_file(path: &Path) -> io::Result<gix_lock::File> {
         path,
         gix_lock::acquire::Fail::Immediately,
         None,
-        0,
+        Default::default(),
     )
     .map_err(io::Error::other)?;
     output.with_mut(|file| protect_file(file))?;

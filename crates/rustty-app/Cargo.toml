@@ -76,8 +76,8 @@ objc2-quartz-core = "0.3.2"
 block2 = "0.6"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-gix-discover = { version = "0.57", features = ["sha1", "sha256"] }
-gix-lock = "26.0.0"
+gix-discover = { version = "0.58", features = ["sha1", "sha256"] }
+gix-lock = "27.0.0"
 lz4_flex.workspace = true
 rmp-serde.workspace = true
 serde_bytes.workspace = true
